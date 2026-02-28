@@ -21,7 +21,8 @@ import {
   Bell,
   Shield,
   Save,
-  Key
+  Key,
+  MessageCircle
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -31,6 +32,7 @@ const OperatorSettings = () => {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [profile, setProfile] = useState(null);
   const [gatewayConfig, setGatewayConfig] = useState(null);
+  const [whatsappConfig, setWhatsappConfig] = useState(null);
   
   const [profileForm, setProfileForm] = useState({
     company_name: "",
@@ -51,13 +53,18 @@ const OperatorSettings = () => {
     webhook_secret: ""
   });
 
+  const [whatsappForm, setWhatsappForm] = useState({
+    phone_number_id: "",
+    access_token: ""
+  });
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const [dashboardRes, profileRes, gatewayRes] = await Promise.all([
+      const [dashboardRes, profileRes, gatewayRes, waRes] = await Promise.all([
         authAxios.get("/operator/dashboard"),
         authAxios.get("/operator/profile"),
         authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } }))
