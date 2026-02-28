@@ -164,7 +164,7 @@ class InvoicePDFService:
         
         info_data = [
             [
-                Paragraph(company_info, self.styles['BodyText']),
+                Paragraph(company_info, self.styles['InvoiceBodyText']),
                 Paragraph(invoice_info, self.styles['InvoiceBodyText'])
             ]
         ]
