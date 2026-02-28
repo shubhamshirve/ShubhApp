@@ -52,7 +52,7 @@ class InvoicePDFService:
         ))
         
         self.styles.add(ParagraphStyle(
-            name='BodyText',
+            name='InvoiceBodyText',
             fontSize=10,
             fontName='Helvetica',
             textColor=colors.HexColor('#334155'),
@@ -60,7 +60,7 @@ class InvoicePDFService:
         ))
         
         self.styles.add(ParagraphStyle(
-            name='SmallText',
+            name='InvoiceSmallText',
             fontSize=8,
             fontName='Helvetica',
             textColor=colors.HexColor('#64748b')
