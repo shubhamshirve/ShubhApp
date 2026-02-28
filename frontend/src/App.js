@@ -6,6 +6,7 @@ import axios from "axios";
 // Pages
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import LandingPage from "./pages/LandingPage";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminOperators from "./pages/admin/Operators";
 import AdminSaaSPlans from "./pages/admin/SaaSPlans";
@@ -121,6 +122,7 @@ function App() {
         <Toaster position="top-right" richColors closeButton />
         <Routes>
           {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
@@ -184,8 +186,7 @@ function App() {
           } />
 
           {/* Default Route */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
