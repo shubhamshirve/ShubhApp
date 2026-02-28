@@ -18,8 +18,8 @@ body {
     background-color: #F8FAFC;
 }
 
-h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
+h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Outfit', sans-serif;
 }
 
 code, .font-mono {
@@ -189,7 +189,8 @@ button:active {
 }
 
 .kpi-card .kpi-value {
-    @apply text-2xl font-bold text-slate-900 font-heading;
+    @apply text-2xl font-bold text-slate-900;
+    font-family: 'Outfit', sans-serif;
 }
 
 .kpi-card .kpi-label {
