@@ -150,6 +150,51 @@ const OperatorInvoices = () => {
     }
   };
 
+  const handleGeneratePaymentLink = async (invoiceId) => {
+    setGeneratingLink(true);
+    try {
+      const response = await authAxios.post(`/operator/invoices/${invoiceId}/payment-link`);
+      setPaymentLinkData(response.data);
+      setShowPaymentLinkDialog(true);
+      fetchInvoices();
+      toast.success("Payment link generated!");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to generate payment link");
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const handleDownloadPDF = async (invoiceId, invoiceNumber) => {
+    try {
+      const response = await authAxios.get(`/operator/invoices/${invoiceId}/pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Invoice_${invoiceNumber}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("PDF downloaded!");
+    } catch (error) {
+      toast.error("Failed to download PDF");
+    }
+  };
+
+  const handleSendNotification = async (invoiceId, type = "invoice") => {
+    try {
+      await authAxios.post("/operator/send-notification", {
+        invoice_id: invoiceId,
+        notification_type: type
+      });
+      toast.success("Notification sent via WhatsApp!");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to send notification");
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       subscriber_id: "",
