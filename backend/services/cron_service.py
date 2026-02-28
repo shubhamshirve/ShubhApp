@@ -17,12 +17,12 @@ class CronJobService:
         self.whatsapp = whatsapp_service
         self.pdf = pdf_service
     
-    async def generate_upcoming_invoices(self, days_before: int = 5) -> Dict[str, Any]:
+    async def generate_upcoming_invoices(self, days_before: int = 3) -> Dict[str, Any]:
         """
         Auto-generate invoices for subscribers with billing date approaching
         
         Args:
-            days_before: Days before billing date to generate invoice
+            days_before: Days before billing date to generate invoice (default 3)
         
         Returns:
             Summary of generated invoices
