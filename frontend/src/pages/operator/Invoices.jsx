@@ -544,6 +544,80 @@ const OperatorInvoices = () => {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Payment Link Dialog */}
+        <Dialog open={showPaymentLinkDialog} onOpenChange={setShowPaymentLinkDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-purple-600" />
+                Payment Link Generated
+              </DialogTitle>
+              <DialogDescription>Share this link with your customer to collect payment</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {paymentLinkData?.qr_code && (
+                <div className="flex justify-center">
+                  <div className="p-4 bg-white border rounded-lg shadow-sm">
+                    <img 
+                      src={`data:image/png;base64,${paymentLinkData.qr_code}`} 
+                      alt="Payment QR Code"
+                      className="w-48 h-48"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <Label>Payment Link</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={paymentLinkData?.payment_link || ""} 
+                    readOnly 
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(paymentLinkData?.payment_link || "");
+                      toast.success("Link copied!");
+                    }}
+                  >
+                    <Link2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              {paymentLinkData?.amount && (
+                <div className="p-4 bg-emerald-50 rounded-lg text-center">
+                  <p className="text-sm text-emerald-700">Amount to collect</p>
+                  <p className="text-2xl font-bold text-emerald-800">
+                    ₹{paymentLinkData.amount.toLocaleString('en-IN')}
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex gap-2 pt-4">
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    window.open(paymentLinkData?.payment_link, '_blank');
+                  }}
+                >
+                  Open Link
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowPaymentLinkDialog(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </OperatorLayout>
   );
