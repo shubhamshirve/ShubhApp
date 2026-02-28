@@ -67,12 +67,14 @@ const OperatorSettings = () => {
       const [dashboardRes, profileRes, gatewayRes, waRes] = await Promise.all([
         authAxios.get("/operator/dashboard"),
         authAxios.get("/operator/profile"),
-        authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } }))
+        authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } })),
+        authAxios.get("/operator/whatsapp-config").catch(() => ({ data: { configured: false } }))
       ]);
 
       setDashboardStats(dashboardRes.data);
       setProfile(profileRes.data);
       setGatewayConfig(gatewayRes.data);
+      setWhatsappConfig(waRes.data);
 
       setProfileForm({
         company_name: profileRes.data.company_name || "",
@@ -121,6 +123,20 @@ const OperatorSettings = () => {
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to configure gateway");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleWhatsAppSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await authAxios.post("/operator/whatsapp-config", whatsappForm);
+      toast.success("WhatsApp configured successfully");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to configure WhatsApp");
     } finally {
       setSaving(false);
     }
