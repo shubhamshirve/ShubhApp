@@ -388,6 +388,89 @@ const OperatorSettings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* WhatsApp Tab */}
+          <TabsContent value="whatsapp">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" />
+                  WhatsApp Business API
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {whatsappConfig?.configured && (
+                  <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-emerald-700">
+                      <Shield className="w-5 h-5" />
+                      <span className="font-medium">WhatsApp Configured</span>
+                    </div>
+                    <p className="text-sm text-emerald-600 mt-1">
+                      Phone Number ID: {whatsappConfig.phone_number_id}
+                    </p>
+                  </div>
+                )}
+
+                <form onSubmit={handleWhatsAppSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label>Phone Number ID</Label>
+                    <Input
+                      value={whatsappForm.phone_number_id}
+                      onChange={(e) => setWhatsappForm(prev => ({ ...prev, phone_number_id: e.target.value }))}
+                      placeholder="Your WhatsApp Business Phone Number ID"
+                      disabled={isReadOnly}
+                      data-testid="wa-phone-id-input"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Find this in your Meta Business Suite → WhatsApp → Phone Numbers
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Access Token</Label>
+                    <Input
+                      type="password"
+                      value={whatsappForm.access_token}
+                      onChange={(e) => setWhatsappForm(prev => ({ ...prev, access_token: e.target.value }))}
+                      placeholder="Permanent or System User Access Token"
+                      disabled={isReadOnly}
+                      data-testid="wa-token-input"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Generate a permanent token from Meta Business Suite → System Users
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-medium text-blue-800 mb-2">Setup Guide:</h4>
+                    <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                      <li>Create a Meta Business account at business.facebook.com</li>
+                      <li>Add WhatsApp to your business</li>
+                      <li>Create a System User with WhatsApp permissions</li>
+                      <li>Generate a permanent access token</li>
+                      <li>Create message templates for invoices and reminders</li>
+                    </ol>
+                  </div>
+
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <h4 className="font-medium text-amber-800 mb-2">Required Templates:</h4>
+                    <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                      <li><code>invoice_notification</code> - For sending new invoices</li>
+                      <li><code>payment_reminder</code> - For overdue payment reminders</li>
+                      <li><code>payment_confirmation</code> - For payment confirmations</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex justify-end pt-4 border-t">
+                    <Button type="submit" disabled={isReadOnly || saving} data-testid="save-whatsapp-btn">
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      {saving ? "Saving..." : "Configure WhatsApp"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
     </OperatorLayout>
