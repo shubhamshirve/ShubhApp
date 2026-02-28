@@ -167,6 +167,10 @@ const OperatorSettings = () => {
               <CreditCard className="w-4 h-4 mr-2" />
               Payment Gateway
             </TabsTrigger>
+            <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">
+              <MessageCircle className="w-4 h-4 mr-2" />
+              WhatsApp
+            </TabsTrigger>
           </TabsList>
 
           {/* Profile Tab */}
