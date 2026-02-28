@@ -988,6 +988,145 @@ async def update_operator_profile(data: OperatorUpdate, current_user: dict = Dep
             "trial_ends_at": datetime.fromisoformat(updated["trial_ends_at"]) if updated.get("trial_ends_at") else None,
             "subscription_ends_at": datetime.fromisoformat(updated["subscription_ends_at"]) if updated.get("subscription_ends_at") else None})
 
+# ============== OPERATOR: INVOICE CUSTOMIZATION ==============
+
+class InvoiceCustomization(BaseModel):
+    company_name: str
+    company_address: Optional[str] = None
+    company_phone: Optional[str] = None
+    company_email: Optional[str] = None
+    logo_url: Optional[str] = None
+    invoice_prefix: str = "INV"
+    invoice_footer: Optional[str] = None
+    show_gst: bool = True
+    terms_conditions: Optional[str] = None
+
+@api_router.get("/operator/invoice-settings")
+async def get_invoice_settings(current_user: dict = Depends(require_operator)):
+    """Get invoice customization settings"""
+    settings = await db.invoice_settings.find_one(
+        {"operator_id": current_user["operator_id"]},
+        {"_id": 0}
+    )
+    if not settings:
+        # Get from operator profile
+        operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+        return {
+            "company_name": operator.get("company_name", ""),
+            "company_address": "",
+            "company_phone": operator.get("phone", ""),
+            "company_email": operator.get("email", ""),
+            "logo_url": None,
+            "invoice_prefix": "INV",
+            "invoice_footer": None,
+            "show_gst": True,
+            "terms_conditions": None
+        }
+    return settings
+
+@api_router.put("/operator/invoice-settings")
+async def update_invoice_settings(data: InvoiceCustomization, current_user: dict = Depends(require_operator)):
+    """Update invoice customization settings"""
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
+    now = datetime.now(timezone.utc)
+    settings = {
+        "operator_id": current_user["operator_id"],
+        **data.model_dump(),
+        "updated_at": now.isoformat()
+    }
+    
+    await db.invoice_settings.update_one(
+        {"operator_id": current_user["operator_id"]},
+        {"$set": settings},
+        upsert=True
+    )
+    
+    return {"message": "Invoice settings updated"}
+
+# ============== OPERATOR: ANNOUNCEMENTS/NOTIFICATIONS ==============
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+    send_whatsapp: bool = True
+    send_to_all: bool = True
+    subscriber_ids: Optional[List[str]] = None
+
+@api_router.post("/operator/announcements")
+async def create_announcement(data: AnnouncementCreate, current_user: dict = Depends(require_operator)):
+    """Create and send announcement to subscribers"""
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
+    # Check if operator has notification addon
+    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+    active_addons = operator.get("active_addons", [])
+    saas_plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id")}, {"_id": 0})
+    
+    if not (saas_plan and saas_plan.get("notification_module")) and "notifications" not in active_addons:
+        raise HTTPException(status_code=403, detail="Notification addon not enabled")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Get subscribers
+    if data.send_to_all:
+        subscribers = await db.subscribers.find(
+            {"operator_id": current_user["operator_id"], "status": "active", "deleted_at": None},
+            {"_id": 0}
+        ).to_list(10000)
+    else:
+        subscribers = await db.subscribers.find(
+            {"id": {"$in": data.subscriber_ids or []}, "operator_id": current_user["operator_id"], "deleted_at": None},
+            {"_id": 0}
+        ).to_list(10000)
+    
+    # Create announcement record
+    announcement = {
+        "id": generate_id(),
+        "operator_id": current_user["operator_id"],
+        "title": data.title,
+        "message": data.message,
+        "recipient_count": len(subscribers),
+        "sent_via_whatsapp": data.send_whatsapp,
+        "created_by": current_user["id"],
+        "created_at": now.isoformat()
+    }
+    await db.announcements.insert_one(announcement)
+    
+    # Queue WhatsApp messages if enabled
+    sent_count = 0
+    if data.send_whatsapp:
+        for sub in subscribers:
+            notification = {
+                "id": generate_id(),
+                "operator_id": current_user["operator_id"],
+                "subscriber_id": sub["id"],
+                "notification_type": "announcement",
+                "whatsapp_number": sub["whatsapp_number"],
+                "message": f"*{data.title}*\n\n{data.message}",
+                "status": "pending",
+                "created_at": now.isoformat()
+            }
+            await db.notification_queue.insert_one(notification)
+            sent_count += 1
+    
+    return {
+        "message": "Announcement created",
+        "recipients": len(subscribers),
+        "queued_notifications": sent_count
+    }
+
+@api_router.get("/operator/announcements")
+async def get_announcements(current_user: dict = Depends(require_operator)):
+    """Get all announcements"""
+    announcements = await db.announcements.find(
+        {"operator_id": current_user["operator_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return announcements
+
 # ============== OPERATOR: DASHBOARD ==============
 
 @api_router.get("/operator/dashboard")
