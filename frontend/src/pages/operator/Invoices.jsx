@@ -349,6 +349,35 @@ const OperatorInvoices = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {invoice.status !== "paid" && !invoice.payment_link && (
+                              <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
+                                <Link2 className="w-4 h-4 mr-2 text-blue-600" />
+                                Generate Payment Link
+                              </DropdownMenuItem>
+                            )}
+                            {invoice.payment_link && (
+                              <DropdownMenuItem onClick={() => {
+                                setPaymentLinkData({ payment_link: invoice.payment_link });
+                                setShowPaymentLinkDialog(true);
+                              }}>
+                                <QrCode className="w-4 h-4 mr-2 text-purple-600" />
+                                View Payment Link/QR
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}>
+                              <Download className="w-4 h-4 mr-2 text-slate-600" />
+                              Download PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
+                              <Send className="w-4 h-4 mr-2 text-emerald-600" />
+                              Send via WhatsApp
+                            </DropdownMenuItem>
+                            {invoice.status === "overdue" && (
+                              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
+                                <Bell className="w-4 h-4 mr-2 text-amber-600" />
+                                Send Reminder
+                              </DropdownMenuItem>
+                            )}
                             {invoice.status === "pending" && (
                               <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "paid")}>
                                 <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" />
