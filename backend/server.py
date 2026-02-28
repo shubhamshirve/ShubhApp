@@ -613,6 +613,298 @@ async def suspend_operator(operator_id: str, current_user: dict = Depends(requir
         raise HTTPException(status_code=404, detail="Operator not found")
     return {"message": "Operator suspended"}
 
+@api_router.post("/admin/operators/{operator_id}/activate")
+async def activate_operator(operator_id: str, current_user: dict = Depends(require_admin)):
+    """Activate a suspended operator (Admin only)"""
+    result = await db.operators.update_one(
+        {"id": operator_id, "deleted_at": None},
+        {"$set": {"status": "active", "is_read_only": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    return {"message": "Operator activated"}
+
+# ============== ADMIN: IMPERSONATE OPERATOR ==============
+
+@api_router.post("/admin/operators/{operator_id}/impersonate")
+async def impersonate_operator(operator_id: str, current_user: dict = Depends(require_admin)):
+    """Admin login to operator panel (impersonate)"""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    # Get operator's user account
+    user = await db.users.find_one({"operator_id": operator_id, "role": "operator", "deleted_at": None}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Operator user not found")
+    
+    # Generate token for operator with admin_impersonating flag
+    token = create_token({
+        "id": user["id"],
+        "email": user["email"],
+        "role": "operator",
+        "operator_id": operator_id,
+        "impersonated_by": current_user["id"]
+    })
+    
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "operator": {
+            "id": operator_id,
+            "company_name": operator["company_name"],
+            "owner_name": operator["owner_name"]
+        }
+    }
+
+# ============== ADMIN: GLOBAL SETTINGS ==============
+
+class GlobalSettingsUpdate(BaseModel):
+    active_payment_gateway: Optional[str] = None  # razorpay, cashfree, phonepe
+    notification_enabled: bool = True
+    auto_invoice_days_before: int = 3
+    late_fee_percentage: float = 0
+    gst_rate: float = 18
+
+@api_router.get("/admin/settings")
+async def get_global_settings(current_user: dict = Depends(require_admin)):
+    """Get global platform settings (Admin only)"""
+    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
+    if not settings:
+        # Return defaults
+        return {
+            "active_payment_gateway": "razorpay",
+            "notification_enabled": True,
+            "auto_invoice_days_before": 3,
+            "late_fee_percentage": 0,
+            "gst_rate": 18
+        }
+    return settings
+
+@api_router.put("/admin/settings")
+async def update_global_settings(data: GlobalSettingsUpdate, current_user: dict = Depends(require_admin)):
+    """Update global platform settings (Admin only)"""
+    now = datetime.now(timezone.utc)
+    settings = {
+        "type": "platform",
+        **data.model_dump(),
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"]
+    }
+    
+    await db.global_settings.update_one(
+        {"type": "platform"},
+        {"$set": settings},
+        upsert=True
+    )
+    
+    await log_audit(current_user["id"], current_user["name"], current_user["role"],
+                   "update", "global_settings", None, data.model_dump())
+    
+    return {"message": "Settings updated successfully"}
+
+# ============== ADMIN: PAYMENT GATEWAY MANAGEMENT ==============
+
+class AdminPaymentGatewayConfig(BaseModel):
+    gateway_type: str  # razorpay, cashfree, phonepe
+    api_key: str
+    api_secret: str
+    webhook_secret: Optional[str] = None
+    is_active: bool = True
+    for_operator_id: Optional[str] = None  # If None, it's the platform default
+
+@api_router.post("/admin/payment-gateways")
+async def create_admin_payment_gateway(data: AdminPaymentGatewayConfig, current_user: dict = Depends(require_admin)):
+    """Create/configure payment gateway (Admin only) - can be for platform or specific operator"""
+    now = datetime.now(timezone.utc)
+    
+    gateway = {
+        "id": generate_id(),
+        "gateway_type": data.gateway_type,
+        "api_key": data.api_key,
+        "api_secret": data.api_secret,
+        "webhook_secret": data.webhook_secret,
+        "is_active": data.is_active,
+        "operator_id": data.for_operator_id,  # None means platform default
+        "is_platform_gateway": data.for_operator_id is None,
+        "created_by": current_user["id"],
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat()
+    }
+    
+    # Upsert based on operator_id (or None for platform)
+    await db.payment_gateways.update_one(
+        {"operator_id": data.for_operator_id, "gateway_type": data.gateway_type},
+        {"$set": gateway},
+        upsert=True
+    )
+    
+    return {"message": "Payment gateway configured successfully", "id": gateway["id"]}
+
+@api_router.get("/admin/payment-gateways")
+async def get_admin_payment_gateways(current_user: dict = Depends(require_admin)):
+    """Get all payment gateway configurations (Admin only)"""
+    gateways = await db.payment_gateways.find({}, {"_id": 0, "api_secret": 0}).to_list(100)
+    
+    # Mask API keys
+    for g in gateways:
+        if g.get("api_key"):
+            g["api_key"] = g["api_key"][:8] + "****"
+    
+    return gateways
+
+@api_router.delete("/admin/payment-gateways/{gateway_id}")
+async def delete_admin_payment_gateway(gateway_id: str, current_user: dict = Depends(require_admin)):
+    """Delete a payment gateway configuration (Admin only)"""
+    result = await db.payment_gateways.delete_one({"id": gateway_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+    return {"message": "Gateway deleted"}
+
+# ============== ADMIN: PAYMENT REPORTS ==============
+
+@api_router.get("/admin/reports/payments")
+async def get_admin_payment_reports(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get platform-wide payment reports (Admin only)"""
+    query = {"status": "paid", "deleted_at": None}
+    
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    # Get all paid invoices grouped by operator
+    invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
+    
+    # Group by operator
+    operator_revenue = {}
+    total_revenue = 0
+    total_tax = 0
+    
+    for inv in invoices:
+        op_id = inv.get("operator_id")
+        if op_id not in operator_revenue:
+            operator_revenue[op_id] = {"count": 0, "revenue": 0, "tax": 0}
+        operator_revenue[op_id]["count"] += 1
+        operator_revenue[op_id]["revenue"] += inv.get("final_amount", 0)
+        operator_revenue[op_id]["tax"] += inv.get("tax_amount", 0)
+        total_revenue += inv.get("final_amount", 0)
+        total_tax += inv.get("tax_amount", 0)
+    
+    # Get operator names
+    for op_id in operator_revenue:
+        operator = await db.operators.find_one({"id": op_id}, {"_id": 0, "company_name": 1})
+        operator_revenue[op_id]["company_name"] = operator.get("company_name", "Unknown") if operator else "Unknown"
+    
+    return {
+        "total_invoices": len(invoices),
+        "total_revenue": round(total_revenue, 2),
+        "total_tax": round(total_tax, 2),
+        "by_operator": list(operator_revenue.values())
+    }
+
+@api_router.get("/admin/reports/saas-revenue")
+async def get_saas_revenue_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get SaaS subscription revenue report (Admin only)"""
+    query = {"deleted_at": None}
+    
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    # Get SaaS payments
+    payments = await db.saas_payments.find(query, {"_id": 0}).to_list(1000)
+    
+    total = sum(p.get("total_amount", 0) for p in payments)
+    gst = sum(p.get("gst_amount", 0) for p in payments)
+    
+    # Count by plan
+    plan_counts = {}
+    for p in payments:
+        plan_id = p.get("saas_plan_id")
+        if plan_id not in plan_counts:
+            plan_counts[plan_id] = {"count": 0, "revenue": 0}
+        plan_counts[plan_id]["count"] += 1
+        plan_counts[plan_id]["revenue"] += p.get("total_amount", 0)
+    
+    return {
+        "total_payments": len(payments),
+        "total_revenue": round(total, 2),
+        "total_gst": round(gst, 2),
+        "by_plan": plan_counts
+    }
+
+# ============== ADMIN: ADDONS MANAGEMENT ==============
+
+class AddonCreate(BaseModel):
+    name: str
+    code: str  # notifications, custom_gateway, subscriber_upgrade_100, audit_logs
+    price: float
+    description: Optional[str] = None
+
+@api_router.post("/admin/addons")
+async def create_addon(data: AddonCreate, current_user: dict = Depends(require_admin)):
+    """Create a SaaS addon (Admin only)"""
+    now = datetime.now(timezone.utc)
+    addon = {
+        "id": generate_id(),
+        "name": data.name,
+        "code": data.code,
+        "price": data.price,
+        "description": data.description,
+        "status": "active",
+        "created_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.addons.insert_one(addon)
+    return addon
+
+@api_router.get("/admin/addons")
+async def get_addons(current_user: dict = Depends(require_admin)):
+    """Get all addons (Admin only)"""
+    addons = await db.addons.find({"deleted_at": None}, {"_id": 0}).to_list(100)
+    return addons
+
+@api_router.post("/admin/operators/{operator_id}/addons/{addon_code}")
+async def assign_addon_to_operator(operator_id: str, addon_code: str, current_user: dict = Depends(require_admin)):
+    """Assign an addon to an operator (Admin only)"""
+    addon = await db.addons.find_one({"code": addon_code, "deleted_at": None}, {"_id": 0})
+    if not addon:
+        raise HTTPException(status_code=404, detail="Addon not found")
+    
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Add addon to operator's active addons
+    existing_addons = operator.get("active_addons", [])
+    if addon_code not in existing_addons:
+        existing_addons.append(addon_code)
+    
+    await db.operators.update_one(
+        {"id": operator_id},
+        {"$set": {"active_addons": existing_addons, "updated_at": now.isoformat()}}
+    )
+    
+    return {"message": f"Addon '{addon['name']}' assigned to operator"}
+
 # ============== ADMIN: DASHBOARD ==============
 
 @api_router.get("/admin/dashboard")
