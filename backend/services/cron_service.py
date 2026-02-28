@@ -1,0 +1,363 @@
+"""
+Cron Job Services for Auto Invoice Generation and Reminders
+"""
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Any
+import logging
+import asyncio
+
+logger = logging.getLogger(__name__)
+
+class CronJobService:
+    """Service for scheduled tasks like invoice generation and reminders"""
+    
+    def __init__(self, db, razorpay_service=None, whatsapp_service=None, pdf_service=None):
+        self.db = db
+        self.razorpay = razorpay_service
+        self.whatsapp = whatsapp_service
+        self.pdf = pdf_service
+    
+    async def generate_upcoming_invoices(self, days_before: int = 5) -> Dict[str, Any]:
+        """
+        Auto-generate invoices for subscribers with billing date approaching
+        
+        Args:
+            days_before: Days before billing date to generate invoice
+        
+        Returns:
+            Summary of generated invoices
+        """
+        results = {
+            "total_checked": 0,
+            "invoices_generated": 0,
+            "errors": []
+        }
+        
+        now = datetime.now(timezone.utc)
+        target_day = (now + timedelta(days=days_before)).day
+        
+        # Get all active operators
+        operators = await self.db.operators.find({
+            "status": {"$in": ["active", "trial"]},
+            "deleted_at": None
+        }, {"_id": 0}).to_list(1000)
+        
+        for operator in operators:
+            try:
+                # Get subscribers with matching billing date
+                subscribers = await self.db.subscribers.find({
+                    "operator_id": operator["id"],
+                    "status": "active",
+                    "billing_date": target_day,
+                    "deleted_at": None
+                }, {"_id": 0}).to_list(1000)
+                
+                results["total_checked"] += len(subscribers)
+                
+                for subscriber in subscribers:
+                    try:
+                        # Check if invoice already exists for this period
+                        existing = await self._check_existing_invoice(
+                            operator["id"],
+                            subscriber["id"],
+                            now
+                        )
+                        
+                        if existing:
+                            continue
+                        
+                        # Generate new invoice
+                        invoice = await self._create_auto_invoice(
+                            operator,
+                            subscriber
+                        )
+                        
+                        if invoice:
+                            results["invoices_generated"] += 1
+                            logger.info(f"Generated invoice {invoice['invoice_number']} for {subscriber['name']}")
+                        
+                    except Exception as e:
+                        error_msg = f"Error generating invoice for {subscriber['name']}: {str(e)}"
+                        logger.error(error_msg)
+                        results["errors"].append(error_msg)
+                        
+            except Exception as e:
+                logger.error(f"Error processing operator {operator['company_name']}: {str(e)}")
+        
+        return results
+    
+    async def send_overdue_reminders(self, days_overdue: int = 1) -> Dict[str, Any]:
+        """
+        Send reminders for overdue invoices
+        
+        Args:
+            days_overdue: Minimum days overdue to send reminder
+        
+        Returns:
+            Summary of reminders sent
+        """
+        results = {
+            "total_overdue": 0,
+            "reminders_sent": 0,
+            "errors": []
+        }
+        
+        now = datetime.now(timezone.utc)
+        cutoff_date = (now - timedelta(days=days_overdue)).isoformat()
+        
+        # Find overdue invoices
+        overdue_invoices = await self.db.invoices.find({
+            "status": "pending",
+            "due_date": {"$lt": cutoff_date},
+            "deleted_at": None
+        }, {"_id": 0}).to_list(1000)
+        
+        results["total_overdue"] = len(overdue_invoices)
+        
+        # Mark as overdue and send reminders
+        for invoice in overdue_invoices:
+            try:
+                # Update status to overdue
+                await self.db.invoices.update_one(
+                    {"id": invoice["id"]},
+                    {"$set": {"status": "overdue", "updated_at": now.isoformat()}}
+                )
+                
+                # Get subscriber info
+                subscriber = await self.db.subscribers.find_one(
+                    {"id": invoice["subscriber_id"], "deleted_at": None},
+                    {"_id": 0}
+                )
+                
+                if subscriber and self.whatsapp:
+                    # Calculate days overdue
+                    due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
+                    days = (now - due_date).days
+                    
+                    # Send reminder
+                    await self.whatsapp.send_payment_reminder(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        customer_name=subscriber["name"],
+                        invoice_number=invoice["invoice_number"],
+                        amount_due=f"₹{invoice['final_amount']:,.2f}",
+                        days_overdue=str(days),
+                        payment_link=invoice.get("payment_link")
+                    )
+                    
+                    results["reminders_sent"] += 1
+                    
+            except Exception as e:
+                error_msg = f"Error sending reminder for invoice {invoice['invoice_number']}: {str(e)}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+        
+        return results
+    
+    async def check_subscription_expiry(self) -> Dict[str, Any]:
+        """
+        Check and update operator subscription status
+        """
+        results = {
+            "checked": 0,
+            "expired": 0,
+            "set_read_only": 0
+        }
+        
+        now = datetime.now(timezone.utc)
+        
+        # Check trial expiry
+        trial_operators = await self.db.operators.find({
+            "status": "trial",
+            "trial_ends_at": {"$lt": now.isoformat()},
+            "deleted_at": None
+        }, {"_id": 0}).to_list(1000)
+        
+        for op in trial_operators:
+            await self.db.operators.update_one(
+                {"id": op["id"]},
+                {"$set": {"status": "expired", "is_read_only": True, "updated_at": now.isoformat()}}
+            )
+            results["expired"] += 1
+        
+        # Check subscription expiry
+        active_operators = await self.db.operators.find({
+            "status": "active",
+            "subscription_ends_at": {"$lt": now.isoformat()},
+            "deleted_at": None
+        }, {"_id": 0}).to_list(1000)
+        
+        for op in active_operators:
+            await self.db.operators.update_one(
+                {"id": op["id"]},
+                {"$set": {"is_read_only": True, "updated_at": now.isoformat()}}
+            )
+            results["set_read_only"] += 1
+        
+        results["checked"] = len(trial_operators) + len(active_operators)
+        
+        return results
+    
+    async def _check_existing_invoice(
+        self,
+        operator_id: str,
+        subscriber_id: str,
+        current_date: datetime
+    ) -> bool:
+        """Check if invoice already exists for current billing period"""
+        # Get invoices from last 25 days
+        cutoff = (current_date - timedelta(days=25)).isoformat()
+        
+        existing = await self.db.invoices.find_one({
+            "operator_id": operator_id,
+            "subscriber_id": subscriber_id,
+            "created_at": {"$gte": cutoff},
+            "deleted_at": None
+        })
+        
+        return existing is not None
+    
+    async def _create_auto_invoice(
+        self,
+        operator: Dict,
+        subscriber: Dict
+    ) -> Dict[str, Any]:
+        """Create an auto-generated invoice"""
+        import uuid
+        
+        now = datetime.now(timezone.utc)
+        
+        # Get subscriber's plan
+        plan = await self.db.operator_plans.find_one(
+            {"id": subscriber["plan_id"], "deleted_at": None},
+            {"_id": 0}
+        )
+        
+        if not plan:
+            return None
+        
+        # Calculate dates based on validity
+        validity_days = {
+            "monthly": 30,
+            "quarterly": 90,
+            "half_yearly": 180,
+            "yearly": 365
+        }
+        
+        service_days = validity_days.get(plan.get("validity", "monthly"), 30)
+        service_start = now
+        service_end = now + timedelta(days=service_days)
+        due_date = now + timedelta(days=5)  # 5 days to pay
+        
+        # Calculate amounts
+        base_amount = plan.get("price", 0)
+        discount = subscriber.get("discount", 0)
+        
+        tax_amount = 0
+        if operator.get("charge_gst") and plan.get("tax_percentage", 0) > 0:
+            taxable = base_amount - discount
+            if plan.get("tax_type") == "exclusive":
+                tax_amount = taxable * (plan["tax_percentage"] / 100)
+            elif plan.get("tax_type") == "inclusive":
+                tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
+        
+        final_amount = base_amount - discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+        
+        # Generate invoice number
+        timestamp = now.strftime("%Y%m%d%H%M%S")
+        invoice_number = f"INV-{operator['id'][:8].upper()}-{timestamp}"
+        
+        # Create invoice
+        invoice = {
+            "id": str(uuid.uuid4()),
+            "invoice_number": invoice_number,
+            "subscriber_id": subscriber["id"],
+            "subscriber_name": subscriber["name"],
+            "plan_id": plan["id"],
+            "plan_name": plan["name"],
+            "base_amount": base_amount,
+            "discount": discount,
+            "tax_amount": round(tax_amount, 2),
+            "final_amount": round(final_amount, 2),
+            "service_start_date": service_start.isoformat(),
+            "service_end_date": service_end.isoformat(),
+            "due_date": due_date.isoformat(),
+            "status": "pending",
+            "payment_id": None,
+            "payment_link": None,
+            "payment_link_id": None,
+            "operator_id": operator["id"],
+            "auto_generated": True,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "deleted_at": None
+        }
+        
+        # Create payment link if Razorpay is configured
+        if self.razorpay:
+            try:
+                gateway = await self.db.payment_gateways.find_one(
+                    {"operator_id": operator["id"]},
+                    {"_id": 0}
+                )
+                
+                if gateway and gateway.get("is_active"):
+                    # Use operator's Razorpay credentials
+                    from services.razorpay_service import RazorpayService
+                    op_razorpay = RazorpayService(gateway["api_key"], gateway["api_secret"])
+                    
+                    payment_link = op_razorpay.create_payment_link(
+                        amount=final_amount,
+                        description=f"Invoice {invoice_number} - {plan['name']}",
+                        customer_name=subscriber["name"],
+                        customer_email=subscriber.get("email", ""),
+                        customer_phone=subscriber.get("whatsapp_number", ""),
+                        invoice_number=invoice_number
+                    )
+                    
+                    invoice["payment_link"] = payment_link.get("short_url")
+                    invoice["payment_link_id"] = payment_link.get("id")
+                    
+            except Exception as e:
+                logger.error(f"Failed to create payment link: {str(e)}")
+        
+        await self.db.invoices.insert_one(invoice)
+        
+        # Send notification if WhatsApp is available
+        if self.whatsapp:
+            try:
+                await self.whatsapp.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    customer_name=subscriber["name"],
+                    invoice_number=invoice_number,
+                    amount=f"₹{final_amount:,.2f}",
+                    due_date=due_date.strftime("%d %b %Y"),
+                    payment_link=invoice.get("payment_link")
+                )
+            except Exception as e:
+                logger.error(f"Failed to send invoice notification: {str(e)}")
+        
+        return invoice
+
+
+async def run_daily_invoice_generation(db):
+    """Daily cron job for invoice generation"""
+    service = CronJobService(db)
+    results = await service.generate_upcoming_invoices(days_before=5)
+    logger.info(f"Daily invoice generation: {results}")
+    return results
+
+
+async def run_hourly_reminder_check(db):
+    """Hourly cron job for overdue reminders"""
+    service = CronJobService(db)
+    results = await service.send_overdue_reminders(days_overdue=1)
+    logger.info(f"Hourly reminder check: {results}")
+    return results
+
+
+async def run_daily_expiry_check(db):
+    """Daily cron job for subscription expiry"""
+    service = CronJobService(db)
+    results = await service.check_subscription_expiry()
+    logger.info(f"Daily expiry check: {results}")
+    return results
