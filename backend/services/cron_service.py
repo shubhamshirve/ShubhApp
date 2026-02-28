@@ -342,7 +342,7 @@ class CronJobService:
 async def run_daily_invoice_generation(db):
     """Daily cron job for invoice generation"""
     service = CronJobService(db)
-    results = await service.generate_upcoming_invoices(days_before=5)
+    results = await service.generate_upcoming_invoices(days_before=3)
     logger.info(f"Daily invoice generation: {results}")
     return results
 
