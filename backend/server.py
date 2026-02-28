@@ -1429,6 +1429,406 @@ async def seed_data():
     
     return {"message": "Data seeded successfully", "admin_email": "admin@saas.com", "admin_password": "admin123"}
 
+# ============== PAYMENT LINK & RAZORPAY ENDPOINTS ==============
+
+class PaymentLinkCreate(BaseModel):
+    invoice_id: str
+
+class PaymentLinkResponse(BaseModel):
+    payment_link: str
+    payment_link_id: str
+    qr_code: str
+    amount: float
+
+@api_router.post("/operator/invoices/{invoice_id}/payment-link", response_model=PaymentLinkResponse)
+async def create_payment_link(invoice_id: str, current_user: dict = Depends(require_operator)):
+    """Generate Razorpay payment link for an invoice"""
+    from services.razorpay_service import RazorpayService
+    
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
+    # Get invoice
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Get payment gateway config
+    gateway = await db.payment_gateways.find_one(
+        {"operator_id": current_user["operator_id"]},
+        {"_id": 0}
+    )
+    if not gateway or not gateway.get("is_active"):
+        raise HTTPException(status_code=400, detail="Payment gateway not configured")
+    
+    # Get subscriber
+    subscriber = await db.subscribers.find_one(
+        {"id": invoice["subscriber_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    
+    try:
+        razorpay_service = RazorpayService(gateway["api_key"], gateway["api_secret"])
+        
+        payment_link = razorpay_service.create_payment_link(
+            amount=invoice["final_amount"],
+            description=f"Invoice {invoice['invoice_number']}",
+            customer_name=subscriber["name"] if subscriber else "",
+            customer_email=subscriber.get("email", "") if subscriber else "",
+            customer_phone=subscriber.get("whatsapp_number", "") if subscriber else "",
+            invoice_number=invoice["invoice_number"]
+        )
+        
+        # Generate QR code
+        qr_code = razorpay_service.generate_qr_code(payment_link["short_url"])
+        
+        # Update invoice with payment link
+        await db.invoices.update_one(
+            {"id": invoice_id},
+            {"$set": {
+                "payment_link": payment_link["short_url"],
+                "payment_link_id": payment_link["id"],
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        return PaymentLinkResponse(
+            payment_link=payment_link["short_url"],
+            payment_link_id=payment_link["id"],
+            qr_code=qr_code,
+            amount=invoice["final_amount"]
+        )
+        
+    except Exception as e:
+        logger.error(f"Payment link creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create payment link: {str(e)}")
+
+@api_router.post("/webhooks/razorpay")
+async def razorpay_webhook(request: Request):
+    """Handle Razorpay payment webhooks"""
+    try:
+        body = await request.body()
+        signature = request.headers.get("X-Razorpay-Signature", "")
+        
+        payload = json.loads(body)
+        event = payload.get("event", "")
+        
+        logger.info(f"Razorpay webhook: {event}")
+        
+        if event == "payment_link.paid":
+            payment_link = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
+            payment_link_id = payment_link.get("id")
+            
+            # Find invoice by payment link ID
+            invoice = await db.invoices.find_one(
+                {"payment_link_id": payment_link_id, "deleted_at": None},
+                {"_id": 0}
+            )
+            
+            if invoice:
+                now = datetime.now(timezone.utc)
+                
+                # Update invoice status
+                await db.invoices.update_one(
+                    {"id": invoice["id"]},
+                    {"$set": {
+                        "status": "paid",
+                        "payment_id": payment_link.get("payments", [{}])[0].get("payment_id") if payment_link.get("payments") else None,
+                        "updated_at": now.isoformat()
+                    }}
+                )
+                
+                logger.info(f"Invoice {invoice['invoice_number']} marked as paid")
+        
+        elif event == "payment.captured":
+            payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
+            notes = payment.get("notes", {})
+            invoice_number = notes.get("invoice_number")
+            
+            if invoice_number:
+                await db.invoices.update_one(
+                    {"invoice_number": invoice_number, "deleted_at": None},
+                    {"$set": {
+                        "status": "paid",
+                        "payment_id": payment.get("id"),
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+        
+        return {"status": "ok"}
+        
+    except Exception as e:
+        logger.error(f"Webhook error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+# ============== PDF INVOICE GENERATION ==============
+
+@api_router.get("/operator/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str, current_user: dict = Depends(require_operator)):
+    """Generate and download invoice PDF"""
+    from services.pdf_service import InvoicePDFService
+    from services.razorpay_service import RazorpayService
+    from fastapi.responses import Response
+    
+    # Get invoice
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Get operator
+    operator = await db.operators.find_one(
+        {"id": current_user["operator_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    
+    # Get subscriber
+    subscriber = await db.subscribers.find_one(
+        {"id": invoice["subscriber_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    
+    # Get plan
+    plan = await db.operator_plans.find_one(
+        {"id": invoice["plan_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    
+    # Generate QR code if payment link exists
+    qr_code = None
+    if invoice.get("payment_link"):
+        gateway = await db.payment_gateways.find_one(
+            {"operator_id": current_user["operator_id"]},
+            {"_id": 0}
+        )
+        if gateway:
+            try:
+                razorpay_service = RazorpayService(gateway["api_key"], gateway["api_secret"])
+                qr_code = razorpay_service.generate_qr_code(invoice["payment_link"])
+            except:
+                pass
+    
+    # Generate PDF
+    pdf_service = InvoicePDFService()
+    pdf_bytes = pdf_service.generate_invoice_pdf(
+        invoice_data=invoice,
+        operator_data=operator or {},
+        subscriber_data=subscriber or {},
+        plan_data=plan or {},
+        qr_code_base64=qr_code
+    )
+    
+    filename = f"Invoice_{invoice['invoice_number']}.pdf"
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+# ============== WHATSAPP NOTIFICATIONS ==============
+
+class WhatsAppConfig(BaseModel):
+    phone_number_id: str
+    access_token: str
+
+@api_router.post("/operator/whatsapp-config")
+async def configure_whatsapp(data: WhatsAppConfig, current_user: dict = Depends(require_operator)):
+    """Configure WhatsApp Business API credentials"""
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
+    now = datetime.now(timezone.utc)
+    config = {
+        "id": generate_id(),
+        "operator_id": current_user["operator_id"],
+        "phone_number_id": data.phone_number_id,
+        "access_token": data.access_token,
+        "is_active": True,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat()
+    }
+    
+    await db.whatsapp_configs.update_one(
+        {"operator_id": current_user["operator_id"]},
+        {"$set": config},
+        upsert=True
+    )
+    
+    return {"message": "WhatsApp configured successfully"}
+
+@api_router.get("/operator/whatsapp-config")
+async def get_whatsapp_config(current_user: dict = Depends(require_operator)):
+    """Get WhatsApp configuration status"""
+    config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"]},
+        {"_id": 0, "access_token": 0}
+    )
+    if config:
+        return {"configured": True, "phone_number_id": config.get("phone_number_id", "")[:10] + "***"}
+    return {"configured": False}
+
+class SendNotificationRequest(BaseModel):
+    invoice_id: str
+    notification_type: str = "invoice"  # invoice, reminder
+
+@api_router.post("/operator/send-notification")
+async def send_whatsapp_notification(data: SendNotificationRequest, current_user: dict = Depends(require_operator)):
+    """Send WhatsApp notification for an invoice"""
+    from services.whatsapp_service import WhatsAppService
+    
+    # Get WhatsApp config
+    wa_config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"], "is_active": True},
+        {"_id": 0}
+    )
+    if not wa_config:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+    
+    # Get invoice
+    invoice = await db.invoices.find_one(
+        {"id": data.invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Get subscriber
+    subscriber = await db.subscribers.find_one(
+        {"id": invoice["subscriber_id"], "deleted_at": None},
+        {"_id": 0}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    
+    try:
+        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+        
+        if data.notification_type == "reminder":
+            # Calculate days overdue
+            due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
+            days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
+            
+            result = await wa_service.send_payment_reminder(
+                recipient_phone=subscriber["whatsapp_number"],
+                customer_name=subscriber["name"],
+                invoice_number=invoice["invoice_number"],
+                amount_due=f"₹{invoice['final_amount']:,.2f}",
+                days_overdue=str(days_overdue),
+                payment_link=invoice.get("payment_link")
+            )
+        else:
+            result = await wa_service.send_invoice_notification(
+                recipient_phone=subscriber["whatsapp_number"],
+                customer_name=subscriber["name"],
+                invoice_number=invoice["invoice_number"],
+                amount=f"₹{invoice['final_amount']:,.2f}",
+                due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
+                payment_link=invoice.get("payment_link")
+            )
+        
+        return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
+        
+    except Exception as e:
+        logger.error(f"WhatsApp notification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send notification: {str(e)}")
+
+class BulkNotificationRequest(BaseModel):
+    subscriber_ids: List[str]
+    message_template: str = "invoice"
+
+@api_router.post("/operator/bulk-notification")
+async def send_bulk_notification(data: BulkNotificationRequest, current_user: dict = Depends(require_operator)):
+    """Send bulk WhatsApp notifications"""
+    from services.whatsapp_service import WhatsAppService
+    
+    wa_config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"], "is_active": True},
+        {"_id": 0}
+    )
+    if not wa_config:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+    
+    results = {"sent": 0, "failed": 0, "errors": []}
+    
+    wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+    
+    for subscriber_id in data.subscriber_ids:
+        try:
+            subscriber = await db.subscribers.find_one(
+                {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+                {"_id": 0}
+            )
+            if not subscriber:
+                continue
+            
+            # Get latest pending invoice
+            invoice = await db.invoices.find_one(
+                {"subscriber_id": subscriber_id, "status": {"$in": ["pending", "overdue"]}, "deleted_at": None},
+                {"_id": 0}
+            )
+            
+            if invoice:
+                await wa_service.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    customer_name=subscriber["name"],
+                    invoice_number=invoice["invoice_number"],
+                    amount=f"₹{invoice['final_amount']:,.2f}",
+                    due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
+                    payment_link=invoice.get("payment_link")
+                )
+                results["sent"] += 1
+                
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append({"subscriber_id": subscriber_id, "error": str(e)})
+    
+    return results
+
+# ============== CRON JOB ENDPOINTS ==============
+
+@api_router.post("/admin/cron/generate-invoices")
+async def trigger_invoice_generation(current_user: dict = Depends(require_admin)):
+    """Manually trigger invoice generation (Admin only)"""
+    from services.cron_service import CronJobService
+    
+    service = CronJobService(db)
+    results = await service.generate_upcoming_invoices(days_before=5)
+    
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "trigger", "cron_jobs", None, {"action": "generate_invoices", "results": results}
+    )
+    
+    return results
+
+@api_router.post("/admin/cron/send-reminders")
+async def trigger_reminders(current_user: dict = Depends(require_admin)):
+    """Manually trigger overdue reminders (Admin only)"""
+    from services.cron_service import CronJobService
+    
+    service = CronJobService(db)
+    results = await service.send_overdue_reminders(days_overdue=1)
+    
+    return results
+
+@api_router.post("/admin/cron/check-expiry")
+async def trigger_expiry_check(current_user: dict = Depends(require_admin)):
+    """Manually trigger subscription expiry check (Admin only)"""
+    from services.cron_service import CronJobService
+    
+    service = CronJobService(db)
+    results = await service.check_subscription_expiry()
+    
+    return results
+
 # Include the router
 app.include_router(api_router)
 
