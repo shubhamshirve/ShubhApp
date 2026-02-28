@@ -46,7 +46,12 @@ import {
   Clock,
   AlertTriangle,
   CalendarIcon,
-  IndianRupee
+  IndianRupee,
+  Link2,
+  Download,
+  QrCode,
+  Send,
+  Bell
 } from "lucide-react";
 
 const OperatorInvoices = () => {
@@ -58,6 +63,9 @@ const OperatorInvoices = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDialog, setShowDialog] = useState(false);
+  const [showPaymentLinkDialog, setShowPaymentLinkDialog] = useState(false);
+  const [paymentLinkData, setPaymentLinkData] = useState(null);
+  const [generatingLink, setGeneratingLink] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [formData, setFormData] = useState({
     subscriber_id: "",
