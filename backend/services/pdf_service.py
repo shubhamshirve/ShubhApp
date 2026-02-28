@@ -165,7 +165,7 @@ class InvoicePDFService:
         info_data = [
             [
                 Paragraph(company_info, self.styles['BodyText']),
-                Paragraph(invoice_info, self.styles['BodyText'])
+                Paragraph(invoice_info, self.styles['InvoiceBodyText'])
             ]
         ]
         
@@ -194,7 +194,7 @@ class InvoicePDFService:
         if subscriber.get('address'):
             bill_to_info += f"<br/>Address: {subscriber.get('address')}"
         
-        elements.append(Paragraph(bill_to_info, self.styles['BodyText']))
+        elements.append(Paragraph(bill_to_info, self.styles['InvoiceBodyText']))
         elements.append(Spacer(1, 20))
         
         return elements
@@ -300,7 +300,7 @@ class InvoicePDFService:
             logger.error(f"Failed to add QR code: {e}")
         
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph('Scan QR code to pay instantly', self.styles['SmallText']))
+        elements.append(Paragraph('Scan QR code to pay instantly', self.styles['InvoiceSmallText']))
         elements.append(Spacer(1, 15))
         
         return elements
@@ -318,7 +318,7 @@ class InvoicePDFService:
         Bank: {operator.get('bank_name', '')}
         """
         
-        elements.append(Paragraph(bank_info, self.styles['BodyText']))
+        elements.append(Paragraph(bank_info, self.styles['InvoiceBodyText']))
         elements.append(Spacer(1, 15))
         
         return elements
@@ -336,7 +336,7 @@ class InvoicePDFService:
         3. This is a computer generated invoice and does not require signature.
         """
         
-        elements.append(Paragraph(terms, self.styles['SmallText']))
+        elements.append(Paragraph(terms, self.styles['InvoiceSmallText']))
         
         return elements
     
