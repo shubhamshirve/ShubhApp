@@ -1244,7 +1244,7 @@ async def update_operator_plan(plan_id: str, data: OperatorPlanCreate, current_u
     return OperatorPlanResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
 
 @api_router.delete("/operator/plans/{plan_id}")
-async def delete_operator_plan(plan_id: str, current_user: dict = Depends(require_operator)):
+async def delete_operator_plan(plan_id: str, current_user: dict = Depends(require_operator_no_staff)):
     """Soft delete a service plan"""
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
@@ -1362,7 +1362,7 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
     return SubscriberResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
 
 @api_router.delete("/operator/subscribers/{subscriber_id}")
-async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator)):
+async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator_no_staff)):
     """Soft delete subscriber"""
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
@@ -1564,7 +1564,7 @@ async def get_staff(current_user: dict = Depends(require_operator)):
     return [StaffResponse(**{**s, "permissions": s.get("permissions", []), "created_at": datetime.fromisoformat(s["created_at"])}) for s in staff]
 
 @api_router.delete("/operator/staff/{staff_id}")
-async def delete_staff(staff_id: str, current_user: dict = Depends(require_operator)):
+async def delete_staff(staff_id: str, current_user: dict = Depends(require_operator_no_staff)):
     """Soft delete staff member"""
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
