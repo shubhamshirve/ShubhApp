@@ -11,6 +11,8 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AdminOperators from "./pages/admin/Operators";
 import AdminSaaSPlans from "./pages/admin/SaaSPlans";
 import AdminAuditLogs from "./pages/admin/AuditLogs";
+import AdminSettings from "./pages/admin/Settings";
+import AdminReports from "./pages/admin/Reports";
 import OperatorDashboard from "./pages/operator/Dashboard";
 import OperatorSubscribers from "./pages/operator/Subscribers";
 import OperatorPlans from "./pages/operator/Plans";
@@ -145,6 +147,16 @@ function App() {
           <Route path="/admin/audit-logs" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminAuditLogs />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/settings" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminSettings />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/reports" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminReports />
             </ProtectedRoute>
           } />
 
