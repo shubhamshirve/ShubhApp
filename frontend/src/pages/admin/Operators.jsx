@@ -106,6 +106,28 @@ const AdminOperators = () => {
     }
   };
 
+  const handleImpersonate = async (operator) => {
+    try {
+      const response = await authAxios.post(`/admin/operators/${operator.id}/impersonate`);
+      const { access_token } = response.data;
+      localStorage.setItem("token", access_token);
+      localStorage.setItem("impersonating", "true");
+      window.location.href = "/operator";
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to impersonate operator");
+    }
+  };
+
+  const handleActivate = async (operatorId) => {
+    try {
+      await authAxios.post(`/admin/operators/${operatorId}/activate`);
+      toast.success("Operator activated");
+      fetchOperators();
+    } catch (error) {
+      toast.error("Failed to activate operator");
+    }
+  };
+
   const filteredOperators = operators.filter(op => 
     op.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     op.email.toLowerCase().includes(searchTerm.toLowerCase())
