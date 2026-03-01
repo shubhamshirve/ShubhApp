@@ -222,6 +222,13 @@ const AdminOperators = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => handleImpersonate(operator)}
+                              data-testid={`impersonate-${operator.id}`}
+                            >
+                              <LogIn className="w-4 h-4 mr-2" />
+                              Login as Operator
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => {
                               setSelectedOperator(operator);
                               setShowAssignPlan(true);
@@ -229,10 +236,20 @@ const AdminOperators = () => {
                               <Package className="w-4 h-4 mr-2" />
                               Assign Plan
                             </DropdownMenuItem>
-                            {operator.status !== "suspended" && (
+                            {operator.status === "suspended" ? (
+                              <DropdownMenuItem 
+                                onClick={() => handleActivate(operator.id)}
+                                className="text-emerald-600"
+                                data-testid={`activate-${operator.id}`}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                Activate
+                              </DropdownMenuItem>
+                            ) : (
                               <DropdownMenuItem 
                                 onClick={() => handleSuspend(operator.id)}
                                 className="text-red-600"
+                                data-testid={`suspend-${operator.id}`}
                               >
                                 <Ban className="w-4 h-4 mr-2" />
                                 Suspend
