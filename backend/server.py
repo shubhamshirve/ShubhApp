@@ -1183,6 +1183,8 @@ async def create_operator_plan(data: OperatorPlanCreate, current_user: dict = De
     """Create a service plan (Operator only)"""
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot create operator plans")
+    
+    if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     
     now = datetime.now(timezone.utc)
