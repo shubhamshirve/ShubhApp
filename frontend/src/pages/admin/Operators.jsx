@@ -41,11 +41,13 @@ import {
   Ban, 
   CheckCircle,
   Search,
-  Package
+  Package,
+  LogIn
 } from "lucide-react";
 
 const AdminOperators = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, login } = useAuth();
+  const navigate = useNavigate();
   const [operators, setOperators] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
