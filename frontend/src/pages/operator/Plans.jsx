@@ -24,7 +24,8 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Package, IndianRupee } from "lucide-react";
 
 const OperatorPlans = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, user } = useAuth();
+  const isStaff = user?.role === "staff";
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -217,15 +218,18 @@ const OperatorPlans = () => {
                       <Pencil className="w-3 h-3 mr-1" />
                       Edit
                     </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDelete(plan.id)}
-                      disabled={isReadOnly}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    {!isStaff && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDelete(plan.id)}
+                        disabled={isReadOnly}
+                        data-testid={`delete-plan-${plan.id}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

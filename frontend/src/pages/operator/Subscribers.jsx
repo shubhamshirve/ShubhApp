@@ -37,7 +37,8 @@ import { toast } from "sonner";
 import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone } from "lucide-react";
 
 const OperatorSubscribers = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, user } = useAuth();
+  const isStaff = user?.role === "staff";
   const [subscribers, setSubscribers] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -259,13 +260,16 @@ const OperatorSubscribers = () => {
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(subscriber.id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {!isStaff && (
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(subscriber.id)}
+                                className="text-red-600"
+                                data-testid={`delete-subscriber-${subscriber.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
