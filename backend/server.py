@@ -313,6 +313,14 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 async def require_operator(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user["role"] not in ["operator", "admin", "staff"]:
+        raise HTTPException(status_code=403, detail="Operator access required")
+    return current_user
+
+async def require_operator_no_staff(current_user: dict = Depends(get_current_user)) -> dict:
+    """Only operators (not staff) can perform this action"""
+    if current_user["role"] == "staff":
+        raise HTTPException(status_code=403, detail="Staff users cannot perform delete operations")
     if current_user["role"] not in ["operator", "admin"]:
         raise HTTPException(status_code=403, detail="Operator access required")
     return current_user
