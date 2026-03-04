@@ -1,5 +1,5 @@
 # Multi-Tenant SaaS Recurring Billing Platform
-## Product Requirements Document (Updated Mar 1, 2026)
+## Product Requirements Document (Updated Mar 4, 2026)
 
 ### Original Problem Statement
 Build a scalable multi-tenant SaaS recurring billing web application for India-focused, GST compliant operations. Platform allows operators to manage subscribers, generate invoices, and collect payments through operator-owned payment gateways.
@@ -20,6 +20,7 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - Admin: admin@saas.com / admin123
 - Demo Operator: demo@democorp.com / demo123
 - Demo Staff: staff@democorp.com / staff123
+- Razorpay: rzp_test_sFaXdx3kATIGiw / dOvQqMbfE2sPkYulgTeU2SpW
 
 ### What's Been Implemented
 
@@ -31,39 +32,38 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [x] Staff management with permissions
 - [x] Landing page with pricing
 
-#### Phase 2 - Payment & Notifications (Jan 28, 2026)
+#### Phase 2 - Payment & Notifications
 - [x] Razorpay payment link generation with QR codes
 - [x] Invoice PDF generation with professional design
-- [x] WhatsApp Business API configuration
-- [x] WhatsApp notification sending (invoice, reminder)
+- [x] WhatsApp Business API configuration (MOCKED)
 - [x] Bulk notification support
 - [x] Auto invoice generation cron job
-- [x] Auto reminder for overdue invoices cron
-- [x] Subscription expiry checker cron
 - [x] Webhook handler for Razorpay payments
 
 #### Phase 3 - Staff Permissions & Admin Features (Mar 1, 2026)
-- [x] Staff role restrictions: DELETE operations blocked backend (403 Forbidden)
-- [x] Staff role restrictions: DELETE buttons hidden in frontend UI
-- [x] Admin impersonation: Login as any operator from admin panel
-- [x] Admin Settings page: General config, Payment Gateways, Add-ons management
-- [x] Admin Reports page: Payment reports with KPIs, SaaS revenue, CSV export
-- [x] Admin sidebar updated: Reports, Settings, Audit Logs
-- [x] Razorpay test keys configured in backend
-- [x] Operator activate/suspend from admin panel
-- [x] Add-ons CRUD for admin (notifications, custom_gateway, etc.)
+- [x] Staff role restrictions: DELETE operations blocked (403)
+- [x] Staff: DELETE buttons hidden in frontend
+- [x] Admin impersonation: Login as any operator
+- [x] Admin Settings page: General, Payment Gateways, Add-ons
+- [x] Admin Reports page: KPIs, SaaS revenue, CSV export
+- [x] Razorpay test keys configured
+
+#### Phase 4 - User-Requested Fixes (Mar 4, 2026)
+- [x] Create Operator dialog: aligned fields with registration form (Company Name, Owner Name, Email, Phone, Password, GST, Bank, Plan sections)
+- [x] Delete operators from admin panel: dropdown option with confirmation dialog
+- [x] SaaS Plans + Addons: plans can include addons (checkbox selection + tags display)
+- [x] Payment Gateways context: info banner for Operator-to-Admin SaaS payments
+- [x] Admin addon full CRUD: table view with edit (PUT) and delete (soft DELETE) per add-on
+- [x] ResizeObserver error fix (Radix UI / Shadcn)
 
 ### Prioritized Backlog
 
-#### P0 (Critical) - All Done
-- [x] All core features implemented and tested
-
 #### P1 (High Priority)
-- [ ] Actual WhatsApp message template approval
+- [ ] Invoice customization UI (operator settings for company logo, colors, etc.)
+- [ ] Operator Announcements/Notifications management page
+- [ ] SaaS add-on purchase flow for operators (buy add-ons from UI)
 - [ ] Payment reconciliation reports
-- [ ] Invoice customization UI (frontend page for /api/operator/invoice-settings)
-- [ ] Operator Announcements/Notifications UI page
-- [ ] SaaS add-on purchase flow for operators (UI)
+- [ ] Actual WhatsApp message template approval
 
 #### P2 (Medium Priority)
 - [ ] Multi-currency support
@@ -75,24 +75,19 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [ ] Payment QR code display in invoices UI
 - [ ] WhatsApp Web integration option
 
-### Next Tasks
-1. Build Invoice Customization UI for operators
-2. Build Announcements/Notifications management page for operators
-3. Implement SaaS add-on purchase flow (operator can buy add-ons)
-4. Implement operator payment reports CSV/Excel export
-5. Add dashboard analytics charts
-
 ### API Endpoints
 - POST /api/auth/{login, register}
 - GET /api/auth/me
 - GET/PUT /api/admin/settings
 - GET/POST/DELETE /api/admin/payment-gateways
-- GET/POST /api/admin/addons
+- GET/POST/PUT/DELETE /api/admin/addons
 - POST /api/admin/operators/{id}/addons/{code}
 - GET /api/admin/reports/{payments, saas-revenue}
 - POST /api/admin/operators/{id}/impersonate
-- POST /api/admin/operators/{id}/{suspend, activate, assign-plan}
-- CRUD /api/admin/{saas-plans, operators}
+- POST /api/admin/operators/{id}/{suspend, activate, assign-plan, extend-subscription}
+- POST /api/admin/operators/create
+- DELETE /api/admin/operators/{id}
+- CRUD /api/admin/saas-plans (with included_addons field)
 - GET/POST /api/admin/audit-logs
 - GET /api/operator/{dashboard, profile}
 - CRUD /api/operator/{plans, subscribers, invoices, staff}
@@ -101,8 +96,6 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - POST /api/operator/{payment-gateway, whatsapp-config}
 - GET /api/operator/reports/{revenue, gst-summary, pending-overdue}
 - GET /api/operator/audit-logs
-- POST /api/operator/invoices/{id}/payment-link
 - GET /api/operator/invoices/{id}/pdf
-- POST /api/operator/{send-notification, bulk-notification}
+- POST /api/operator/invoices/{id}/payment-link
 - POST /api/webhooks/razorpay
-- POST /api/admin/cron/{generate-invoices, send-reminders, check-expiry}
