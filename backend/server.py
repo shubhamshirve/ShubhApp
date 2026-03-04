@@ -586,6 +586,217 @@ async def update_operator(operator_id: str, data: OperatorUpdate, current_user: 
             "trial_ends_at": datetime.fromisoformat(updated["trial_ends_at"]) if updated.get("trial_ends_at") else None,
             "subscription_ends_at": datetime.fromisoformat(updated["subscription_ends_at"]) if updated.get("subscription_ends_at") else None})
 
+# ============== ADMIN: MANUAL OPERATOR CREATION ==============
+
+class AdminOperatorCreate(BaseModel):
+    company_name: str
+    owner_name: str
+    email: EmailStr
+    phone: str
+    password: str
+    gst_number: Optional[str] = None
+    charge_gst: bool = False
+    bank_account_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+    saas_plan_id: str
+    status: str = "active"  # active, trial, suspended
+    subscription_months: int = 1  # Number of months for subscription
+
+@api_router.post("/admin/operators/create", response_model=OperatorResponse)
+async def create_operator_manually(data: AdminOperatorCreate, current_user: dict = Depends(require_admin)):
+    """Manually create operator (Admin only) - No trial, direct plan assignment"""
+    # Check if email exists
+    existing = await db.users.find_one({"email": data.email, "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Verify plan exists
+    plan = await db.saas_plans.find_one({"id": data.saas_plan_id, "deleted_at": None}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="SaaS plan not found")
+    
+    now = datetime.now(timezone.utc)
+    operator_id = generate_id()
+    user_id = generate_id()
+    
+    # Calculate subscription end date
+    subscription_ends_at = (now + timedelta(days=30 * data.subscription_months)).isoformat()
+    
+    # Create operator
+    operator = {
+        "id": operator_id,
+        "company_name": data.company_name,
+        "owner_name": data.owner_name,
+        "email": data.email,
+        "phone": data.phone,
+        "gst_number": data.gst_number,
+        "charge_gst": data.charge_gst,
+        "bank_account_name": data.bank_account_name,
+        "bank_account_number": data.bank_account_number,
+        "bank_ifsc": data.bank_ifsc,
+        "bank_name": data.bank_name,
+        "status": data.status,
+        "saas_plan_id": data.saas_plan_id,
+        "saas_plan_name": plan["name"],
+        "trial_ends_at": None,
+        "subscription_ends_at": subscription_ends_at if data.status == "active" else None,
+        "is_read_only": False,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.operators.insert_one(operator)
+    
+    # Create user account for operator
+    user = {
+        "id": user_id,
+        "email": data.email,
+        "name": data.owner_name,
+        "phone": data.phone,
+        "password": hash_password(data.password),
+        "role": "operator",
+        "operator_id": operator_id,
+        "status": "active",
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.users.insert_one(user)
+    
+    # Log audit
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "create", "operators", None, 
+        {"company_name": data.company_name, "email": data.email, "plan": plan["name"]}
+    )
+    
+    return OperatorResponse(**{
+        **operator,
+        "created_at": now,
+        "trial_ends_at": None,
+        "subscription_ends_at": datetime.fromisoformat(subscription_ends_at) if data.status == "active" else None
+    })
+
+# ============== ADMIN: EXTEND SUBSCRIPTION ==============
+
+class ExtendSubscriptionRequest(BaseModel):
+    months: Optional[int] = None  # Quick extend: 1, 3, 6, 12
+    custom_date: Optional[str] = None  # Custom date in ISO format
+
+@api_router.post("/admin/operators/{operator_id}/extend-subscription")
+async def extend_operator_subscription(
+    operator_id: str, 
+    data: ExtendSubscriptionRequest, 
+    current_user: dict = Depends(require_admin)
+):
+    """Extend operator subscription (Admin only)"""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Calculate new expiry date
+    if data.custom_date:
+        # Use custom date
+        new_expiry = data.custom_date
+    elif data.months:
+        # Extend from current expiry or now
+        current_expiry = operator.get("subscription_ends_at")
+        if current_expiry:
+            base_date = datetime.fromisoformat(current_expiry)
+            # If already expired, extend from now
+            if base_date < now:
+                base_date = now
+        else:
+            base_date = now
+        
+        new_expiry = (base_date + timedelta(days=30 * data.months)).isoformat()
+    else:
+        raise HTTPException(status_code=400, detail="Either months or custom_date must be provided")
+    
+    # Update operator
+    update_data = {
+        "subscription_ends_at": new_expiry,
+        "status": "active",
+        "is_read_only": False,
+        "updated_at": now.isoformat()
+    }
+    
+    await db.operators.update_one({"id": operator_id}, {"$set": update_data})
+    
+    # Log audit
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "extend_subscription", "operators",
+        {"old_expiry": operator.get("subscription_ends_at")},
+        {"new_expiry": new_expiry, "months": data.months}
+    )
+    
+    return {
+        "message": "Subscription extended successfully",
+        "new_expiry_date": new_expiry,
+        "operator_id": operator_id
+    }
+
+# ============== ADMIN: DELETE OPERATOR ==============
+
+@api_router.delete("/admin/operators/{operator_id}")
+async def delete_operator(operator_id: str, current_user: dict = Depends(require_admin)):
+    """Soft delete operator and all related data (Admin only)"""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    now = datetime.now(timezone.utc)
+    deleted_at = now.isoformat()
+    
+    # Soft delete operator
+    await db.operators.update_one(
+        {"id": operator_id},
+        {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}}
+    )
+    
+    # Soft delete all related users (operator and staff)
+    await db.users.update_many(
+        {"operator_id": operator_id, "deleted_at": None},
+        {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}}
+    )
+    
+    # Soft delete all subscribers
+    await db.subscribers.update_many(
+        {"operator_id": operator_id, "deleted_at": None},
+        {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}}
+    )
+    
+    # Soft delete all operator plans
+    await db.operator_plans.update_many(
+        {"operator_id": operator_id, "deleted_at": None},
+        {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}}
+    )
+    
+    # Soft delete all invoices
+    await db.invoices.update_many(
+        {"operator_id": operator_id, "deleted_at": None},
+        {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}}
+    )
+    
+    # Log audit
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "delete", "operators",
+        {"company_name": operator["company_name"], "email": operator["email"]},
+        {"deleted_at": deleted_at}
+    )
+    
+    return {
+        "message": "Operator and all related data deleted successfully",
+        "operator_id": operator_id,
+        "company_name": operator["company_name"]
+    }
+
 @api_router.post("/admin/operators/{operator_id}/assign-plan")
 async def assign_plan_to_operator(operator_id: str, plan_id: str = Query(...), current_user: dict = Depends(require_admin)):
     """Assign SaaS plan to operator (Admin only)"""

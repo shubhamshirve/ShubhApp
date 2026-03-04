@@ -6,13 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Switch } from "../../components/ui/switch";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "../../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -43,7 +55,10 @@ import {
   CheckCircle,
   Search,
   Package,
-  LogIn
+  LogIn,
+  Plus,
+  Calendar,
+  Trash2
 } from "lucide-react";
 
 const AdminOperators = () => {
@@ -56,6 +71,34 @@ const AdminOperators = () => {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [showAssignPlan, setShowAssignPlan] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("");
+  
+  // Create Operator Dialog
+  const [showCreateOperator, setShowCreateOperator] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    company_name: "",
+    owner_name: "",
+    email: "",
+    phone: "",
+    password: "",
+    gst_number: "",
+    charge_gst: false,
+    bank_account_name: "",
+    bank_account_number: "",
+    bank_ifsc: "",
+    bank_name: "",
+    saas_plan_id: "",
+    status: "active",
+    subscription_months: 1
+  });
+  
+  // Extend Subscription Dialog
+  const [showExtendDialog, setShowExtendDialog] = useState(false);
+  const [extendMonths, setExtendMonths] = useState("");
+  const [customDate, setCustomDate] = useState("");
+  
+  // Delete Confirmation Dialog
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   useEffect(() => {
     fetchOperators();
@@ -79,6 +122,82 @@ const AdminOperators = () => {
       setPlans(response.data);
     } catch (error) {
       console.error("Failed to load plans");
+    }
+  };
+
+  const handleCreateOperator = async () => {
+    if (!createForm.company_name || !createForm.owner_name || !createForm.email || 
+        !createForm.phone || !createForm.password || !createForm.saas_plan_id) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+    
+    try {
+      await authAxios.post("/admin/operators/create", createForm);
+      toast.success("Operator created successfully");
+      setShowCreateOperator(false);
+      setCreateForm({
+        company_name: "",
+        owner_name: "",
+        email: "",
+        phone: "",
+        password: "",
+        gst_number: "",
+        charge_gst: false,
+        bank_account_name: "",
+        bank_account_number: "",
+        bank_ifsc: "",
+        bank_name: "",
+        saas_plan_id: "",
+        status: "active",
+        subscription_months: 1
+      });
+      fetchOperators();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to create operator");
+    }
+  };
+
+  const handleExtendSubscription = async () => {
+    if (!extendMonths && !customDate) {
+      toast.error("Please select months or custom date");
+      return;
+    }
+    
+    try {
+      const payload = {};
+      if (customDate) {
+        payload.custom_date = new Date(customDate).toISOString();
+      } else {
+        payload.months = parseInt(extendMonths);
+      }
+      
+      await authAxios.post(`/admin/operators/${selectedOperator.id}/extend-subscription`, payload);
+      toast.success("Subscription extended successfully");
+      setShowExtendDialog(false);
+      setExtendMonths("");
+      setCustomDate("");
+      fetchOperators();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to extend subscription");
+    }
+  };
+
+  const handleDeleteOperator = async () => {
+    if (deleteConfirmText !== selectedOperator?.company_name) {
+      toast.error("Company name doesn't match");
+      return;
+    }
+    
+    try {
+      await authAxios.delete(`/admin/operators/${selectedOperator.id}`);
+      toast.success("Operator deleted successfully");
+      setShowDeleteDialog(false);
+      setDeleteConfirmText("");
+      setSelectedOperator(null);
+      fetchOperators();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete operator");
     }
   };
 
@@ -168,6 +287,10 @@ const AdminOperators = () => {
               data-testid="search-operators"
             />
           </div>
+          <Button onClick={() => setShowCreateOperator(true)} data-testid="create-operator-btn">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Operator
+          </Button>
         </div>
 
         {/* Operators Table */}
@@ -231,6 +354,13 @@ const AdminOperators = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => {
                               setSelectedOperator(operator);
+                              setShowExtendDialog(true);
+                            }}>
+                              <Calendar className="w-4 h-4 mr-2" />
+                              Extend Subscription
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedOperator(operator);
                               setShowAssignPlan(true);
                             }}>
                               <Package className="w-4 h-4 mr-2" />
@@ -248,13 +378,24 @@ const AdminOperators = () => {
                             ) : (
                               <DropdownMenuItem 
                                 onClick={() => handleSuspend(operator.id)}
-                                className="text-red-600"
+                                className="text-amber-600"
                                 data-testid={`suspend-${operator.id}`}
                               >
                                 <Ban className="w-4 h-4 mr-2" />
                                 Suspend
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                setSelectedOperator(operator);
+                                setShowDeleteDialog(true);
+                              }}
+                              className="text-red-600"
+                              data-testid={`delete-${operator.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -266,45 +407,63 @@ const AdminOperators = () => {
           </CardContent>
         </Card>
 
-        {/* Assign Plan Dialog */}
-        <Dialog open={showAssignPlan} onOpenChange={setShowAssignPlan}>
-          <DialogContent>
+        {/* Create Operator Dialog */}
+        <Dialog open={showCreateOperator} onOpenChange={setShowCreateOperator}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Assign SaaS Plan</DialogTitle>
+              <DialogTitle>Create New Operator</DialogTitle>
               <DialogDescription>
-                Assign a plan to {selectedOperator?.company_name}
+                Manually create an operator with direct plan assignment
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Company Name *</Label>
+                  <Input
+                    value={createForm.company_name}
+                    onChange={(e) => setCreateForm({...createForm, company_name: e.target.value})}
+                    placeholder="ABC Corp"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Owner Name *</Label>
+                  <Input
+                    value={createForm.owner_name}
+                    onChange={(e) => setCreateForm({...createForm, owner_name: e.target.value})}
+                    placeholder="John Doe"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Email *</Label>
+                  <Input
+                    type="email"
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm({...createForm, email: e.target.value})}
+                    placeholder="owner@company.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone *</Label>
+                  <Input
+                    value={createForm.phone}
+                    onChange={(e) => setCreateForm({...createForm, phone: e.target.value})}
+                    placeholder="9876543210"
+                  />
+                </div>
+              </div>
+              
               <div className="space-y-2">
-                <Label>Select Plan</Label>
-                <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                  <SelectTrigger data-testid="select-plan">
-                    <SelectValue placeholder="Choose a plan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {plans.filter(p => !p.trial_enabled).map((plan) => (
-                      <SelectItem key={plan.id} value={plan.id}>
-                        {plan.name} - ₹{plan.monthly_price}/mo
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Password *</Label>
+                <Input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
+                  placeholder="Minimum 8 characters"
+                />
               </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setShowAssignPlan(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAssignPlan} disabled={!selectedPlan} data-testid="assign-plan-btn">
-                  Assign Plan
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </AdminLayout>
-  );
-};
-
-export default AdminOperators;
+              
+              <div className="grid grid-cols-2 gap-4">
