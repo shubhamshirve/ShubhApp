@@ -20,6 +20,7 @@ import OperatorInvoices from "./pages/operator/Invoices";
 import OperatorStaff from "./pages/operator/Staff";
 import OperatorReports from "./pages/operator/Reports";
 import OperatorSettings from "./pages/operator/Settings";
+import OperatorSubscription from "./pages/operator/Subscription";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -194,6 +195,11 @@ function App() {
           <Route path="/operator/settings" element={
             <ProtectedRoute allowedRoles={["operator"]}>
               <OperatorSettings />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/subscription" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorSubscription />
             </ProtectedRoute>
           } />
 

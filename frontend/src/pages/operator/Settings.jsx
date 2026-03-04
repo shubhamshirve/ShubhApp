@@ -4,6 +4,7 @@ import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import {
@@ -22,7 +23,8 @@ import {
   Shield,
   Save,
   Key,
-  MessageCircle
+  MessageCircle,
+  FileText
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -46,6 +48,18 @@ const OperatorSettings = () => {
     bank_name: ""
   });
 
+  const [invoiceForm, setInvoiceForm] = useState({
+    company_name: "",
+    company_address: "",
+    company_phone: "",
+    company_email: "",
+    logo_url: "",
+    invoice_prefix: "INV",
+    invoice_footer: "",
+    show_gst: true,
+    terms_conditions: ""
+  });
+
   const [gatewayForm, setGatewayForm] = useState({
     gateway_type: "razorpay",
     api_key: "",
@@ -64,11 +78,12 @@ const OperatorSettings = () => {
 
   const fetchData = async () => {
     try {
-      const [dashboardRes, profileRes, gatewayRes, waRes] = await Promise.all([
+      const [dashboardRes, profileRes, gatewayRes, waRes, invoiceRes] = await Promise.all([
         authAxios.get("/operator/dashboard"),
         authAxios.get("/operator/profile"),
         authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } })),
-        authAxios.get("/operator/whatsapp-config").catch(() => ({ data: { configured: false } }))
+        authAxios.get("/operator/whatsapp-config").catch(() => ({ data: { configured: false } })),
+        authAxios.get("/operator/invoice-settings").catch(() => ({ data: {} }))
       ]);
 
       setDashboardStats(dashboardRes.data);
@@ -86,6 +101,18 @@ const OperatorSettings = () => {
         bank_account_number: profileRes.data.bank_account_number || "",
         bank_ifsc: profileRes.data.bank_ifsc || "",
         bank_name: profileRes.data.bank_name || ""
+      });
+
+      setInvoiceForm({
+        company_name: invoiceRes.data.company_name || profileRes.data.company_name || "",
+        company_address: invoiceRes.data.company_address || "",
+        company_phone: invoiceRes.data.company_phone || profileRes.data.phone || "",
+        company_email: invoiceRes.data.company_email || profileRes.data.email || "",
+        logo_url: invoiceRes.data.logo_url || "",
+        invoice_prefix: invoiceRes.data.invoice_prefix || "INV",
+        invoice_footer: invoiceRes.data.invoice_footer || "",
+        show_gst: invoiceRes.data.show_gst !== false,
+        terms_conditions: invoiceRes.data.terms_conditions || ""
       });
 
       if (gatewayRes.data.configured) {
@@ -142,6 +169,19 @@ const OperatorSettings = () => {
     }
   };
 
+  const handleInvoiceSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await authAxios.put("/operator/invoice-settings", invoiceForm);
+      toast.success("Invoice settings updated successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update invoice settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <OperatorLayout title="Settings">
@@ -170,6 +210,10 @@ const OperatorSettings = () => {
             <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">
               <MessageCircle className="w-4 h-4 mr-2" />
               WhatsApp
+            </TabsTrigger>
+            <TabsTrigger value="invoice" data-testid="tab-invoice">
+              <FileText className="w-4 h-4 mr-2" />
+              Invoice
             </TabsTrigger>
           </TabsList>
 
@@ -465,6 +509,139 @@ const OperatorSettings = () => {
                     <Button type="submit" disabled={isReadOnly || saving} data-testid="save-whatsapp-btn">
                       <MessageCircle className="w-4 h-4 mr-2" />
                       {saving ? "Saving..." : "Configure WhatsApp"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Invoice Customization Tab */}
+          <TabsContent value="invoice">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Invoice Customization
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Customize how your invoices look when sent to subscribers
+                </p>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleInvoiceSubmit} className="space-y-6">
+                  {/* Company Info */}
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium text-slate-700">Company Details on Invoice</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Company Name</Label>
+                        <Input
+                          value={invoiceForm.company_name}
+                          onChange={(e) => setInvoiceForm(prev => ({...prev, company_name: e.target.value}))}
+                          placeholder="Your Company Ltd."
+                          data-testid="inv-company-name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Company Email</Label>
+                        <Input
+                          type="email"
+                          value={invoiceForm.company_email}
+                          onChange={(e) => setInvoiceForm(prev => ({...prev, company_email: e.target.value}))}
+                          placeholder="billing@company.com"
+                          data-testid="inv-company-email"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Company Phone</Label>
+                        <Input
+                          value={invoiceForm.company_phone}
+                          onChange={(e) => setInvoiceForm(prev => ({...prev, company_phone: e.target.value}))}
+                          placeholder="+91 9876543210"
+                          data-testid="inv-company-phone"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Invoice Prefix</Label>
+                        <Input
+                          value={invoiceForm.invoice_prefix}
+                          onChange={(e) => setInvoiceForm(prev => ({...prev, invoice_prefix: e.target.value}))}
+                          placeholder="INV"
+                          maxLength={10}
+                          data-testid="inv-prefix"
+                        />
+                        <p className="text-xs text-slate-500">Invoice numbers will appear as INV-001, INV-002, etc.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company Address</Label>
+                      <Textarea
+                        value={invoiceForm.company_address}
+                        onChange={(e) => setInvoiceForm(prev => ({...prev, company_address: e.target.value}))}
+                        placeholder="123 Business Park, City, State - PIN"
+                        rows={2}
+                        data-testid="inv-company-address"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Branding */}
+                  <div className="border-t pt-4 space-y-4">
+                    <p className="text-sm font-medium text-slate-700">Branding</p>
+                    <div className="space-y-2">
+                      <Label>Logo URL</Label>
+                      <Input
+                        value={invoiceForm.logo_url}
+                        onChange={(e) => setInvoiceForm(prev => ({...prev, logo_url: e.target.value}))}
+                        placeholder="https://yourcompany.com/logo.png"
+                        data-testid="inv-logo-url"
+                      />
+                      <p className="text-xs text-slate-500">Enter a direct URL to your company logo (recommended: 200x60 px)</p>
+                    </div>
+                  </div>
+
+                  {/* Tax & Footer */}
+                  <div className="border-t pt-4 space-y-4">
+                    <p className="text-sm font-medium text-slate-700">Tax & Footer</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="font-normal">Show GST on Invoice</Label>
+                        <p className="text-xs text-slate-500">Display GST breakdown (CGST + SGST or IGST)</p>
+                      </div>
+                      <Switch
+                        checked={invoiceForm.show_gst}
+                        onCheckedChange={(checked) => setInvoiceForm(prev => ({...prev, show_gst: checked}))}
+                        data-testid="inv-show-gst"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Invoice Footer</Label>
+                      <Input
+                        value={invoiceForm.invoice_footer}
+                        onChange={(e) => setInvoiceForm(prev => ({...prev, invoice_footer: e.target.value}))}
+                        placeholder="Thank you for your business!"
+                        data-testid="inv-footer"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Terms & Conditions</Label>
+                      <Textarea
+                        value={invoiceForm.terms_conditions}
+                        onChange={(e) => setInvoiceForm(prev => ({...prev, terms_conditions: e.target.value}))}
+                        placeholder="Payment is due within 7 days of invoice date..."
+                        rows={3}
+                        data-testid="inv-terms"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-4 border-t">
+                    <Button type="submit" disabled={isReadOnly || saving} data-testid="save-invoice-btn">
+                      <Save className="w-4 h-4 mr-2" />
+                      {saving ? "Saving..." : "Save Invoice Settings"}
                     </Button>
                   </div>
                 </form>

@@ -254,6 +254,7 @@ export const AdminLayout = ({ children, title }) => {
 
 export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -282,7 +283,12 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
                   <p className="font-medium text-amber-800">Your account is in read-only mode</p>
                   <p className="text-sm text-amber-700">Please renew your subscription to continue using all features.</p>
                 </div>
-                <Button className="ml-auto bg-amber-600 hover:bg-amber-700" size="sm">
+                <Button 
+                  className="ml-auto bg-amber-600 hover:bg-amber-700" 
+                  size="sm"
+                  onClick={() => navigate("/operator/subscription")}
+                  data-testid="renew-now-banner-btn"
+                >
                   Renew Now
                 </Button>
               </div>

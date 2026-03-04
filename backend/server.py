@@ -1384,6 +1384,118 @@ async def get_announcements(current_user: dict = Depends(require_operator)):
     ).sort("created_at", -1).to_list(100)
     return announcements
 
+# ============== OPERATOR: SUBSCRIPTION / RENEWAL ==============
+
+@api_router.get("/operator/subscription")
+async def get_operator_subscription(current_user: dict = Depends(require_operator)):
+    """Get operator's current subscription details"""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin does not have a subscription")
+    
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    saas_plan = None
+    if operator.get("saas_plan_id"):
+        saas_plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+    
+    # Get all available SaaS plans
+    available_plans = await db.saas_plans.find({"deleted_at": None, "trial_enabled": False}, {"_id": 0}).to_list(50)
+    
+    return {
+        "operator_id": operator["id"],
+        "company_name": operator.get("company_name", ""),
+        "status": operator.get("status", "unknown"),
+        "saas_plan_id": operator.get("saas_plan_id"),
+        "saas_plan_name": operator.get("saas_plan_name") or (saas_plan["name"] if saas_plan else None),
+        "saas_plan_price": saas_plan.get("monthly_price") if saas_plan else None,
+        "subscription_ends_at": operator.get("subscription_ends_at"),
+        "trial_ends_at": operator.get("trial_ends_at"),
+        "is_read_only": operator.get("is_read_only", False),
+        "available_plans": [{"id": p["id"], "name": p["name"], "monthly_price": p["monthly_price"]} for p in available_plans]
+    }
+
+@api_router.post("/operator/renew-subscription")
+async def renew_operator_subscription(
+    plan_id: Optional[str] = None,
+    months: int = 1,
+    current_user: dict = Depends(require_operator)
+):
+    """Initiate subscription renewal. Creates a Razorpay payment link."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot renew")
+    
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    
+    # Determine plan
+    target_plan_id = plan_id or operator.get("saas_plan_id")
+    if not target_plan_id:
+        raise HTTPException(status_code=400, detail="No plan selected. Please choose a plan.")
+    
+    saas_plan = await db.saas_plans.find_one({"id": target_plan_id, "deleted_at": None}, {"_id": 0})
+    if not saas_plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    amount = saas_plan["monthly_price"] * months
+    
+    # Apply GST if applicable
+    gst_amount = 0
+    if saas_plan.get("gst_applicable"):
+        settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
+        gst_rate = settings.get("gst_rate", 18) if settings else 18
+        gst_amount = round(amount * gst_rate / 100, 2)
+    
+    total_amount = amount + gst_amount
+    
+    # Generate renewal ID first (needed for payment link reference)
+    renewal_id = generate_id()
+    
+    # Try creating Razorpay payment link
+    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    
+    payment_link = None
+    if razorpay_key and razorpay_secret and total_amount > 0:
+        try:
+            from services.razorpay_service import RazorpayService
+            rz = RazorpayService(razorpay_key, razorpay_secret)
+            payment_link_result = rz.create_payment_link(
+                amount=total_amount,
+                description=f"SaaS Subscription: {saas_plan['name']} x {months} month(s)",
+                customer_name=operator.get("owner_name", "Operator"),
+                customer_email=operator.get("email", ""),
+                customer_phone=operator.get("phone", ""),
+                invoice_number=f"SAAS-{renewal_id[:8]}"
+            )
+            if payment_link_result:
+                payment_link = payment_link_result.get("short_url")
+        except Exception as e:
+            print(f"Razorpay link creation failed: {e}")
+    
+    # Record the renewal request
+    now = datetime.now(timezone.utc)
+    renewal = {
+        "id": renewal_id,
+        "operator_id": operator["id"],
+        "plan_id": target_plan_id,
+        "plan_name": saas_plan["name"],
+        "months": months,
+        "base_amount": amount,
+        "gst_amount": gst_amount,
+        "total_amount": total_amount,
+        "payment_link": payment_link,
+        "status": "pending",
+        "created_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.saas_payments.insert_one(renewal)
+    renewal.pop("_id", None)
+    
+    return renewal
+
 # ============== OPERATOR: DASHBOARD ==============
 
 @api_router.get("/operator/dashboard")
