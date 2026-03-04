@@ -128,6 +128,7 @@ class SaaSPlanCreate(BaseModel):
     audit_logs: bool = False
     payment_gateway_setup: bool = False
     gst_applicable: bool = True
+    included_addons: List[str] = []
 
 class SaaSPlanResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -143,6 +144,7 @@ class SaaSPlanResponse(BaseModel):
     audit_logs: bool
     payment_gateway_setup: bool
     gst_applicable: bool
+    included_addons: List[str] = []
     status: str
     created_at: datetime
 
@@ -491,6 +493,7 @@ async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(re
         "audit_logs": data.audit_logs,
         "payment_gateway_setup": data.payment_gateway_setup,
         "gst_applicable": data.gst_applicable,
+        "included_addons": data.included_addons,
         "status": "active",
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
@@ -529,6 +532,7 @@ async def update_saas_plan(plan_id: str, data: SaaSPlanCreate, current_user: dic
         "audit_logs": data.audit_logs,
         "payment_gateway_setup": data.payment_gateway_setup,
         "gst_applicable": data.gst_applicable,
+        "included_addons": data.included_addons,
         "updated_at": now.isoformat()
     }
     
@@ -1091,6 +1095,7 @@ async def create_addon(data: AddonCreate, current_user: dict = Depends(require_a
         "deleted_at": None
     }
     await db.addons.insert_one(addon)
+    addon.pop("_id", None)
     return addon
 
 @api_router.get("/admin/addons")
@@ -1098,6 +1103,39 @@ async def get_addons(current_user: dict = Depends(require_admin)):
     """Get all addons (Admin only)"""
     addons = await db.addons.find({"deleted_at": None}, {"_id": 0}).to_list(100)
     return addons
+
+@api_router.put("/admin/addons/{addon_id}")
+async def update_addon(addon_id: str, data: AddonCreate, current_user: dict = Depends(require_admin)):
+    """Update an addon (Admin only)"""
+    existing = await db.addons.find_one({"id": addon_id, "deleted_at": None}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Addon not found")
+    
+    now = datetime.now(timezone.utc)
+    update_data = {
+        "name": data.name,
+        "price": data.price,
+        "description": data.description,
+        "updated_at": now.isoformat()
+    }
+    await db.addons.update_one({"id": addon_id}, {"$set": update_data})
+    updated = await db.addons.find_one({"id": addon_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/admin/addons/{addon_id}")
+async def delete_addon(addon_id: str, current_user: dict = Depends(require_admin)):
+    """Soft delete an addon (Admin only)"""
+    now = datetime.now(timezone.utc)
+    result = await db.addons.update_one(
+        {"id": addon_id, "deleted_at": None},
+        {"$set": {"deleted_at": now.isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Addon not found")
+    
+    await log_audit(current_user["id"], current_user["name"], current_user["role"],
+                   "delete", "addons", addon_id, {})
+    return {"message": "Addon deleted"}
 
 @api_router.post("/admin/operators/{operator_id}/addons/{addon_code}")
 async def assign_addon_to_operator(operator_id: str, addon_code: str, current_user: dict = Depends(require_admin)):

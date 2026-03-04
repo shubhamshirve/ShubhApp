@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
   Select,
@@ -26,9 +27,20 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "../../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Settings, CreditCard, Package, Trash2, Plus } from "lucide-react";
+import { Settings, CreditCard, Package, Trash2, Plus, Pencil, Info } from "lucide-react";
 
 const AdminSettings = () => {
   const { authAxios } = useAuth();
@@ -38,6 +50,8 @@ const AdminSettings = () => {
   const [loading, setLoading] = useState(true);
   const [showGatewayDialog, setShowGatewayDialog] = useState(false);
   const [showAddonDialog, setShowAddonDialog] = useState(false);
+  const [editingAddon, setEditingAddon] = useState(null);
+  const [deleteAddonId, setDeleteAddonId] = useState(null);
   const [gatewayForm, setGatewayForm] = useState({
     gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true
   });
@@ -86,6 +100,7 @@ const AdminSettings = () => {
       await authAxios.post("/admin/payment-gateways", gatewayForm);
       toast.success("Gateway configured");
       setShowGatewayDialog(false);
+      setGatewayForm({ gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true });
       fetchGateways();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to add gateway");
@@ -102,16 +117,45 @@ const AdminSettings = () => {
     }
   };
 
-  const handleAddAddon = async (e) => {
+  const openAddonDialog = (addon = null) => {
+    if (addon) {
+      setEditingAddon(addon);
+      setAddonForm({ name: addon.name, code: addon.code, price: addon.price, description: addon.description || "" });
+    } else {
+      setEditingAddon(null);
+      setAddonForm({ name: "", code: "", price: 0, description: "" });
+    }
+    setShowAddonDialog(true);
+  };
+
+  const handleSaveAddon = async (e) => {
     e.preventDefault();
     try {
-      await authAxios.post("/admin/addons", addonForm);
-      toast.success("Add-on created");
+      if (editingAddon) {
+        await authAxios.put(`/admin/addons/${editingAddon.id}`, addonForm);
+        toast.success("Add-on updated");
+      } else {
+        await authAxios.post("/admin/addons", addonForm);
+        toast.success("Add-on created");
+      }
       setShowAddonDialog(false);
+      setEditingAddon(null);
       setAddonForm({ name: "", code: "", price: 0, description: "" });
       fetchAddons();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to create add-on");
+      toast.error(error.response?.data?.detail || "Failed to save add-on");
+    }
+  };
+
+  const handleDeleteAddon = async () => {
+    if (!deleteAddonId) return;
+    try {
+      await authAxios.delete(`/admin/addons/${deleteAddonId}`);
+      toast.success("Add-on deleted");
+      setDeleteAddonId(null);
+      fetchAddons();
+    } catch (error) {
+      toast.error("Failed to delete add-on");
     }
   };
 
@@ -135,6 +179,7 @@ const AdminSettings = () => {
             <TabsTrigger value="addons" data-testid="tab-addons">Add-ons</TabsTrigger>
           </TabsList>
 
+          {/* General Tab */}
           <TabsContent value="general" className="mt-6">
             <Card>
               <CardHeader>
@@ -196,12 +241,20 @@ const AdminSettings = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="gateways" className="mt-6">
+          {/* Payment Gateways Tab */}
+          <TabsContent value="gateways" className="mt-6 space-y-4">
+            <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-blue-800">
+                These payment gateway credentials are used for <strong>Operator-to-Admin SaaS subscription payments</strong>. 
+                When operators pay for their subscription or add-ons, the configured gateway will process those payments.
+              </p>
+            </div>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5" />
-                  Payment Gateway Configurations
+                  SaaS Payment Gateway Config
                 </CardTitle>
                 <Button size="sm" onClick={() => setShowGatewayDialog(true)} data-testid="add-gateway-btn">
                   <Plus className="w-4 h-4 mr-1" /> Add Gateway
@@ -213,8 +266,8 @@ const AdminSettings = () => {
                     <TableRow>
                       <TableHead>Type</TableHead>
                       <TableHead>API Key</TableHead>
-                      <TableHead>Scope</TableHead>
-                      <TableHead>Active</TableHead>
+                      <TableHead>Purpose</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -222,17 +275,25 @@ const AdminSettings = () => {
                     {gateways.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-slate-500">
-                          No payment gateways configured
+                          No payment gateways configured. Add one to accept SaaS subscription payments.
                         </TableCell>
                       </TableRow>
                     ) : gateways.map((gw) => (
                       <TableRow key={gw.id} data-testid={`gateway-row-${gw.id}`}>
                         <TableCell className="font-medium capitalize">{gw.gateway_type}</TableCell>
-                        <TableCell className="font-mono text-sm">{gw.api_key}</TableCell>
-                        <TableCell>{gw.is_platform_gateway ? "Platform Default" : `Operator: ${gw.operator_id?.slice(0, 8)}`}</TableCell>
-                        <TableCell>{gw.is_active ? <span className="badge-active">Active</span> : <span className="badge-suspended">Inactive</span>}</TableCell>
+                        <TableCell className="font-mono text-sm">{gw.api_key?.slice(0, 16)}...</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteGateway(gw.id)}>
+                          <span className="text-xs bg-slate-100 px-2 py-1 rounded font-medium">
+                            {gw.is_platform_gateway ? "SaaS Subscription Payments" : `Operator: ${gw.operator_id?.slice(0, 8)}`}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {gw.is_active 
+                            ? <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-medium">Active</span> 
+                            : <span className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded font-medium">Inactive</span>}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteGateway(gw.id)} data-testid={`delete-gw-${gw.id}`}>
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </Button>
                         </TableCell>
@@ -244,6 +305,7 @@ const AdminSettings = () => {
             </Card>
           </TabsContent>
 
+          {/* Add-ons Tab */}
           <TabsContent value="addons" className="mt-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
@@ -251,7 +313,7 @@ const AdminSettings = () => {
                   <Package className="w-5 h-5" />
                   SaaS Add-ons
                 </CardTitle>
-                <Button size="sm" onClick={() => setShowAddonDialog(true)} data-testid="add-addon-btn">
+                <Button size="sm" onClick={() => openAddonDialog()} data-testid="add-addon-btn">
                   <Plus className="w-4 h-4 mr-1" /> Create Add-on
                 </Button>
               </CardHeader>
@@ -259,20 +321,39 @@ const AdminSettings = () => {
                 {addons.length === 0 ? (
                   <p className="text-center py-8 text-slate-500">No add-ons created yet</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {addons.map((addon) => (
-                      <Card key={addon.id} data-testid={`addon-card-${addon.id}`}>
-                        <CardContent className="pt-6">
-                          <h3 className="font-semibold text-lg">{addon.name}</h3>
-                          <p className="text-sm text-slate-500 mt-1">{addon.description || "No description"}</p>
-                          <div className="mt-3 flex items-center justify-between">
-                            <span className="text-2xl font-bold">₹{addon.price}</span>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Code</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="w-[100px] text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {addons.map((addon) => (
+                        <TableRow key={addon.id} data-testid={`addon-row-${addon.id}`}>
+                          <TableCell className="font-medium">{addon.name}</TableCell>
+                          <TableCell>
                             <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">{addon.code}</span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">₹{addon.price}</TableCell>
+                          <TableCell className="text-sm text-slate-500 max-w-[200px] truncate">{addon.description || "-"}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => openAddonDialog(addon)} data-testid={`edit-addon-${addon.id}`}>
+                                <Pencil className="w-4 h-4 text-slate-600" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => setDeleteAddonId(addon.id)} data-testid={`delete-addon-${addon.id}`}>
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 )}
               </CardContent>
             </Card>
@@ -284,6 +365,9 @@ const AdminSettings = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Payment Gateway</DialogTitle>
+              <DialogDescription>
+                Configure a payment gateway for SaaS subscription collections from operators.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddGateway} className="space-y-4">
               <div className="space-y-2">
@@ -317,44 +401,64 @@ const AdminSettings = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Add Addon Dialog */}
+        {/* Add/Edit Addon Dialog */}
         <Dialog open={showAddonDialog} onOpenChange={setShowAddonDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create Add-on</DialogTitle>
+              <DialogTitle>{editingAddon ? "Edit Add-on" : "Create Add-on"}</DialogTitle>
+              <DialogDescription>
+                {editingAddon ? "Update the add-on details." : "Create a new purchasable add-on for operators."}
+              </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleAddAddon} className="space-y-4">
+            <form onSubmit={handleSaveAddon} className="space-y-4">
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input value={addonForm.name} onChange={(e) => setAddonForm(f => ({ ...f, name: e.target.value }))} required data-testid="addon-name" />
+                <Label>Name *</Label>
+                <Input value={addonForm.name} onChange={(e) => setAddonForm(f => ({ ...f, name: e.target.value }))} required data-testid="addon-name" placeholder="e.g., WhatsApp Notifications" />
               </div>
               <div className="space-y-2">
-                <Label>Code</Label>
-                <Select value={addonForm.code} onValueChange={(v) => setAddonForm(f => ({ ...f, code: v }))}>
-                  <SelectTrigger data-testid="addon-code"><SelectValue placeholder="Select code" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="notifications">notifications</SelectItem>
-                    <SelectItem value="custom_gateway">custom_gateway</SelectItem>
-                    <SelectItem value="subscriber_upgrade_100">subscriber_upgrade_100</SelectItem>
-                    <SelectItem value="audit_logs">audit_logs</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Code *</Label>
+                {editingAddon ? (
+                  <Input value={addonForm.code} disabled className="bg-slate-50" />
+                ) : (
+                  <Input value={addonForm.code} onChange={(e) => setAddonForm(f => ({ ...f, code: e.target.value.toLowerCase().replace(/\s+/g, '_') }))} required data-testid="addon-code" placeholder="e.g., notifications" />
+                )}
+                <p className="text-xs text-slate-500">Unique identifier. Use lowercase with underscores.</p>
               </div>
               <div className="space-y-2">
-                <Label>Price (₹)</Label>
-                <Input type="number" value={addonForm.price} onChange={(e) => setAddonForm(f => ({ ...f, price: parseFloat(e.target.value) }))} required data-testid="addon-price" />
+                <Label>Price (₹/month) *</Label>
+                <Input type="number" min="0" value={addonForm.price} onChange={(e) => setAddonForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} required data-testid="addon-price" />
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
-                <Input value={addonForm.description} onChange={(e) => setAddonForm(f => ({ ...f, description: e.target.value }))} data-testid="addon-description" />
+                <Textarea value={addonForm.description} onChange={(e) => setAddonForm(f => ({ ...f, description: e.target.value }))} data-testid="addon-description" placeholder="Describe what this add-on provides" rows={3} />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" type="button" onClick={() => setShowAddonDialog(false)}>Cancel</Button>
-                <Button type="submit" data-testid="save-addon-btn">Create Add-on</Button>
+                <Button type="submit" data-testid="save-addon-btn">
+                  {editingAddon ? "Update Add-on" : "Create Add-on"}
+                </Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Addon Confirmation */}
+        <AlertDialog open={!!deleteAddonId} onOpenChange={(open) => !open && setDeleteAddonId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Add-on</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this add-on? Operators who have purchased it will lose access.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteAddon} className="bg-red-600 hover:bg-red-700" data-testid="confirm-delete-addon">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AdminLayout>
   );

@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
+import { Checkbox } from "../../components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -13,20 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, IndianRupee } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, Puzzle } from "lucide-react";
 
 const AdminSaaSPlans = () => {
   const { authAxios } = useAuth();
   const [plans, setPlans] = useState([]);
+  const [addons, setAddons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
@@ -41,11 +35,13 @@ const AdminSaaSPlans = () => {
     auto_reminder: false,
     audit_logs: false,
     payment_gateway_setup: false,
-    gst_applicable: true
+    gst_applicable: true,
+    included_addons: []
   });
 
   useEffect(() => {
-    fetchPlans();
+    Promise.all([fetchPlans(), fetchAddons()])
+      .finally(() => setLoading(false));
   }, []);
 
   const fetchPlans = async () => {
@@ -54,9 +50,14 @@ const AdminSaaSPlans = () => {
       setPlans(response.data);
     } catch (error) {
       toast.error("Failed to load plans");
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const fetchAddons = async () => {
+    try {
+      const response = await authAxios.get("/admin/addons");
+      setAddons(response.data);
+    } catch { /* ignore */ }
   };
 
   const handleSubmit = async (e) => {
@@ -101,7 +102,8 @@ const AdminSaaSPlans = () => {
       auto_reminder: plan.auto_reminder,
       audit_logs: plan.audit_logs,
       payment_gateway_setup: plan.payment_gateway_setup,
-      gst_applicable: plan.gst_applicable
+      gst_applicable: plan.gst_applicable,
+      included_addons: plan.included_addons || []
     });
     setShowDialog(true);
   };
@@ -119,7 +121,18 @@ const AdminSaaSPlans = () => {
       auto_reminder: false,
       audit_logs: false,
       payment_gateway_setup: false,
-      gst_applicable: true
+      gst_applicable: true,
+      included_addons: []
+    });
+  };
+
+  const toggleAddon = (addonCode) => {
+    setFormData(prev => {
+      const current = prev.included_addons || [];
+      const updated = current.includes(addonCode)
+        ? current.filter(c => c !== addonCode)
+        : [...current, addonCode];
+      return { ...prev, included_addons: updated };
     });
   };
 
@@ -178,31 +191,39 @@ const AdminSaaSPlans = () => {
                 </div>
 
                 <div className="border-t pt-3 space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className={plan.notification_module ? "text-emerald-600" : "text-slate-400"}>
-                      {plan.notification_module ? "✓" : "×"}
-                    </span>
-                    <span>Notification Module</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={plan.auto_reminder ? "text-emerald-600" : "text-slate-400"}>
-                      {plan.auto_reminder ? "✓" : "×"}
-                    </span>
-                    <span>Auto Reminder</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={plan.audit_logs ? "text-emerald-600" : "text-slate-400"}>
-                      {plan.audit_logs ? "✓" : "×"}
-                    </span>
-                    <span>Audit Logs</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={plan.payment_gateway_setup ? "text-emerald-600" : "text-slate-400"}>
-                      {plan.payment_gateway_setup ? "✓" : "×"}
-                    </span>
-                    <span>Payment Gateway</span>
-                  </div>
+                  {[
+                    { key: "notification_module", label: "Notification Module" },
+                    { key: "auto_reminder", label: "Auto Reminder" },
+                    { key: "audit_logs", label: "Audit Logs" },
+                    { key: "payment_gateway_setup", label: "Payment Gateway" },
+                  ].map(f => (
+                    <div key={f.key} className="flex items-center gap-2">
+                      <span className={plan[f.key] ? "text-emerald-600" : "text-slate-400"}>
+                        {plan[f.key] ? "✓" : "×"}
+                      </span>
+                      <span>{f.label}</span>
+                    </div>
+                  ))}
                 </div>
+
+                {/* Included Addons */}
+                {plan.included_addons && plan.included_addons.length > 0 && (
+                  <div className="border-t pt-3">
+                    <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1">
+                      <Puzzle className="w-3 h-3" /> Included Add-ons
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {plan.included_addons.map(code => {
+                        const addon = addons.find(a => a.code === code);
+                        return (
+                          <span key={code} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                            {addon?.name || code}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-2">
                   <Button 
@@ -210,6 +231,7 @@ const AdminSaaSPlans = () => {
                     size="sm" 
                     className="flex-1"
                     onClick={() => openEditDialog(plan)}
+                    data-testid={`edit-plan-${plan.id}`}
                   >
                     <Pencil className="w-3 h-3 mr-1" />
                     Edit
@@ -219,6 +241,7 @@ const AdminSaaSPlans = () => {
                     size="sm"
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => handleDelete(plan.id)}
+                    data-testid={`delete-plan-${plan.id}`}
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>
@@ -297,7 +320,6 @@ const AdminSaaSPlans = () => {
 
               <div className="border-t pt-4 space-y-3">
                 <p className="text-sm font-medium text-slate-700">Plan Features</p>
-                
                 <div className="space-y-3">
                   {[
                     { key: "trial_enabled", label: "Enable Trial" },
@@ -319,6 +341,34 @@ const AdminSaaSPlans = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Included Add-ons */}
+              {addons.length > 0 && (
+                <div className="border-t pt-4 space-y-3">
+                  <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                    <Puzzle className="w-4 h-4" /> Included Add-ons
+                  </p>
+                  <p className="text-xs text-slate-500">Select add-ons bundled with this plan at no extra cost</p>
+                  <div className="space-y-2">
+                    {addons.map((addon) => (
+                      <div key={addon.code} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                        <Checkbox
+                          id={`addon-${addon.code}`}
+                          checked={(formData.included_addons || []).includes(addon.code)}
+                          onCheckedChange={() => toggleAddon(addon.code)}
+                          data-testid={`addon-check-${addon.code}`}
+                        />
+                        <div className="flex-1">
+                          <label htmlFor={`addon-${addon.code}`} className="text-sm font-medium cursor-pointer">
+                            {addon.name}
+                          </label>
+                          <p className="text-xs text-slate-500">{addon.description || addon.code} — ₹{addon.price}/mo standalone</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
