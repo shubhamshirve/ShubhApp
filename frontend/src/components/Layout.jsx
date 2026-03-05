@@ -14,7 +14,8 @@ import {
   BarChart3,
   Menu,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Bell
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -130,8 +131,10 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/subscribers", label: "Subscribers", icon: Users },
     { href: "/operator/plans", label: "Plans", icon: Package },
     { href: "/operator/invoices", label: "Invoices", icon: FileText },
+    { href: "/operator/announcements", label: "Announcements", icon: Bell },
     { href: "/operator/staff", label: "Staff", icon: UserCog, operatorOnly: true },
     { href: "/operator/reports", label: "Reports", icon: BarChart3 },
+    { href: "/operator/subscription", label: "Subscription", icon: CreditCard },
     { href: "/operator/settings", label: "Settings", icon: Settings, operatorOnly: true },
   ];
 

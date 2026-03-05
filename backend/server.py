@@ -1322,8 +1322,9 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
     active_addons = operator.get("active_addons", [])
     saas_plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id")}, {"_id": 0})
     
-    if not (saas_plan and saas_plan.get("notification_module")) and "notifications" not in active_addons:
-        raise HTTPException(status_code=403, detail="Notification addon not enabled")
+    if data.send_whatsapp:
+        if not (saas_plan and saas_plan.get("notification_module")) and "notifications" not in active_addons:
+            raise HTTPException(status_code=403, detail="WhatsApp notification addon not enabled. Disable WhatsApp sending or purchase the notifications add-on.")
     
     now = datetime.now(timezone.utc)
     
@@ -1351,6 +1352,7 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
         "created_at": now.isoformat()
     }
     await db.announcements.insert_one(announcement)
+    announcement.pop("_id", None)
     
     # Queue WhatsApp messages if enabled
     sent_count = 0

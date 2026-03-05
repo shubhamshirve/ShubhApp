@@ -26,6 +26,7 @@ const OperatorReports = () => {
   const [revenueReport, setRevenueReport] = useState(null);
   const [gstReport, setGstReport] = useState(null);
   const [pendingReport, setPendingReport] = useState(null);
+  const [invoices, setInvoices] = useState([]);
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setDate(1)),
     end: new Date()
@@ -51,20 +52,69 @@ const OperatorReports = () => {
       const startDate = format(dateRange.start, "yyyy-MM-dd");
       const endDate = format(dateRange.end, "yyyy-MM-dd");
 
-      const [revenue, gst, pending] = await Promise.all([
+      const [revenue, gst, pending, invoiceRes] = await Promise.all([
         authAxios.get(`/operator/reports/revenue?start_date=${startDate}&end_date=${endDate}`),
         authAxios.get(`/operator/reports/gst-summary?start_date=${startDate}&end_date=${endDate}`),
-        authAxios.get("/operator/reports/pending-overdue")
+        authAxios.get("/operator/reports/pending-overdue"),
+        authAxios.get("/operator/invoices").catch(() => ({ data: [] }))
       ]);
 
       setRevenueReport(revenue.data);
       setGstReport(gst.data);
       setPendingReport(pending.data);
+      setInvoices(Array.isArray(invoiceRes.data) ? invoiceRes.data : []);
     } catch (error) {
       toast.error("Failed to load reports");
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportInvoicesCSV = () => {
+    if (!invoices.length) {
+      toast.error("No invoice data to export");
+      return;
+    }
+    const headers = ["Invoice #", "Subscriber", "Amount", "Tax", "Total", "Status", "Due Date", "Created"];
+    const rows = invoices.map(inv => [
+      inv.invoice_number || "",
+      inv.subscriber_name || "",
+      inv.base_amount || 0,
+      inv.tax_amount || 0,
+      inv.final_amount || 0,
+      inv.status || "",
+      inv.due_date ? new Date(inv.due_date).toLocaleDateString("en-IN") : "",
+      inv.created_at ? new Date(inv.created_at).toLocaleDateString("en-IN") : ""
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `invoices_${format(dateRange.start, "yyyyMMdd")}_${format(dateRange.end, "yyyyMMdd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV exported");
+  };
+
+  const exportGSTCSV = () => {
+    if (!gstReport) { toast.error("No GST data"); return; }
+    const headers = ["Metric", "Amount (₹)"];
+    const rows = [
+      ["Taxable Amount", gstReport.total_taxable_amount || 0],
+      ["Total GST", gstReport.total_gst_collected || 0],
+      ["CGST (9%)", gstReport.cgst || 0],
+      ["SGST (9%)", gstReport.sgst || 0]
+    ];
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gst_report_${format(dateRange.start, "yyyyMMdd")}_${format(dateRange.end, "yyyyMMdd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("GST report exported");
   };
 
   const isReadOnly = dashboardStats?.is_read_only;
@@ -133,6 +183,11 @@ const OperatorReports = () => {
 
             {/* Revenue Tab */}
             <TabsContent value="revenue" className="space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={exportInvoicesCSV} data-testid="export-invoices-csv">
+                  <Download className="w-4 h-4 mr-1" /> Export Invoices CSV
+                </Button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="kpi-card">
                   <div className="flex items-center gap-4">
@@ -186,6 +241,11 @@ const OperatorReports = () => {
 
             {/* GST Tab */}
             <TabsContent value="gst" className="space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={exportGSTCSV} data-testid="export-gst-csv">
+                  <Download className="w-4 h-4 mr-1" /> Export GST CSV
+                </Button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="kpi-card">
                   <div className="flex items-center gap-4">
