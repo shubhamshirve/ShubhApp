@@ -1198,18 +1198,50 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
     trial_operators = await db.operators.count_documents({"status": "trial", "deleted_at": None})
     suspended_operators = await db.operators.count_documents({"status": "suspended", "deleted_at": None})
     read_only_operators = await db.operators.count_documents({"is_read_only": True, "deleted_at": None})
-    
-    # Calculate SaaS revenue this month
+
     now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
+
     # Get expiring operators (within 7 days)
     expiring_date = (now + timedelta(days=7)).isoformat()
     expiring_operators = await db.operators.count_documents({
         "subscription_ends_at": {"$lte": expiring_date, "$gte": now.isoformat()},
         "deleted_at": None
     })
-    
+
+    # Real SaaS revenue from saas_payments
+    all_payments = await db.saas_payments.find({"status": "completed", "deleted_at": None}, {"_id": 0}).to_list(10000)
+    month_payments = [p for p in all_payments if p.get("created_at", "") >= start_of_month.isoformat()]
+
+    saas_revenue_this_month = sum(p.get("base_amount", 0) for p in month_payments if p.get("item_type") == "subscription")
+    addon_revenue_this_month = sum(p.get("base_amount", 0) for p in month_payments if p.get("item_type") == "addon")
+    gst_collected_this_month = sum(p.get("gst_amount", 0) for p in month_payments)
+
+    total_saas_revenue = sum(p.get("base_amount", 0) for p in all_payments if p.get("item_type") == "subscription")
+    total_addon_revenue = sum(p.get("base_amount", 0) for p in all_payments if p.get("item_type") == "addon")
+    total_gst_collected = sum(p.get("gst_amount", 0) for p in all_payments)
+
+    # Recent 10 payments with operator names
+    recent_raw = sorted(all_payments, key=lambda x: x.get("created_at", ""), reverse=True)[:10]
+    # Fetch operator names
+    op_ids = list({p["operator_id"] for p in recent_raw})
+    ops = await db.operators.find({"id": {"$in": op_ids}}, {"_id": 0, "id": 1, "company_name": 1}).to_list(100)
+    op_map = {o["id"]: o.get("company_name", "Unknown") for o in ops}
+
+    recent_payments = [
+        {
+            "id": p.get("id"),
+            "operator_name": op_map.get(p.get("operator_id", ""), "Unknown"),
+            "item_type": p.get("item_type"),
+            "item_code": p.get("item_code", ""),
+            "base_amount": p.get("base_amount", 0),
+            "gst_amount": p.get("gst_amount", 0),
+            "total_amount": p.get("total_amount", 0),
+            "created_at": p.get("created_at"),
+        }
+        for p in recent_raw
+    ]
+
     return {
         "total_operators": total_operators,
         "active_operators": active_operators,
@@ -1217,9 +1249,16 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
         "suspended_operators": suspended_operators,
         "read_only_operators": read_only_operators,
         "expiring_operators": expiring_operators,
-        "saas_revenue_this_month": 0,  # Would calculate from payments
-        "gst_collected": 0,
-        "addon_revenue": 0
+        # This month
+        "saas_revenue_this_month": round(saas_revenue_this_month, 2),
+        "addon_revenue_this_month": round(addon_revenue_this_month, 2),
+        "gst_collected_this_month": round(gst_collected_this_month, 2),
+        # All-time
+        "total_saas_revenue": round(total_saas_revenue, 2),
+        "total_addon_revenue": round(total_addon_revenue, 2),
+        "total_gst_collected": round(total_gst_collected, 2),
+        # Recent
+        "recent_payments": recent_payments,
     }
 
 # ============== ADMIN: AUDIT LOGS ==============
@@ -1716,6 +1755,17 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
         "is_read_only": operator.get("is_read_only", False),
         "available_plans": [{"id": p["id"], "name": p["name"], "monthly_price": p["monthly_price"]} for p in available_plans]
     }
+
+@api_router.get("/operator/payment-history")
+async def get_operator_payment_history(current_user: dict = Depends(require_operator)):
+    """Get operator's SaaS payment history (subscriptions + add-ons)"""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin does not have payment history")
+    payments = await db.saas_payments.find(
+        {"operator_id": current_user["operator_id"], "status": "completed", "deleted_at": None},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return payments
 
 @api_router.post("/operator/renew-subscription")
 async def renew_operator_subscription(

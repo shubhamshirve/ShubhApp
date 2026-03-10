@@ -62,6 +62,13 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [x] Frontend: Removed standalone Addons.jsx page, route, and sidebar link
 - [x] Customer invoices retain Payment Links (unchanged)
 
+#### Phase 10: Revenue Dashboards & Payment History (Mar 10)
+- [x] Admin dashboard: Real SaaS revenue from saas_payments (subscription + addon + GST, this month + all-time)
+- [x] Admin dashboard: Recent payments table (operator name, type, amounts, date)
+- [x] Operator dashboard: Revenue label clarified as "Invoice Revenue (Collected)" with sub-label
+- [x] Subscription page: Payment History tab with full table (type, description, base, GST, total, date) + running total
+- [x] Backend: `/api/operator/payment-history` endpoint
+
 ### Prioritized Backlog
 
 #### P1 (High Priority)

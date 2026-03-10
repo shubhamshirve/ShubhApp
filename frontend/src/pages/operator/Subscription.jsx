@@ -30,13 +30,16 @@ import {
   Check,
   Zap,
   Loader2,
+  History,
 } from "lucide-react";
 
 const OperatorSubscription = () => {
   const { authAxios } = useAuth();
   const [subscription, setSubscription] = useState(null);
   const [addons, setAddons] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("subscription"); // subscription | history
   const [showRenewDialog, setShowRenewDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("");
   const [months, setMonths] = useState("1");
@@ -63,11 +66,20 @@ const OperatorSubscription = () => {
     }
   }, [authAxios]);
 
+  const fetchPaymentHistory = useCallback(async () => {
+    try {
+      const res = await authAxios.get("/operator/payment-history");
+      setPaymentHistory(res.data);
+    } catch {
+      // silently fail
+    }
+  }, [authAxios]);
+
   useEffect(() => {
-    Promise.all([fetchSubscription(), fetchAddons()]).finally(() =>
+    Promise.all([fetchSubscription(), fetchAddons(), fetchPaymentHistory()]).finally(() =>
       setLoading(false)
     );
-  }, [fetchSubscription, fetchAddons]);
+  }, [fetchSubscription, fetchAddons, fetchPaymentHistory]);
 
   const openRazorpay = (orderData, onSuccess) => {
     if (!window.Razorpay) {
@@ -116,6 +128,7 @@ const OperatorSubscription = () => {
       openRazorpay(res.data, () => {
         fetchSubscription();
         fetchAddons();
+        fetchPaymentHistory();
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to initiate checkout");
@@ -139,6 +152,7 @@ const OperatorSubscription = () => {
       openRazorpay(res.data, () => {
         fetchSubscription();
         fetchAddons();
+        fetchPaymentHistory();
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to purchase add-on");
@@ -222,7 +236,41 @@ const OperatorSubscription = () => {
     <OperatorLayout title="Subscription" isReadOnly={subscription?.is_read_only}>
       <div className="max-w-4xl space-y-6 animate-fade-in">
 
-        {/* Current Subscription Status */}
+        {/* Tabs */}
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+          <button
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === "subscription"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+            onClick={() => setActiveTab("subscription")}
+            data-testid="tab-subscription"
+          >
+            <CreditCard className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+            Subscription & Add-ons
+          </button>
+          <button
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === "history"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+            onClick={() => setActiveTab("history")}
+            data-testid="tab-history"
+          >
+            <History className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+            Payment History
+            {paymentHistory.length > 0 && (
+              <span className="ml-1.5 bg-slate-700 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {paymentHistory.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === "subscription" && (
+          <>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -495,6 +543,77 @@ const OperatorSubscription = () => {
             )}
           </CardContent>
         </Card>
+        </>
+        )}
+
+        {activeTab === "history" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="w-5 h-5" />
+                Payment History
+              </CardTitle>
+              <p className="text-sm text-slate-500 mt-1">All your SaaS platform payments</p>
+            </CardHeader>
+            <CardContent className="p-0">
+              {paymentHistory.length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                  <History className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                  <p className="font-medium">No payments yet</p>
+                  <p className="text-sm mt-1">Your subscription and add-on payments will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="text-left px-4 py-3 font-medium text-slate-600">Type</th>
+                        <th className="text-left px-4 py-3 font-medium text-slate-600">Description</th>
+                        <th className="text-right px-4 py-3 font-medium text-slate-600">Base</th>
+                        <th className="text-right px-4 py-3 font-medium text-slate-600">GST</th>
+                        <th className="text-right px-4 py-3 font-medium text-slate-600">Total</th>
+                        <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentHistory.map((p, i) => (
+                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors" data-testid={`history-row-${i}`}>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                              p.item_type === "subscription"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-purple-100 text-purple-700"
+                            }`}>
+                              {p.item_type === "subscription" ? "Subscription" : "Add-on"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">
+                            {p.item_type === "addon" ? p.item_code : "Plan Renewal"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-700">₹{p.base_amount?.toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">₹{p.gst_amount?.toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total_amount?.toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 text-slate-500">
+                            {p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 border-t-2 border-slate-200">
+                        <td colSpan={4} className="px-4 py-3 font-semibold text-slate-700 text-right">Total Paid</td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-900">
+                          ₹{paymentHistory.reduce((s, p) => s + (p.total_amount || 0), 0).toLocaleString("en-IN")}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Renew Subscription Dialog */}

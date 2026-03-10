@@ -112,10 +112,11 @@ const OperatorDashboard = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-300 text-sm mb-1">Total Revenue</p>
+                <p className="text-slate-300 text-sm mb-1">Invoice Revenue (Collected)</p>
                 <p className="text-4xl font-bold font-heading">
                   ₹{(stats?.total_revenue || 0).toLocaleString('en-IN')}
                 </p>
+                <p className="text-slate-400 text-xs mt-1">From paid subscriber invoices</p>
               </div>
               <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center">
                 <IndianRupee className="w-7 h-7" />
