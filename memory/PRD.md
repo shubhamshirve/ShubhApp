@@ -52,9 +52,21 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [x] "I've Paid — Activate Now" manual activation button
 - [x] Sidebar link with Puzzle icon
 
+#### Phase 9: Razorpay Fast Checkout Refactor (Mar 10)
+- [x] Backend: `/api/operator/checkout/create-order` endpoint (subscription + addon)
+- [x] Backend: `/api/operator/checkout/verify` endpoint (signature verify + activate)
+- [x] Frontend: Razorpay JS checkout script added to index.html
+- [x] Frontend: Add-ons store merged into Subscription page (unified view)
+- [x] Frontend: Subscription renewal uses Fast Checkout modal ("Platform Name" / "Monthly Recurring")
+- [x] Frontend: Add-on purchase uses Fast Checkout modal
+- [x] Frontend: Removed standalone Addons.jsx page, route, and sidebar link
+- [x] Customer invoices retain Payment Links (unchanged)
+
 ### Prioritized Backlog
 
 #### P1 (High Priority)
+- [ ] QR Codes for Invoice Payment Links
+- [ ] Admin Payment Reports (placeholder needs real data/KPIs)
 - [ ] Dashboard analytics graphs/charts
 - [ ] Operator audit logs page UI
 
