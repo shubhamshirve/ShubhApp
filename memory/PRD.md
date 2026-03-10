@@ -1,62 +1,54 @@
 # Multi-Tenant SaaS Recurring Billing Platform
-## Product Requirements Document (Updated Mar 4, 2026)
+## Product Requirements Document (Updated Mar 5, 2026)
 
 ### Original Problem Statement
-Build a scalable multi-tenant SaaS recurring billing web application for India-focused, GST compliant operations. Platform allows operators to manage subscribers, generate invoices, and collect payments through operator-owned payment gateways.
+Build a scalable multi-tenant SaaS recurring billing web application for India-focused, GST compliant operations.
 
 ### Technical Stack
 - **Frontend**: React, Tailwind CSS, Shadcn UI
 - **Backend**: FastAPI, MongoDB
-- **Services**: Razorpay, WhatsApp Business API (MOCKED)
+- **Services**: Razorpay, WhatsApp Business API (MOCKED - keys in .env but empty)
 - **PDF**: ReportLab
 
 ### Default Credentials
 - Admin: admin@saas.com / admin123
-- Demo Operator: demo@democorp.com / demo123
-- Demo Staff: staff@democorp.com / staff123
+- Operator: demo@democorp.com / demo123
+- Staff: staff@democorp.com / staff123
 - Razorpay: rzp_test_sFaXdx3kATIGiw / dOvQqMbfE2sPkYulgTeU2SpW
 
 ### What's Been Implemented
 
-#### Phase 1 - Core MVP
-- [x] Auth (register, login, JWT), Multi-tenant data isolation
-- [x] Admin: Dashboard, SaaS Plans CRUD, Operators CRUD (create/suspend/activate/delete)
-- [x] Operator: Dashboard, Plans CRUD, Subscribers CRUD, Invoices CRUD
-- [x] Staff management with permissions, Landing page
+#### Phase 1-2: Core MVP + Payments
+- [x] Auth, Multi-tenant isolation, Admin/Operator/Staff CRUD
+- [x] Razorpay payment links, Invoice PDF, WhatsApp config UI
+- [x] Auto invoice cron, Webhook handler, Landing page
 
-#### Phase 2 - Payment & Notifications
-- [x] Razorpay payment link generation, Invoice PDF generation
-- [x] WhatsApp Business API config UI (MOCKED), Bulk notification support
-- [x] Auto invoice generation cron, Webhook handler for Razorpay
+#### Phase 3: Staff Permissions & Admin Features (Mar 1)
+- [x] Staff DELETE blocked (403 + hidden buttons)
+- [x] Admin impersonation, Settings (General/Gateways/Add-ons), Reports
 
-#### Phase 3 - Staff Permissions & Admin Features (Mar 1, 2026)
-- [x] Staff DELETE blocked (403 backend + hidden buttons frontend)
-- [x] Admin impersonation, Admin Settings (General/Gateways/Add-ons)
-- [x] Admin Reports (KPIs, SaaS revenue, CSV export)
-
-#### Phase 4 - User-Requested Fixes (Mar 4, 2026)
+#### Phase 4: User-Requested Fixes (Mar 4)
 - [x] Create Operator dialog aligned with registration form
-- [x] Delete operators from admin panel
-- [x] SaaS Plans + included add-ons (checkbox + tags)
-- [x] Payment Gateways context for SaaS payments
-- [x] Admin addon full CRUD (add/update/delete)
+- [x] Delete operators, SaaS Plans + included add-ons
+- [x] Payment Gateways context, Admin addon full CRUD
 
-#### Phase 5 - Invoice Customization & Subscription Renewal (Mar 4, 2026)
+#### Phase 5-6: Invoice Customization, Subscription, Announcements (Mar 4)
 - [x] Invoice customization UI (operator Settings > Invoice tab)
-- [x] Subscription renewal flow with Razorpay payment link generation
-- [x] Renew Now button fixed (navigates to /operator/subscription)
-- [x] Subscription page with plan status, available plans, renewal dialog
+- [x] Subscription renewal with Razorpay payment links
+- [x] Announcements page (create + history)
+- [x] CSV export on operator Reports (Invoices + GST)
 
-#### Phase 6 - Announcements & Reports Export (Mar 4, 2026)
-- [x] Announcements page for operators (create + history table)
-- [x] WhatsApp-gated sending (blocks if addon not enabled)
-- [x] CSV export on operator Reports (Invoices CSV, GST CSV)
-- [x] Sidebar updated with Announcements + Subscription links
+#### Phase 7: Impersonation UX, WhatsApp Web, Audit Logs (Mar 5)
+- [x] "Return to Admin" indigo banner when impersonating operator
+- [x] JWT token carries impersonated_by, return-from-impersonate endpoint
+- [x] WhatsApp Web integration: wa.me links on Invoices + Subscribers pages
+- [x] Admin WhatsApp API keys added to .env (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID)
+- [x] Admin audit logs fixed: handles malformed old_value/new_value, skips broken entries
 
 ### Prioritized Backlog
 
 #### P1 (High Priority)
-- [ ] SaaS add-on purchase flow for operators (buy add-ons from UI via Razorpay)
+- [ ] SaaS add-on purchase flow for operators (buy via Razorpay)
 - [ ] Dashboard analytics graphs/charts
 - [ ] Operator audit logs page UI
 
@@ -64,29 +56,5 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [ ] Multi-currency support
 - [ ] Email notifications as backup
 - [ ] Customer self-service portal
-- [ ] Payment link expiry handling
 - [ ] Payment QR code display in invoices UI
-- [ ] WhatsApp Web integration option
 - [ ] WhatsApp message template approval flow
-
-### API Endpoints
-- POST /api/auth/{login, register}, GET /api/auth/me
-- GET/PUT /api/admin/settings
-- GET/POST/DELETE /api/admin/payment-gateways
-- GET/POST/PUT/DELETE /api/admin/addons
-- GET /api/admin/reports/{payments, saas-revenue}
-- POST /api/admin/operators/{id}/{impersonate, suspend, activate, assign-plan, extend-subscription}
-- POST /api/admin/operators/create, DELETE /api/admin/operators/{id}
-- CRUD /api/admin/saas-plans (with included_addons)
-- GET/POST /api/admin/audit-logs
-- GET /api/operator/{dashboard, profile, subscription}
-- POST /api/operator/renew-subscription
-- CRUD /api/operator/{plans, subscribers, invoices, staff}
-- GET/PUT /api/operator/invoice-settings
-- POST/GET /api/operator/announcements
-- POST /api/operator/{payment-gateway, whatsapp-config}
-- GET /api/operator/reports/{revenue, gst-summary, pending-overdue}
-- GET /api/operator/audit-logs
-- GET /api/operator/invoices/{id}/pdf
-- POST /api/operator/invoices/{id}/payment-link
-- POST /api/webhooks/razorpay
