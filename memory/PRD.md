@@ -45,10 +45,16 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [x] Admin WhatsApp API keys added to .env (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID)
 - [x] Admin audit logs fixed: handles malformed old_value/new_value, skips broken entries
 
+#### Phase 8: Add-on Purchase Flow (Mar 5)
+- [x] Operator Add-ons Store page with purchase via Razorpay
+- [x] Free activation for plan-included add-ons
+- [x] Razorpay payment link for paid add-ons
+- [x] "I've Paid — Activate Now" manual activation button
+- [x] Sidebar link with Puzzle icon
+
 ### Prioritized Backlog
 
 #### P1 (High Priority)
-- [ ] SaaS add-on purchase flow for operators (buy via Razorpay)
 - [ ] Dashboard analytics graphs/charts
 - [ ] Operator audit logs page UI
 

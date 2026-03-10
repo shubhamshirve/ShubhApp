@@ -22,6 +22,7 @@ import OperatorReports from "./pages/operator/Reports";
 import OperatorSettings from "./pages/operator/Settings";
 import OperatorSubscription from "./pages/operator/Subscription";
 import OperatorAnnouncements from "./pages/operator/Announcements";
+import OperatorAddons from "./pages/operator/Addons";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -206,6 +207,11 @@ function App() {
           <Route path="/operator/announcements" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorAnnouncements />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/addons" element={
+            <ProtectedRoute allowedRoles={["operator"]}>
+              <OperatorAddons />
             </ProtectedRoute>
           } />
 
