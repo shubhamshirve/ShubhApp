@@ -257,7 +257,20 @@ export const AdminLayout = ({ children, title }) => {
 
 export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, authAxios } = useAuth();
   const navigate = useNavigate();
+  const isImpersonating = !!user?.impersonated_by;
+
+  const handleReturnToAdmin = async () => {
+    try {
+      const res = await authAxios.post("/admin/return-from-impersonate");
+      localStorage.setItem("token", res.data.access_token);
+      window.location.href = "/admin/operators";
+    } catch {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -267,6 +280,20 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
         isReadOnly={isReadOnly}
       />
       <div className="flex-1 flex flex-col min-w-0">
+        {isImpersonating && (
+          <div className="bg-indigo-600 text-white px-4 py-2 flex items-center justify-between text-sm sticky top-0 z-40" data-testid="impersonation-banner">
+            <span>You are viewing this panel as <strong>{user.name}</strong> (impersonating)</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="bg-white text-indigo-700 hover:bg-indigo-50 h-7 text-xs"
+              onClick={handleReturnToAdmin}
+              data-testid="return-to-admin-btn"
+            >
+              <LogOut className="w-3 h-3 mr-1" /> Return to Admin
+            </Button>
+          </div>
+        )}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center px-4 lg:px-8 sticky top-0 z-30">
           <button 
             onClick={() => setSidebarOpen(true)}

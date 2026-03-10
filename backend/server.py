@@ -65,6 +65,7 @@ class UserResponse(BaseModel):
     role: str
     operator_id: Optional[str] = None
     status: str = "active"
+    impersonated_by: Optional[str] = None
     created_at: datetime
 
 class TokenResponse(BaseModel):
@@ -286,6 +287,8 @@ def create_token(user_data: dict) -> str:
         "operator_id": user_data.get("operator_id"),
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
+    if user_data.get("impersonated_by"):
+        payload["impersonated_by"] = user_data["impersonated_by"]
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 def decode_token(token: str) -> dict:
@@ -307,6 +310,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     user = await db.users.find_one({"id": payload["sub"], "deleted_at": None}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Carry impersonated_by from JWT payload if present
+    if payload.get("impersonated_by"):
+        user["impersonated_by"] = payload["impersonated_by"]
     return user
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
@@ -471,6 +477,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         role=current_user["role"],
         operator_id=current_user.get("operator_id"),
         status=current_user["status"],
+        impersonated_by=current_user.get("impersonated_by"),
         created_at=datetime.fromisoformat(current_user["created_at"])
     )
 
@@ -880,6 +887,25 @@ async def impersonate_operator(operator_id: str, current_user: dict = Depends(re
         }
     }
 
+@api_router.post("/admin/return-from-impersonate")
+async def return_from_impersonate(current_user: dict = Depends(get_current_user)):
+    """Return to admin panel after impersonating an operator"""
+    impersonated_by = current_user.get("impersonated_by")
+    if not impersonated_by:
+        raise HTTPException(status_code=400, detail="Not impersonating any operator")
+    
+    admin_user = await db.users.find_one({"id": impersonated_by, "role": "admin", "deleted_at": None}, {"_id": 0})
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+    
+    token = create_token({
+        "id": admin_user["id"],
+        "email": admin_user["email"],
+        "role": "admin"
+    })
+    
+    return {"access_token": token, "token_type": "bearer"}
+
 # ============== ADMIN: GLOBAL SETTINGS ==============
 
 class GlobalSettingsUpdate(BaseModel):
@@ -1134,7 +1160,7 @@ async def delete_addon(addon_id: str, current_user: dict = Depends(require_admin
         raise HTTPException(status_code=404, detail="Addon not found")
     
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                   "delete", "addons", addon_id, {})
+                   "delete", "addons", {"addon_id": addon_id}, {})
     return {"message": "Addon deleted"}
 
 @api_router.post("/admin/operators/{operator_id}/addons/{addon_code}")
@@ -1206,7 +1232,19 @@ async def get_all_audit_logs(
 ):
     """Get all audit logs (Admin only)"""
     logs = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return [AuditLogResponse(**{**l, "created_at": datetime.fromisoformat(l["created_at"])}) for l in logs]
+    result = []
+    for l in logs:
+        try:
+            # Normalize old_value/new_value to dicts
+            if isinstance(l.get("old_value"), str):
+                l["old_value"] = {"value": l["old_value"]}
+            if isinstance(l.get("new_value"), str):
+                l["new_value"] = {"value": l["new_value"]}
+            l["created_at"] = datetime.fromisoformat(l["created_at"])
+            result.append(AuditLogResponse(**l))
+        except Exception:
+            continue
+    return result
 
 # ============== OPERATOR: PROFILE ==============
 

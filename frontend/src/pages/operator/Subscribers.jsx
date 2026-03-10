@@ -34,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle } from "lucide-react";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
@@ -259,6 +259,18 @@ const OperatorSubscribers = () => {
                             <DropdownMenuItem onClick={() => openEditDialog(subscriber)}>
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                let phone = (subscriber.whatsapp_number || "").replace(/[^0-9]/g, '');
+                                if (phone.length === 10) phone = "91" + phone;
+                                if (!phone) { return; }
+                                window.open(`https://wa.me/${phone}`, '_blank');
+                              }}
+                              data-testid={`wa-subscriber-${subscriber.id}`}
+                            >
+                              <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
+                              WhatsApp
                             </DropdownMenuItem>
                             {!isStaff && (
                               <DropdownMenuItem 

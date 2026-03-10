@@ -51,7 +51,8 @@ import {
   Download,
   QrCode,
   Send,
-  Bell
+  Bell,
+  MessageCircle
 } from "lucide-react";
 
 const OperatorInvoices = () => {
@@ -193,6 +194,29 @@ const OperatorInvoices = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send notification");
     }
+  };
+
+  const handleSendWhatsAppWeb = (invoice) => {
+    const subscriber = subscribers.find(s => s.id === invoice.subscriber_id);
+    if (!subscriber || !subscriber.whatsapp_number) {
+      toast.error("Subscriber WhatsApp number not found");
+      return;
+    }
+    
+    let phone = subscriber.whatsapp_number.replace(/[^0-9]/g, '');
+    if (phone.length === 10) phone = "91" + phone;
+    
+    const message = encodeURIComponent(
+      `Hello ${subscriber.name},\n\n` +
+      `Invoice ${invoice.invoice_number}\n` +
+      `Amount: ₹${invoice.final_amount?.toLocaleString('en-IN')}\n` +
+      `Due Date: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-IN') : 'N/A'}\n` +
+      (invoice.payment_link ? `\nPay here: ${invoice.payment_link}\n` : '') +
+      `\nThank you!`
+    );
+    
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    toast.success("WhatsApp Web opened");
   };
 
   const resetForm = () => {
@@ -370,7 +394,11 @@ const OperatorInvoices = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
                               <Send className="w-4 h-4 mr-2 text-emerald-600" />
-                              Send via WhatsApp
+                              Send via WhatsApp API
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)} data-testid={`wa-web-${invoice.id}`}>
+                              <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
+                              Send via WhatsApp Web
                             </DropdownMenuItem>
                             {invoice.status === "overdue" && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
