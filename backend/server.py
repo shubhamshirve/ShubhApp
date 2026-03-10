@@ -1464,147 +1464,228 @@ async def get_addon_store(current_user: dict = Depends(require_operator)):
     
     return result
 
-@api_router.post("/operator/addons/purchase")
-async def purchase_addon(addon_code: str, current_user: dict = Depends(require_operator)):
-    """Purchase an add-on via Razorpay payment link"""
+@api_router.post("/operator/checkout/create-order")
+async def create_checkout_order(
+    item_type: str,
+    item_code: str = "",
+    months: int = 1,
+    plan_id: str = "",
+    current_user: dict = Depends(require_operator)
+):
+    """Create a Razorpay Order for fast checkout (subscriptions & add-ons)"""
     if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot purchase addons")
+        raise HTTPException(status_code=400, detail="Admin cannot checkout")
     
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
     
-    addon = await db.addons.find_one({"code": addon_code, "deleted_at": None}, {"_id": 0})
-    if not addon:
-        raise HTTPException(status_code=404, detail="Add-on not found")
-    
-    # Check if already purchased
-    active = operator.get("active_addons", [])
-    if addon_code in active:
-        raise HTTPException(status_code=400, detail="Add-on already active")
-    
-    # Check if included in plan
-    if operator.get("saas_plan_id"):
-        plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
-        if plan and addon_code in plan.get("included_addons", []):
-            # Free with plan — just activate it
-            active.append(addon_code)
-            await db.operators.update_one(
-                {"id": operator["id"]},
-                {"$set": {"active_addons": active, "updated_at": datetime.now(timezone.utc).isoformat()}}
-            )
-            return {
-                "id": generate_id(),
-                "addon_code": addon_code,
-                "addon_name": addon["name"],
-                "amount": 0,
-                "status": "activated",
-                "payment_link": None,
-                "message": f"{addon['name']} is included in your plan and has been activated!"
-            }
-    
-    amount = addon["price"]
-    
-    # Apply GST
     settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
     gst_rate = settings.get("gst_rate", 18) if settings else 18
-    gst_amount = round(amount * gst_rate / 100, 2)
-    total = amount + gst_amount
     
-    purchase_id = generate_id()
+    description = ""
+    base_amount = 0
+    receipt_prefix = ""
     
-    # Create Razorpay payment link
+    if item_type == "addon":
+        addon = await db.addons.find_one({"code": item_code, "deleted_at": None}, {"_id": 0})
+        if not addon:
+            raise HTTPException(status_code=404, detail="Add-on not found")
+        if item_code in operator.get("active_addons", []):
+            raise HTTPException(status_code=400, detail="Add-on already active")
+        # Check if included in plan
+        if operator.get("saas_plan_id"):
+            sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+            if sp and item_code in sp.get("included_addons", []):
+                # Free with plan — activate directly
+                active = operator.get("active_addons", [])
+                active.append(item_code)
+                await db.operators.update_one({"id": operator["id"]}, {"$set": {"active_addons": active}})
+                return {"status": "activated_free", "message": f"{addon['name']} is included in your plan and activated!"}
+        base_amount = addon["price"]
+        description = f"Add-on: {addon['name']} (Monthly)"
+        receipt_prefix = "ADDON"
+    
+    elif item_type == "subscription":
+        target_plan_id = plan_id or operator.get("saas_plan_id")
+        if not target_plan_id:
+            raise HTTPException(status_code=400, detail="No plan selected")
+        saas_plan = await db.saas_plans.find_one({"id": target_plan_id, "deleted_at": None}, {"_id": 0})
+        if not saas_plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        base_amount = saas_plan["monthly_price"] * months
+        description = f"{saas_plan['name']} x {months} month(s)"
+        receipt_prefix = "SUB"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item_type. Use 'addon' or 'subscription'")
+    
+    if base_amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+    
+    gst_amount = round(base_amount * gst_rate / 100, 2)
+    total = round(base_amount + gst_amount, 2)
+    
     razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
     razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
-    payment_link = None
+    if not razorpay_key or not razorpay_secret:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured")
     
-    if razorpay_key and razorpay_secret and total > 0:
-        try:
-            from services.razorpay_service import RazorpayService
-            rz = RazorpayService(razorpay_key, razorpay_secret)
-            result = rz.create_payment_link(
-                amount=total,
-                description=f"Add-on: {addon['name']}",
-                customer_name=operator.get("owner_name", "Operator"),
-                customer_email=operator.get("email", ""),
-                customer_phone=operator.get("phone", ""),
-                invoice_number=f"ADDON-{purchase_id[:8]}"
-            )
-            if result:
-                payment_link = result.get("short_url")
-        except Exception as e:
-            print(f"Razorpay addon payment link failed: {e}")
+    from services.razorpay_service import RazorpayService
+    rz = RazorpayService(razorpay_key, razorpay_secret)
     
-    # Record the purchase
+    order_id = generate_id()
+    order = rz.create_order(
+        amount=total,
+        receipt=f"{receipt_prefix}-{order_id[:8]}",
+        notes={
+            "type": item_type,
+            "item_code": item_code,
+            "plan_id": plan_id,
+            "months": str(months),
+            "operator_id": operator["id"],
+            "internal_order_id": order_id
+        }
+    )
+    
+    # Store order for verification
     now = datetime.now(timezone.utc)
-    purchase = {
-        "id": purchase_id,
+    await db.checkout_orders.insert_one({
+        "id": order_id,
+        "razorpay_order_id": order["id"],
         "operator_id": operator["id"],
-        "addon_code": addon_code,
-        "addon_name": addon["name"],
-        "base_amount": amount,
+        "item_type": item_type,
+        "item_code": item_code,
+        "plan_id": plan_id,
+        "months": months,
+        "base_amount": base_amount,
         "gst_amount": gst_amount,
         "total_amount": total,
-        "payment_link": payment_link,
-        "status": "pending",
+        "description": description,
+        "status": "created",
+        "created_at": now.isoformat(),
+        "deleted_at": None
+    })
+    
+    platform_name = settings.get("platform_name", "SaaS Billing Platform") if settings else "SaaS Billing Platform"
+    
+    return {
+        "razorpay_order_id": order["id"],
+        "razorpay_key": razorpay_key,
+        "amount": int(total * 100),
+        "currency": "INR",
+        "name": platform_name,
+        "description": description,
+        "base_amount": base_amount,
+        "gst_amount": gst_amount,
+        "total_amount": total,
+        "prefill": {
+            "name": operator.get("owner_name", ""),
+            "email": operator.get("email", ""),
+            "contact": operator.get("phone", "")
+        }
+    }
+
+@api_router.post("/operator/checkout/verify")
+async def verify_checkout_payment(
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+    current_user: dict = Depends(require_operator)
+):
+    """Verify Razorpay payment and activate the purchase"""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot verify checkout")
+    
+    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if not razorpay_key or not razorpay_secret:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+    
+    from services.razorpay_service import RazorpayService
+    rz = RazorpayService(razorpay_key, razorpay_secret)
+    
+    valid = rz.verify_payment_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+    if not valid:
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+    
+    # Find the order
+    order = await db.checkout_orders.find_one(
+        {"razorpay_order_id": razorpay_order_id, "operator_id": current_user["operator_id"]},
+        {"_id": 0}
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    now = datetime.now(timezone.utc)
+    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+    
+    if order["item_type"] == "addon":
+        active = operator.get("active_addons", [])
+        if order["item_code"] not in active:
+            active.append(order["item_code"])
+            await db.operators.update_one(
+                {"id": operator["id"]},
+                {"$set": {"active_addons": active, "updated_at": now.isoformat()}}
+            )
+        result_msg = f"Add-on '{order['item_code']}' activated"
+    
+    elif order["item_type"] == "subscription":
+        from dateutil.relativedelta import relativedelta
+        current_end = operator.get("subscription_ends_at")
+        if current_end:
+            start = datetime.fromisoformat(current_end)
+            if start < now:
+                start = now
+        else:
+            start = now
+        new_end = start + relativedelta(months=order["months"])
+        
+        update_fields = {
+            "subscription_ends_at": new_end.isoformat(),
+            "status": "active",
+            "is_read_only": False,
+            "updated_at": now.isoformat()
+        }
+        if order.get("plan_id"):
+            update_fields["saas_plan_id"] = order["plan_id"]
+        await db.operators.update_one({"id": operator["id"]}, {"$set": update_fields})
+        result_msg = f"Subscription extended by {order['months']} month(s)"
+    else:
+        result_msg = "Payment verified"
+    
+    # Mark order as completed
+    await db.checkout_orders.update_one(
+        {"razorpay_order_id": razorpay_order_id},
+        {"$set": {
+            "status": "paid",
+            "razorpay_payment_id": razorpay_payment_id,
+            "paid_at": now.isoformat()
+        }}
+    )
+    
+    # Record in saas_payments
+    payment_record = {
+        "id": generate_id(),
+        "operator_id": operator["id"],
+        "order_id": order["id"],
+        "razorpay_order_id": razorpay_order_id,
+        "razorpay_payment_id": razorpay_payment_id,
+        "item_type": order["item_type"],
+        "item_code": order.get("item_code", ""),
+        "base_amount": order["base_amount"],
+        "gst_amount": order["gst_amount"],
+        "total_amount": order["total_amount"],
+        "status": "completed",
         "created_at": now.isoformat(),
         "deleted_at": None
     }
-    await db.addon_purchases.insert_one(purchase)
-    purchase.pop("_id", None)
-    
-    return purchase
-
-@api_router.post("/operator/addons/activate")
-async def activate_addon_after_payment(addon_code: str, current_user: dict = Depends(require_operator)):
-    """Manually activate an add-on (simulates successful payment callback)"""
-    if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot activate addons here")
-    
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    if not operator:
-        raise HTTPException(status_code=404, detail="Operator not found")
-    
-    addon = await db.addons.find_one({"code": addon_code, "deleted_at": None}, {"_id": 0})
-    if not addon:
-        raise HTTPException(status_code=404, detail="Add-on not found")
-    
-    active = operator.get("active_addons", [])
-    if addon_code in active:
-        return {"message": "Add-on already active", "status": "active"}
-    
-    active.append(addon_code)
-    now = datetime.now(timezone.utc)
-    await db.operators.update_one(
-        {"id": operator["id"]},
-        {"$set": {"active_addons": active, "updated_at": now.isoformat()}}
-    )
-    
-    # Mark purchase as completed
-    await db.addon_purchases.update_one(
-        {"operator_id": operator["id"], "addon_code": addon_code, "status": "pending"},
-        {"$set": {"status": "completed", "paid_at": now.isoformat()}}
-    )
+    await db.saas_payments.insert_one(payment_record)
     
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                   "purchase", "addons", None, {"addon": addon["name"], "amount": addon["price"]},
+                   "payment", "checkout", None, {"type": order["item_type"], "amount": order["total_amount"]},
                    operator_id=operator["id"])
     
-    return {"message": f"{addon['name']} activated successfully", "status": "active"}
-
-@api_router.get("/operator/addons/my")
-async def get_my_addons(current_user: dict = Depends(require_operator)):
-    """Get operator's active add-ons"""
-    if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Not applicable for admin")
-    
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    if not operator:
-        raise HTTPException(status_code=404, detail="Operator not found")
-    
-    active_codes = operator.get("active_addons", [])
-    addons = await db.addons.find({"code": {"$in": active_codes}, "deleted_at": None}, {"_id": 0}).to_list(50)
-    return addons
+    return {"status": "success", "message": result_msg}
 
 @api_router.get("/operator/subscription")
 async def get_operator_subscription(current_user: dict = Depends(require_operator)):
