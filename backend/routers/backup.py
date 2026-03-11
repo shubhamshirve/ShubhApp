@@ -1,5 +1,6 @@
 """Admin backup & restore system with scheduled daily backups."""
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import FileResponse
 from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel
@@ -122,11 +123,30 @@ async def restore_backup(
 
     logger.info(f"Restored backup {backup_id} — {len(restored)} collections")
     return {
-        "message": f"Backup restored successfully",
+        "message": "Backup restored successfully",
         "backup_id": backup_id,
         "collections_restored": restored,
         "records_restored": sum(len(data["collections"].get(c, [])) for c in restored),
     }
+
+
+@router.get("/download/{backup_id}")
+async def download_backup(backup_id: str, current_user: dict = Depends(require_admin)):
+    """Download a backup file as a gzipped JSON attachment."""
+    meta = await db.backups.find_one({"id": backup_id}, {"_id": 0})
+    if not meta:
+        raise HTTPException(status_code=404, detail="Backup not found")
+
+    filepath = BACKUP_DIR / meta["filename"]
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Backup file not found on disk")
+
+    return FileResponse(
+        path=str(filepath),
+        media_type="application/gzip",
+        filename=meta["filename"],
+        headers={"Content-Disposition": f"attachment; filename={meta['filename']}"},
+    )
 
 
 @router.delete("/{backup_id}")

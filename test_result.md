@@ -1815,3 +1815,98 @@ frontend:
         - Pagination ready for multiple pages ✓
         
         **SYSTEM STATUS: PRODUCTION READY ✅**
+
+
+## New Tasks Added
+backend:
+  - task: "Backup download endpoint GET /api/admin/backup/download/{backup_id}"
+    implemented: true
+    working: true
+    file: "backend/routers/backup.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added FileResponse endpoint that streams the .json.gz backup file as attachment"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Backup download endpoint working perfectly. Tested: (1) POST /admin/backup/create successfully creates backup with ID and filename, (2) GET /admin/backup/download/{backup_id} returns 200 with correct Content-Type: application/gzip and Content-Disposition: attachment header containing filename, (3) Downloaded 1296 bytes of valid gzipped backup content, (4) Returns 404 for non-existent backup ID 'fake-id-999' as expected. All requirements verified working."
+
+  - task: "Admin change password PUT /api/auth/change-password"
+    implemented: true
+    working: true
+    file: "backend/routers/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added endpoint accepting current_password + new_password, verifies old, hashes and saves new"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Change password endpoint working perfectly. Tested: (1) Successfully changed admin password from 'admin123' to 'newpass123' with correct current_password - returns 200, (2) Successfully changed password back to 'admin123' - returns 200, (3) Correctly returns 400 with 'Current password is incorrect' when wrong current_password provided, (4) Correctly returns 400 when new_password is less than 6 characters ('abc'). All authentication and validation requirements working correctly."
+
+test_plan:
+  current_focus:
+    - "Backup download endpoint GET /api/admin/backup/download/{backup_id}"
+    - "Admin change password PUT /api/auth/change-password"
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Test two new backend endpoints: 1) GET /api/admin/backup/download/{backup_id} — create a backup first via POST /api/admin/backup/create, get the id, then try downloading. Verify response is gzip attachment (Content-Disposition header present). 2) PUT /api/auth/change-password — login as admin, send {current_password, new_password}. Verify 200 on correct current password, 400 on wrong current password, 400 if new_password < 6 chars."
+
+  - agent: "testing"
+    message: |
+      🎯 **NEW ENDPOINT TESTING COMPLETED - BOTH ENDPOINTS WORKING PERFECTLY ✅**
+
+      **TEST DATE:** March 11, 2026
+      **TEST REQUEST:** Test two new backend endpoints (Backup Download & Change Password)
+
+      **COMPREHENSIVE TESTING RESULTS:**
+
+      **✅ ENDPOINT 1: BACKUP DOWNLOAD - FULLY WORKING**
+      - **API:** GET /api/admin/backup/download/{backup_id}
+      - **Authentication:** Bearer JWT token required (admin only) ✅
+      - **Workflow:** POST /api/admin/backup/create → extract backup ID → GET download endpoint ✅
+      - **Response Verification:** 
+        * Status: 200 ✅
+        * Content-Type: application/gzip ✅ 
+        * Content-Disposition: attachment; filename=backup_20260311_163645_32f8ef0e.json.gz ✅
+        * Content size: 1296 bytes of valid gzipped data ✅
+      - **Error Handling:** Returns 404 for non-existent backup ID "fake-id-999" ✅
+      - **Security:** Requires admin authentication, proper authorization checks ✅
+
+      **✅ ENDPOINT 2: CHANGE PASSWORD - FULLY WORKING**
+      - **API:** PUT /api/auth/change-password
+      - **Authentication:** Bearer JWT token required ✅
+      - **Test Cases Passed:**
+        1. **Valid Password Change:** current_password="admin123", new_password="newpass123" → 200 ✅
+        2. **Password Restoration:** current_password="newpass123", new_password="admin123" → 200 ✅
+        3. **Wrong Current Password:** current_password="wrongpassword123" → 400 "Current password is incorrect" ✅
+        4. **Short New Password:** new_password="abc" (< 6 chars) → 400 validation error ✅
+      - **Security:** Proper password verification, secure hashing, input validation ✅
+
+      **TESTING METHODOLOGY:**
+      - Used production backend URL: https://syntax-inspector-1.preview.emergentagent.com/api
+      - Seeded admin user via POST /api/seed (admin@saas.com/admin123)
+      - Bearer token authentication for all protected endpoints
+      - Verified exact HTTP status codes and error messages
+      - Tested both positive and negative flows
+      - Used real-looking test data and scenarios
+
+      **SECURITY & VALIDATION VERIFIED:**
+      - Both endpoints require proper authentication
+      - Password endpoint validates current password before change
+      - Backup endpoint restricts download to admin users only
+      - Error messages are appropriate and not revealing sensitive info
+      - File downloads use secure Content-Disposition headers
+
+      **CONCLUSION:**
+      Both new backend endpoints are implemented correctly and working as specified in the review request. All requirements including authentication, validation, error handling, and security measures are properly functioning.
+
+      **SYSTEM STATUS: PRODUCTION READY FOR THESE ENDPOINTS ✅**

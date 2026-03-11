@@ -31,7 +31,7 @@ import {
 import { toast } from "sonner";
 import {
   Settings, CreditCard, Trash2, Plus, Info,
-  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff
+  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff, Download, Lock, CheckCircle2
 } from "lucide-react";
 
 const AdminSettings = () => {
@@ -50,6 +50,11 @@ const AdminSettings = () => {
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [restorePassword, setRestorePassword] = useState("");
   const [restoring, setRestoring] = useState(false);
+
+  // Change-password state
+  const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
+  const [pwLoading, setPwLoading] = useState(false);
+  const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
 
   // WhatsApp config state
   const [waConfig, setWaConfig] = useState({ phone_number_id: "", access_token: "", business_account_id: "" });
@@ -188,6 +193,47 @@ const AdminSettings = () => {
   const formatSize = (kb) => kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
   const formatDate = (iso) => new Date(iso).toLocaleString();
 
+  const handleDownload = async (backup) => {
+    try {
+      const res = await authAxios.get(`/admin/backup/download/${backup.id}`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/gzip" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", backup.filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Download failed");
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (pwForm.new_password !== pwForm.confirm_password) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (pwForm.new_password.length < 6) {
+      toast.error("New password must be at least 6 characters");
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await authAxios.put("/auth/change-password", {
+        current_password: pwForm.current_password,
+        new_password: pwForm.new_password,
+      });
+      toast.success("Password changed successfully");
+      setPwForm({ current_password: "", new_password: "", confirm_password: "" });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to change password");
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <AdminLayout title="Settings">
@@ -207,6 +253,7 @@ const AdminSettings = () => {
             <TabsTrigger value="gateways">Payment Gateways</TabsTrigger>
             <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -477,6 +524,12 @@ const AdminSettings = () => {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm"
+                              className="text-blue-600 hover:bg-blue-50 border-blue-200"
+                              onClick={() => handleDownload(b)}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1" /> Download
+                            </Button>
+                            <Button variant="outline" size="sm"
                               className="text-amber-600 hover:bg-amber-50 border-amber-200"
                               onClick={() => { setRestoreTarget(b); setRestorePassword(""); }}
                             >
@@ -494,6 +547,85 @@ const AdminSettings = () => {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security" className="mt-6">
+            <Card className="max-w-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lock className="w-5 h-5" /> Change Password
+                </CardTitle>
+                <p className="text-sm text-slate-500">Update your admin account password.</p>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="current_password">Current Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="current_password"
+                        type={showPw.current ? "text" : "password"}
+                        value={pwForm.current_password}
+                        onChange={(e) => setPwForm(f => ({ ...f, current_password: e.target.value }))}
+                        required
+                        placeholder="Enter current password"
+                      />
+                      <button type="button" tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}>
+                        {showPw.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new_password">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new_password"
+                        type={showPw.new ? "text" : "password"}
+                        value={pwForm.new_password}
+                        onChange={(e) => setPwForm(f => ({ ...f, new_password: e.target.value }))}
+                        required
+                        placeholder="At least 6 characters"
+                      />
+                      <button type="button" tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        onClick={() => setShowPw(s => ({ ...s, new: !s.new }))}>
+                        {showPw.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm_password">Confirm New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm_password"
+                        type={showPw.confirm ? "text" : "password"}
+                        value={pwForm.confirm_password}
+                        onChange={(e) => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
+                        required
+                        placeholder="Repeat new password"
+                      />
+                      <button type="button" tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}>
+                        {showPw.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  {pwForm.new_password && pwForm.confirm_password && (
+                    <p className={`text-sm flex items-center gap-1 ${pwForm.new_password === pwForm.confirm_password ? "text-green-600" : "text-red-500"}`}>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {pwForm.new_password === pwForm.confirm_password ? "Passwords match" : "Passwords do not match"}
+                    </p>
+                  )}
+                  <Button type="submit" disabled={pwLoading} className="w-full">
+                    {pwLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Changing...</> : <><Shield className="w-4 h-4 mr-2" /> Change Password</>}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>

@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import {
   Database, Plus, RefreshCw, Trash2, RotateCcw,
-  CheckCircle, Clock, Shield, HardDrive, AlertTriangle,
+  CheckCircle, Clock, Shield, HardDrive, AlertTriangle, Download,
 } from "lucide-react";
 
 const AdminBackup = () => {
@@ -95,6 +95,22 @@ const AdminBackup = () => {
   };
 
   const formatDate = (iso) => new Date(iso).toLocaleString();
+
+  const handleDownload = async (backup) => {
+    try {
+      const res = await authAxios.get(`/admin/backup/download/${backup.id}`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/gzip" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", backup.filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Download failed");
+    }
+  };
 
   if (loading) {
     return (
@@ -205,6 +221,15 @@ const AdminBackup = () => {
                       <TableCell className="text-sm">{(b.total_records || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                            onClick={() => handleDownload(b)}
+                          >
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Download
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

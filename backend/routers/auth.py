@@ -1,6 +1,7 @@
 """Auth router: register, login, me."""
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel
 
 from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
@@ -114,3 +115,26 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         impersonated_by=current_user.get("impersonated_by"),
         created_at=datetime.fromisoformat(current_user["created_at"])
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.put("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Change password for the currently logged-in user."""
+    if not verify_password(data.current_password, current_user["password"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    new_hashed = hash_password(data.new_password)
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Password changed successfully"}
