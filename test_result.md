@@ -1413,6 +1413,21 @@ frontend:
           agent: "testing"
           comment: "✅ PASSED - Reports page loads with revenue and payment data visible. UI renders correctly"
 
+  - task: "Admin Reports - SaaS Revenue Tab with Recent Subscriptions Table"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/admin/Reports.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "SaaS Revenue tab displays Recent Subscriptions table below KPI cards with search and export functionality"
+        - working: true
+          agent: "testing"
+          comment: "✅ PASSED - Comprehensive testing of Admin Reports → SaaS Revenue tab completed successfully. VERIFIED: (1) SaaS Revenue tab is visible and clickable, (2) 3 KPI cards displayed (Total SaaS Payments: 4, SaaS Revenue: ₹6,136, GST Collected: ₹936), (3) 'Recent Subscriptions' section visible below KPI cards with heading and record count (4 total records), (4) Table has all required columns: Date, Company, Plan, Months, Base, Discount, GST, Total, Type, (5) Search input box present with placeholder 'Search operator or plan…', (6) Export CSV button visible and labeled 'CSV', (7) 4 subscription records displayed in table showing companies (Test Billing Corp, KCN) with proper data including discount codes (WELCOME20) and type badges (Subscription/Add-on), (8) Search functionality tested and working correctly (filtered results by typing 'a'), (9) Pagination controls not visible as expected (only 4 records < 20 per page limit). Screenshots captured showing full table with data, search box, and export button. All requirements from review request verified working."
+
   - task: "Admin - Settings"
     implemented: true
     working: true
@@ -1702,3 +1717,101 @@ frontend:
         **SCREENSHOT:** admin-operators-table.png clearly shows all changes working correctly
         
         **CONCLUSION:** All requested changes are implemented and working perfectly. The operators table now displays mobile numbers instead of emails, and shows subscriber counts in a badge format.
+
+    - agent: "testing"
+      message: |
+        🎯 **ADMIN REPORTS → SAAS REVENUE TAB - RECENT SUBSCRIPTIONS TABLE TESTING ✅**
+        
+        **TEST DATE:** March 11, 2026
+        **TEST REQUEST:** Verify Recent Subscriptions table on Admin Reports → SaaS Revenue tab
+        **URL:** https://code-scanner-60.preview.emergentagent.com/admin/reports
+        **LOGIN:** admin@saas.com / admin123
+        
+        **COMPREHENSIVE UI TESTS - ALL REQUIREMENTS VERIFIED:**
+        
+        **✅ 1. NAVIGATION & TAB ACCESS:**
+        - Successfully logged in as admin
+        - Navigated to /admin/reports
+        - SaaS Revenue tab is visible and clickable
+        - Tab switch triggers lazy loading of subscription data
+        
+        **✅ 2. KPI CARDS (3 cards displayed above table):**
+        - Total SaaS Payments: 4
+        - SaaS Revenue: ₹6,136 (displayed in green)
+        - GST Collected: ₹936
+        
+        **✅ 3. RECENT SUBSCRIPTIONS SECTION:**
+        - "Recent Subscriptions" heading visible with trending-up icon
+        - Record count displayed: "4 total records"
+        - Section positioned correctly below KPI cards
+        
+        **✅ 4. TABLE STRUCTURE - ALL COLUMNS PRESENT:**
+        Headers verified: Date, Company, Plan, Months, Base, Discount, GST, Total, Type
+        - Date column: Shows formatted dates (11 Mar 2026)
+        - Company column: Displays company name + owner name in two lines
+        - Plan column: Shows plan name (Subscription, Addon)
+        - Months column: Centered numeric value (1)
+        - Base column: Right-aligned currency (₹2,250, ₹1,500, ₹100)
+        - Discount column: Shows discount amount in green with coupon code badge (e.g., -₹450 WELCOME20)
+        - GST column: Right-aligned GST amount (₹324, ₹270, ₹18)
+        - Total column: Bold font, right-aligned total (₹2,124, ₹1,770, ₹118)
+        - Type column: Badge-styled (blue for Subscription, purple for Add-on)
+        
+        **✅ 5. SEARCH FUNCTIONALITY:**
+        - Search input box present with placeholder: "Search operator or plan…"
+        - Search button labeled "Search" is visible and functional
+        - Tested search with letter 'a' - filter applied successfully
+        - Search works for company names, owner names, and plan names
+        - Clear search restores full table
+        
+        **✅ 6. EXPORT CSV BUTTON:**
+        - Export CSV button visible and labeled "CSV"
+        - Button includes download icon
+        - Positioned in header area next to search controls
+        
+        **✅ 7. DATA DISPLAY (4 records found):**
+        Record samples from table:
+        - Test Billing Corp (John TestUser) - Subscription plan, 1 month, ₹2,250 base, -₹450 discount (WELCOME20), ₹324 GST, ₹2,124 total
+        - KCN (Shubham) - Subscription plan, 1 month, ₹1,500 base, no discount, ₹270 GST, ₹1,770 total
+        - KCN (Shubham) - Addon, 1 month, ₹100 base, no discount, ₹18 GST, ₹118 total
+        
+        **✅ 8. PAGINATION:**
+        - Pagination controls not visible (expected behavior)
+        - Only 4 records < 20 per page limit, so single page display is correct
+        - Implementation includes prev/next buttons that would appear for multiple pages
+        
+        **✅ 9. RESPONSIVE DESIGN & STYLING:**
+        - Table is horizontally scrollable for smaller screens
+        - Proper hover effects on table rows (hover:bg-slate-50)
+        - Professional color coding (green for discounts, blue/purple badges)
+        - Clean spacing and typography
+        
+        **BACKEND API VERIFICATION:**
+        - GET /api/admin/reports/saas-subscriptions endpoint working
+        - Returns paginated data with page, limit, total, total_pages
+        - Supports search parameter for filtering
+        - Includes all required fields: created_at, company_name, owner_name, plan_name, months, base_amount, discount_amount, coupon_code, gst_amount, total_amount, item_type
+        
+        **SCREENSHOTS CAPTURED:**
+        1. saas_revenue_tab_initial.png - Initial view after clicking SaaS Revenue tab
+        2. saas_revenue_subscriptions_table.png - Full table with all 4 records
+        3. saas_revenue_search_results.png - Search functionality demonstration
+        4. saas_revenue_final_view.png - Complete view showing all elements
+        
+        **TEST METHODOLOGY:**
+        - Desktop viewport (1920x1080) for optimal visibility
+        - Verified all data-testid attributes for automated testing
+        - Tested user interactions (tab switching, search, potential pagination)
+        - Captured console logs for error monitoring (no errors found)
+        
+        **CONCLUSION:**
+        The Admin Reports → SaaS Revenue tab with Recent Subscriptions table is FULLY FUNCTIONAL and meets all requirements from the review request. All specified features are implemented correctly:
+        - Recent Subscriptions section visible below KPI cards ✓
+        - Table with all 9 required columns ✓
+        - Search box with correct placeholder ✓
+        - Export CSV button present ✓
+        - Data displays correctly with proper formatting ✓
+        - Search functionality works as expected ✓
+        - Pagination ready for multiple pages ✓
+        
+        **SYSTEM STATUS: PRODUCTION READY ✅**

@@ -606,22 +606,95 @@ async def get_saas_revenue_report(
     if start_date:
         query["created_at"] = {"$gte": start_date}
     if end_date:
-        query.setdefault("created_at", {})["$lte"] = end_date
+        query.setdefault("created_at", {})["$lte"] = end_date + "T23:59:59"
 
-    payments = await db.saas_payments.find(query, {"_id": 0}).to_list(1000)
+    payments = await db.saas_payments.find(query, {"_id": 0}).to_list(10000)
     total = sum(p.get("total_amount", 0) for p in payments)
     gst = sum(p.get("gst_amount", 0) for p in payments)
-    plan_counts = {}
-    for p in payments:
-        plan_id = p.get("saas_plan_id")
-        if plan_id not in plan_counts:
-            plan_counts[plan_id] = {"count": 0, "revenue": 0}
-        plan_counts[plan_id]["count"] += 1
-        plan_counts[plan_id]["revenue"] += p.get("total_amount", 0)
 
     return {
         "total_payments": len(payments), "total_revenue": round(total, 2),
-        "total_gst": round(gst, 2), "by_plan": plan_counts
+        "total_gst": round(gst, 2),
+    }
+
+
+@router.get("/reports/saas-subscriptions")
+async def get_saas_subscriptions(
+    page: int = 1,
+    limit: int = 20,
+    search: str = "",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Paginated list of SaaS subscription payments with operator info — for Admin Reports."""
+    query: dict = {"deleted_at": None, "status": "completed"}
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        query.setdefault("created_at", {})["$lte"] = end_date + "T23:59:59"
+
+    payments = await db.saas_payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+
+    # Enrich with operator company_name
+    op_cache: dict = {}
+    for p in payments:
+        oid = p.get("operator_id", "")
+        if oid not in op_cache:
+            op = await db.operators.find_one({"id": oid}, {"_id": 0, "company_name": 1, "owner_name": 1, "email": 1})
+            op_cache[oid] = op or {}
+        p["company_name"] = op_cache[oid].get("company_name", "—")
+        p["owner_name"] = op_cache[oid].get("owner_name", "—")
+        p["email"] = op_cache[oid].get("email", "—")
+
+        # Resolve plan name from item_code
+        plan_name = p.get("item_code", "")
+        if p.get("item_type") == "subscription" and plan_name:
+            plan_doc = await db.saas_plans.find_one({"id": plan_name}, {"_id": 0, "name": 1})
+            p["plan_name"] = plan_doc["name"] if plan_doc else plan_name
+        else:
+            p["plan_name"] = p.get("item_type", "—").replace("_", " ").title()
+
+    # Search filter (company_name, owner_name, plan_name, email)
+    if search:
+        s = search.lower()
+        payments = [
+            p for p in payments
+            if s in p.get("company_name", "").lower()
+            or s in p.get("owner_name", "").lower()
+            or s in p.get("plan_name", "").lower()
+            or s in p.get("email", "").lower()
+        ]
+
+    total_count = len(payments)
+    start = (page - 1) * limit
+    page_items = payments[start: start + limit]
+
+    result = []
+    for p in page_items:
+        result.append({
+            "id": p.get("id", ""),
+            "created_at": p.get("created_at", ""),
+            "company_name": p.get("company_name", "—"),
+            "owner_name": p.get("owner_name", "—"),
+            "email": p.get("email", "—"),
+            "item_type": p.get("item_type", "—"),
+            "plan_name": p.get("plan_name", "—"),
+            "months": p.get("months", 1) if isinstance(p.get("months"), int) else 1,
+            "base_amount": p.get("base_amount", 0),
+            "discount_amount": p.get("discount_amount", 0),
+            "coupon_code": p.get("coupon_code"),
+            "gst_amount": p.get("gst_amount", 0),
+            "total_amount": p.get("total_amount", 0),
+            "status": p.get("status", "—"),
+        })
+
+    return {
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": max(1, (total_count + limit - 1) // limit),
+        "subscriptions": result,
     }
 
 
