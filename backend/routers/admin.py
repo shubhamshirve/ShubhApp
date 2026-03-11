@@ -754,6 +754,20 @@ async def trigger_reminders(current_user: dict = Depends(require_admin)):
     return await service.send_overdue_reminders(days_overdue=1)
 
 
+@router.post("/cron/process-scheduled-reminders")
+async def trigger_scheduled_reminders(current_user: dict = Depends(require_admin)):
+    """Manually trigger processing of operator-configured scheduled reminders."""
+    from services.cron_service import CronJobService
+    service = CronJobService(db)
+    results = await service.process_scheduled_reminders()
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "trigger", "cron_jobs", None, {"action": "process_scheduled_reminders", "results": results},
+        ip_address=current_user.get("_ip_address")
+    )
+    return results
+
+
 @router.post("/cron/check-expiry")
 async def trigger_expiry_check(current_user: dict = Depends(require_admin)):
     from services.cron_service import CronJobService

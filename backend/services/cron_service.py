@@ -369,6 +369,182 @@ class CronJobService:
         return invoice
 
 
+    async def process_scheduled_reminders(self) -> Dict[str, Any]:
+        """
+        Process all operator reminder schedules.
+        For each operator with payment_reminder addon + WhatsApp configured + reminders enabled:
+          - Check pending/overdue invoices
+          - Send reminders based on schedule (before due, on due, after due)
+          - Track reminders sent per invoice
+        """
+        results = {
+            "operators_processed": 0,
+            "reminders_sent": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+        now = datetime.now(timezone.utc)
+        today = now.date()
+
+        # Get all reminder settings that are enabled
+        settings_list = await self.db.reminder_settings.find(
+            {"enabled": True}, {"_id": 0}
+        ).to_list(1000)
+
+        for settings in settings_list:
+            operator_id = settings["operator_id"]
+            try:
+                # Verify operator is active
+                operator = await self.db.operators.find_one(
+                    {"id": operator_id, "status": {"$in": ["active", "trial"]}, "deleted_at": None},
+                    {"_id": 0},
+                )
+                if not operator:
+                    continue
+
+                # Check addon is active
+                has_addon = False
+                if "payment_reminder" in operator.get("active_addons", []):
+                    has_addon = True
+                else:
+                    plan = await self.db.saas_plans.find_one(
+                        {"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0}
+                    )
+                    if plan and "payment_reminder" in plan.get("included_addons", []):
+                        has_addon = True
+                if not has_addon:
+                    continue
+
+                # Check WhatsApp config
+                wa_config = await self.db.whatsapp_configs.find_one(
+                    {"operator_id": operator_id, "is_active": True}, {"_id": 0}
+                )
+                if not wa_config:
+                    continue
+
+                results["operators_processed"] += 1
+
+                # Get pending and overdue invoices
+                invoices = await self.db.invoices.find(
+                    {
+                        "operator_id": operator_id,
+                        "status": {"$in": ["pending", "overdue"]},
+                        "deleted_at": None,
+                    },
+                    {"_id": 0},
+                ).to_list(5000)
+
+                max_reminders = settings.get("max_reminders_per_invoice", 5)
+
+                for invoice in invoices:
+                    try:
+                        due_str = invoice.get("due_date", "")
+                        if not due_str:
+                            continue
+                        due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+
+                        days_diff = (due_date - today).days  # positive = before due, negative = after due
+
+                        should_send = False
+                        reason = ""
+
+                        # Before due date
+                        if days_diff > 0 and days_diff in settings.get("remind_before_due", []):
+                            should_send = True
+                            reason = f"{days_diff}d_before_due"
+                        # On due date
+                        elif days_diff == 0 and settings.get("remind_on_due", False):
+                            should_send = True
+                            reason = "on_due_date"
+                        # After due date
+                        elif days_diff < 0 and abs(days_diff) in settings.get("remind_after_due", []):
+                            should_send = True
+                            reason = f"{abs(days_diff)}d_after_due"
+
+                        if not should_send:
+                            continue
+
+                        # Check how many reminders already sent for this invoice
+                        sent_count = len(invoice.get("reminders_sent", []))
+                        if sent_count >= max_reminders:
+                            results["skipped"] += 1
+                            continue
+
+                        # Check if we already sent a reminder for this exact reason today
+                        already_sent_today = any(
+                            r.get("reason") == reason and r.get("date") == today.isoformat()
+                            for r in invoice.get("reminders_sent", [])
+                        )
+                        if already_sent_today:
+                            results["skipped"] += 1
+                            continue
+
+                        # Get subscriber
+                        subscriber = await self.db.subscribers.find_one(
+                            {"id": invoice["subscriber_id"], "deleted_at": None},
+                            {"_id": 0},
+                        )
+                        if not subscriber:
+                            continue
+
+                        # Send reminder
+                        from services.whatsapp_service import WhatsAppService
+
+                        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+
+                        if days_diff <= 0:
+                            # After due or on due — payment reminder
+                            days_overdue = max(0, abs(days_diff))
+                            await wa_service.send_payment_reminder(
+                                recipient_phone=subscriber["whatsapp_number"],
+                                customer_name=subscriber["name"],
+                                invoice_number=invoice["invoice_number"],
+                                amount_due=f"₹{invoice['final_amount']:,.2f}",
+                                days_overdue=str(days_overdue),
+                                payment_link=invoice.get("payment_link"),
+                            )
+                        else:
+                            # Before due — invoice notification / upcoming reminder
+                            await wa_service.send_invoice_notification(
+                                recipient_phone=subscriber["whatsapp_number"],
+                                customer_name=subscriber["name"],
+                                invoice_number=invoice["invoice_number"],
+                                amount=f"₹{invoice['final_amount']:,.2f}",
+                                due_date=due_date.strftime("%d %b %Y"),
+                                payment_link=invoice.get("payment_link"),
+                            )
+
+                        # Record the reminder
+                        reminder_record = {
+                            "reason": reason,
+                            "date": today.isoformat(),
+                            "sent_at": now.isoformat(),
+                        }
+                        await self.db.invoices.update_one(
+                            {"id": invoice["id"]},
+                            {
+                                "$push": {"reminders_sent": reminder_record},
+                                "$set": {"updated_at": now.isoformat()},
+                            },
+                        )
+
+                        results["reminders_sent"] += 1
+                        logger.info(
+                            f"Sent scheduled reminder for invoice {invoice['invoice_number']} "
+                            f"({reason}) to {subscriber['name']}"
+                        )
+
+                    except Exception as e:
+                        results["errors"].append(
+                            f"Invoice {invoice.get('invoice_number', '?')}: {str(e)}"
+                        )
+
+            except Exception as e:
+                results["errors"].append(f"Operator {operator_id}: {str(e)}")
+
+        return results
+
+
 async def run_daily_invoice_generation(db):
     """Daily cron job for invoice generation"""
     service = CronJobService(db)
@@ -377,8 +553,16 @@ async def run_daily_invoice_generation(db):
     return results
 
 
+async def run_daily_reminder_processing(db):
+    """Daily cron job for scheduled reminder processing"""
+    service = CronJobService(db)
+    results = await service.process_scheduled_reminders()
+    logger.info(f"Daily scheduled reminders: {results}")
+    return results
+
+
 async def run_hourly_reminder_check(db):
-    """Hourly cron job for overdue reminders"""
+    """Hourly cron job for overdue reminders (legacy — marks overdue invoices)"""
     service = CronJobService(db)
     results = await service.send_overdue_reminders(days_overdue=1)
     logger.info(f"Hourly reminder check: {results}")

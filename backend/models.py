@@ -363,6 +363,16 @@ class BulkNotificationRequest(BaseModel):
     message_template: str = "invoice"
 
 
+# ============== REMINDER SETTINGS MODELS ==============
+
+class ReminderSettingsUpdate(BaseModel):
+    enabled: bool = False
+    remind_before_due: List[int] = []      # e.g. [3, 1] = 3 days and 1 day before
+    remind_on_due: bool = False
+    remind_after_due: List[int] = []       # e.g. [1, 3, 7] = 1, 3, 7 days after
+    max_reminders_per_invoice: int = 5
+
+
 # ============== ADDON MODELS ==============
 
 class AddonCreate(BaseModel):

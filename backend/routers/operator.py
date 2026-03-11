@@ -16,6 +16,7 @@ from models import (
     InvoiceCreate, InvoiceResponse, PaymentLinkResponse,
     StaffCreate, StaffResponse, AuditLogResponse,
     PaymentGatewayConfig, WhatsAppConfig, SendNotificationRequest, BulkNotificationRequest,
+    ReminderSettingsUpdate,
 )
 from utils import generate_id, hash_password, generate_invoice_number
 from dependencies import require_operator, require_operator_no_staff, check_operator_read_only
@@ -1488,7 +1489,7 @@ async def get_operator_audit_logs(
     logs = await db.audit_logs.find(
         {"operator_id": current_user["operator_id"]}, {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return [AuditLogResponse(**{**l, "created_at": datetime.fromisoformat(l["created_at"])}) for l in logs]
+    return [AuditLogResponse(**{**log, "created_at": datetime.fromisoformat(log["created_at"])}) for log in logs]
 
 
 # ─── WhatsApp Config & Notifications ───────────────────────────────────────────
@@ -1594,3 +1595,75 @@ async def send_bulk_notification(data: BulkNotificationRequest, current_user: di
             results["failed"] += 1
             results["errors"].append({"subscriber_id": subscriber_id, "error": str(e)})
     return results
+
+
+# ─── Reminder Settings ──────────────────────────────────────────────────────
+
+VALID_BEFORE_DAYS = [1, 2, 3, 5, 7]
+VALID_AFTER_DAYS = [1, 3, 5, 7, 14, 30]
+
+
+@router.get("/reminder-settings")
+async def get_reminder_settings(current_user: dict = Depends(require_operator)):
+    """Get operator's payment reminder automation settings."""
+    operator_id = current_user["operator_id"]
+    if not await _has_addon(operator_id, "payment_reminder"):
+        raise HTTPException(status_code=403, detail="Payment reminder add-on is not enabled")
+
+    doc = await db.reminder_settings.find_one({"operator_id": operator_id}, {"_id": 0})
+    if not doc:
+        return {
+            "operator_id": operator_id,
+            "enabled": False,
+            "remind_before_due": [],
+            "remind_on_due": False,
+            "remind_after_due": [],
+            "max_reminders_per_invoice": 5,
+        }
+    doc.pop("_id", None)
+    return doc
+
+
+@router.put("/reminder-settings")
+async def update_reminder_settings(
+    data: ReminderSettingsUpdate,
+    current_user: dict = Depends(require_operator),
+):
+    """Update operator's payment reminder automation settings."""
+    operator_id = current_user["operator_id"]
+    if not await _has_addon(operator_id, "payment_reminder"):
+        raise HTTPException(status_code=403, detail="Payment reminder add-on is not enabled")
+    await check_operator_read_only(current_user)
+
+    # Validate day values
+    for d in data.remind_before_due:
+        if d not in VALID_BEFORE_DAYS:
+            raise HTTPException(status_code=400, detail=f"Invalid remind_before_due day: {d}. Allowed: {VALID_BEFORE_DAYS}")
+    for d in data.remind_after_due:
+        if d not in VALID_AFTER_DAYS:
+            raise HTTPException(status_code=400, detail=f"Invalid remind_after_due day: {d}. Allowed: {VALID_AFTER_DAYS}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_doc = {
+        "operator_id": operator_id,
+        "enabled": data.enabled,
+        "remind_before_due": sorted(set(data.remind_before_due), reverse=True),
+        "remind_on_due": data.remind_on_due,
+        "remind_after_due": sorted(set(data.remind_after_due)),
+        "max_reminders_per_invoice": max(1, min(data.max_reminders_per_invoice, 20)),
+        "updated_at": now,
+    }
+
+    await db.reminder_settings.update_one(
+        {"operator_id": operator_id},
+        {"$set": update_doc, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "reminder_settings", None, update_doc,
+        operator_id=operator_id,
+    )
+
+    return {**update_doc, "message": "Reminder settings updated successfully"}

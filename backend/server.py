@@ -145,17 +145,43 @@ async def seed_data():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start the daily auto-backup scheduler."""
+    """Start scheduled jobs: daily backup, invoice generation, reminders, expiry check."""
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from services.cron_service import (
+        run_daily_invoice_generation,
+        run_daily_reminder_processing,
+        run_daily_expiry_check,
+    )
+
     scheduler = AsyncIOScheduler()
-    # Run daily at 02:00 UTC
+
+    # Daily auto-backup at 02:00 UTC
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(_do_backup("auto")),
         "cron", hour=2, minute=0, id="daily_backup"
     )
+
+    # Daily auto-invoice generation at 06:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_invoice_generation(db)),
+        "cron", hour=6, minute=0, id="daily_invoices"
+    )
+
+    # Daily scheduled reminder processing at 07:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_reminder_processing(db)),
+        "cron", hour=7, minute=0, id="daily_reminders"
+    )
+
+    # Daily subscription expiry check at 01:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_expiry_check(db)),
+        "cron", hour=1, minute=0, id="daily_expiry"
+    )
+
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Daily auto-backup scheduler started (02:00 UTC)")
+    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00) UTC")
 
 
 @app.on_event("shutdown")
