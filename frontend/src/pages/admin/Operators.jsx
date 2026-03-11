@@ -301,7 +301,8 @@ const AdminOperators = () => {
                 <TableRow>
                   <TableHead>Company</TableHead>
                   <TableHead>Owner</TableHead>
-                  <TableHead>Email</TableHead>
+                  <TableHead>Mobile Number</TableHead>
+                  <TableHead>Subscribers</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Expires</TableHead>
@@ -311,7 +312,7 @@ const AdminOperators = () => {
               <TableBody>
                 {filteredOperators.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={8} className="text-center py-8 text-slate-500">
                       No operators found
                     </TableCell>
                   </TableRow>
@@ -327,7 +328,12 @@ const AdminOperators = () => {
                         </div>
                       </TableCell>
                       <TableCell>{operator.owner_name}</TableCell>
-                      <TableCell className="font-mono text-sm">{operator.email}</TableCell>
+                      <TableCell className="font-mono text-sm">{operator.phone || "-"}</TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 font-semibold text-sm">
+                          {operator.subscriber_count ?? 0}
+                        </span>
+                      </TableCell>
                       <TableCell>{getStatusBadge(operator.status)}</TableCell>
                       <TableCell>{operator.saas_plan_name || "-"}</TableCell>
                       <TableCell className="text-sm text-slate-500">

@@ -978,6 +978,9 @@ frontend:
         - working: true
           agent: "testing"
           comment: "✅ PASSED - Operators page loads with operator list visible. Action buttons (suspend, activate, impersonate) are present and accessible"
+        - working: true
+          agent: "testing"
+          comment: "✅ VERIFIED - Mobile Number and Subscribers columns working correctly. Table header shows 'Mobile Number' (not 'Email'), phone numbers display in correct format (+919876543210), Subscribers column shows numeric badge (0). Backend API returns 'phone' and 'subscriber_count' fields. staff_management addon exists with code 'staff_management'."
 
   - task: "Admin - Reports"
     implemented: true
@@ -1255,3 +1258,31 @@ frontend:
         
         **CONCLUSION:**
         The Multi-Tenant SaaS Billing Platform frontend is FULLY FUNCTIONAL with 100% of tested features working correctly. The application is production-ready from a UI perspective. The only issues detected are minor third-party CDN loading warnings that don't impact user experience.
+    
+    - agent: "testing"
+      message: |
+        ADMIN OPERATORS PAGE - MOBILE NUMBER & SUBSCRIBERS COLUMN VERIFICATION ✅
+        
+        **TEST DATE:** March 11, 2026
+        **TEST REQUEST:** Verify Mobile Number and Subscribers column changes on /admin/operators page
+        
+        **FRONTEND UI TESTS - ALL PASSED:**
+        ✅ Table header shows "Mobile Number" column (Email column removed)
+        ✅ Table header shows "Subscribers" column with count badge
+        ✅ Mobile Number column displays phone numbers in correct format (+919876543210)
+        ✅ Subscribers column displays numeric count in blue badge (0)
+        ✅ Table columns order: Company, Owner, Mobile Number, Subscribers, Status, Plan, Expires
+        
+        **BACKEND API TESTS - ALL PASSED:**
+        ✅ GET /api/admin/operators returns "phone" field with value "+919876543210"
+        ✅ GET /api/admin/operators returns "subscriber_count" field as numeric (0)
+        ✅ GET /api/admin/addons returns "staff_management" addon with code "staff_management"
+        
+        **VERIFIED IMPLEMENTATION:**
+        - Frontend: /app/frontend/src/pages/admin/Operators.jsx (lines 304-305 for headers, 331-336 for data)
+        - Backend: /app/backend/routers/admin.py (lines 90-100 for subscriber_count calculation)
+        - Backend: /app/backend/routers/admin.py (lines 354-376 for staff_management addon assignment)
+        
+        **SCREENSHOT:** admin-operators-table.png clearly shows all changes working correctly
+        
+        **CONCLUSION:** All requested changes are implemented and working perfectly. The operators table now displays mobile numbers instead of emails, and shows subscriber counts in a badge format.

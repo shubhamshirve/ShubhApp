@@ -1081,13 +1081,17 @@ async def create_staff(data: StaffCreate, current_user: dict = Depends(require_o
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if operator:
-        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
-        if plan:
-            current_count = await db.users.count_documents(
-                {"operator_id": current_user["operator_id"], "role": "staff", "deleted_at": None}
-            )
-            if current_count >= plan["max_staff"]:
-                raise HTTPException(status_code=403, detail=f"Staff limit ({plan['max_staff']}) reached")
+        # Use operator-level max_staff override (set when staff_management addon is assigned)
+        # falling back to the SaaS plan's max_staff
+        operator_max_staff = operator.get("max_staff")
+        if operator_max_staff is None:
+            plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
+            operator_max_staff = plan["max_staff"] if plan else 0
+        current_count = await db.users.count_documents(
+            {"operator_id": current_user["operator_id"], "role": "staff", "deleted_at": None}
+        )
+        if current_count >= operator_max_staff:
+            raise HTTPException(status_code=403, detail=f"Staff limit ({operator_max_staff}) reached")
     existing = await db.users.find_one({"email": data.email, "deleted_at": None})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")

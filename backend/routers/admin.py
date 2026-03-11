@@ -90,7 +90,14 @@ async def delete_saas_plan(plan_id: str, current_user: dict = Depends(require_ad
 @router.get("/operators", response_model=List[OperatorResponse])
 async def get_operators(current_user: dict = Depends(require_admin)):
     ops = await db.operators.find({"deleted_at": None}, {"_id": 0}).to_list(1000)
-    return [_parse_operator(o) for o in ops]
+    result = []
+    for o in ops:
+        subscriber_count = await db.subscribers.count_documents(
+            {"operator_id": o["id"], "deleted_at": None}
+        )
+        o["subscriber_count"] = subscriber_count
+        result.append(_parse_operator(o))
+    return result
 
 
 @router.get("/operators/{operator_id}", response_model=OperatorResponse)
@@ -358,9 +365,13 @@ async def assign_addon_to_operator(
     existing_addons = operator.get("active_addons", [])
     if addon_code not in existing_addons:
         existing_addons.append(addon_code)
+    update_fields = {"active_addons": existing_addons, "updated_at": now.isoformat()}
+    # When staff_management addon is assigned, set max_staff override to 5
+    if addon_code == "staff_management":
+        update_fields["max_staff"] = 5
     await db.operators.update_one(
         {"id": operator_id},
-        {"$set": {"active_addons": existing_addons, "updated_at": now.isoformat()}}
+        {"$set": update_fields}
     )
     return {"message": f"Addon '{addon['name']}' assigned to operator"}
 

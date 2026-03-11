@@ -85,6 +85,8 @@ class OperatorResponse(BaseModel):
     trial_ends_at: Optional[datetime] = None
     subscription_ends_at: Optional[datetime] = None
     is_read_only: bool = False
+    max_staff: Optional[int] = None
+    subscriber_count: Optional[int] = 0
     created_at: datetime
 
 

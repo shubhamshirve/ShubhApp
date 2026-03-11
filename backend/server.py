@@ -93,6 +93,7 @@ async def seed_data():
         {"code": "announcement",           "name": "Announcements",            "price": 100, "description": "Send bulk announcements (max 3/day)"},
         {"code": "payment_reminder",       "name": "Payment Reminders",        "price": 100, "description": "Auto WhatsApp reminders & invoice delivery"},
         {"code": "whatsapp_notifications", "name": "WhatsApp Notifications",   "price": 100, "description": "Send WhatsApp notifications to subscribers"},
+        {"code": "staff_management",       "name": "Staff Management",         "price": 100, "description": "Allow up to 5 staff members for your account"},
     ]
     for addon_data in required_addons:
         existing = await db.addons.find_one({"code": addon_data["code"], "deleted_at": None})
