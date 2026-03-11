@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timedelta
 
 # Test the 4 remaining problematic endpoints with proper authentication
-BASE_URL = "https://93e37f04-ed3c-45b3-8d75-2b332d20d27f.preview.emergentagent.com/api"
+BASE_URL = "https://multi-tenant-clean-1.preview.emergentagent.com/api"
 
 def make_request(method, endpoint, data=None, token=None, params=None):
     """Make HTTP request"""

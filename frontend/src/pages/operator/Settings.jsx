@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 
 const OperatorSettings = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, user } = useAuth();
+  const isImpersonated = !!user?.impersonated_by;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
@@ -203,14 +204,18 @@ const OperatorSettings = () => {
               <Building2 className="w-4 h-4 mr-2" />
               Business Profile
             </TabsTrigger>
-            <TabsTrigger value="payment" data-testid="tab-payment">
-              <CreditCard className="w-4 h-4 mr-2" />
-              Payment Gateway
-            </TabsTrigger>
-            <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">
-              <MessageCircle className="w-4 h-4 mr-2" />
-              WhatsApp
-            </TabsTrigger>
+            {isImpersonated && (
+              <TabsTrigger value="payment" data-testid="tab-payment">
+                <CreditCard className="w-4 h-4 mr-2" />
+                Payment Gateway
+              </TabsTrigger>
+            )}
+            {isImpersonated && (
+              <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">
+                <MessageCircle className="w-4 h-4 mr-2" />
+                WhatsApp
+              </TabsTrigger>
+            )}
             <TabsTrigger value="invoice" data-testid="tab-invoice">
               <FileText className="w-4 h-4 mr-2" />
               Invoice

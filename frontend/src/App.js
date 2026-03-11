@@ -23,6 +23,7 @@ import OperatorSettings from "./pages/operator/Settings";
 import OperatorSubscription from "./pages/operator/Subscription";
 import OperatorAnnouncements from "./pages/operator/Announcements";
 import AdminBackup from "./pages/admin/Backup";
+import OperatorAuditLogs from "./pages/operator/AuditLogs";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -36,6 +37,20 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token"));
+  const [features, setFeatures] = useState({});
+
+  const loadFeatures = async (tkn, role) => {
+    if (role === "operator" || role === "staff") {
+      try {
+        const res = await axios.get(`${API}/operator/features`, {
+          headers: { Authorization: `Bearer ${tkn}` }
+        });
+        setFeatures(res.data);
+      } catch { setFeatures({}); }
+    } else {
+      setFeatures({});
+    }
+  };
 
   useEffect(() => {
     const initAuth = async () => {
@@ -47,6 +62,7 @@ const AuthProvider = ({ children }) => {
           });
           setUser(response.data);
           setToken(storedToken);
+          await loadFeatures(storedToken, response.data.role);
         } catch (error) {
           localStorage.removeItem("token");
           setToken(null);
@@ -64,6 +80,7 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("token", access_token);
     setToken(access_token);
     setUser(userData);
+    await loadFeatures(access_token, userData.role);
     return userData;
   };
 
@@ -73,6 +90,7 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("token", access_token);
     setToken(access_token);
     setUser(userData);
+    await loadFeatures(access_token, userData.role);
     return userData;
   };
 
@@ -80,6 +98,7 @@ const AuthProvider = ({ children }) => {
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);
+    setFeatures({});
   };
 
   const authAxios = axios.create({
@@ -88,7 +107,7 @@ const AuthProvider = ({ children }) => {
   });
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features }}>
       {children}
     </AuthContext.Provider>
   );
@@ -212,6 +231,11 @@ function App() {
           <Route path="/operator/announcements" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorAnnouncements />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/audit-logs" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorAuditLogs />
             </ProtectedRoute>
           } />
           {/* Default Route */}

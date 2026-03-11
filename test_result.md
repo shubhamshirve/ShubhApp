@@ -1162,7 +1162,7 @@ frontend:
     - agent: "main"
       message: |
         Please test the frontend UI of this Multi-Tenant SaaS Billing Platform.
-        App URL: https://93e37f04-ed3c-45b3-8d75-2b332d20d27f.preview.emergentagent.com
+        App URL: https://multi-tenant-clean-1.preview.emergentagent.com
 
         CREDENTIALS:
         - Admin: admin@saas.com / admin123

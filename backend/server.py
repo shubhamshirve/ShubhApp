@@ -67,47 +67,77 @@ async def health_check():
 
 @app.post("/api/seed")
 async def seed_data():
-    """Seed initial admin account and default SaaS plans (idempotent)."""
+    """Seed initial admin, addons, and default SaaS plans (idempotent)."""
     from utils import generate_id, hash_password
     from datetime import datetime, timezone
 
-    if await db.users.find_one({"role": "admin", "deleted_at": None}):
+    seeded = []
+    now = datetime.now(timezone.utc)
+
+    # Admin user
+    if not await db.users.find_one({"role": "admin", "deleted_at": None}):
+        admin_user = {
+            "id": generate_id(), "email": "admin@saas.com", "name": "Super Admin",
+            "phone": "9999999999", "password": hash_password("admin123"),
+            "role": "admin", "operator_id": None, "status": "active",
+            "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+        }
+        await db.users.insert_one(admin_user)
+        seeded.append("admin_user")
+
+    # Required addons
+    required_addons = [
+        {"code": "audit_log",              "name": "Audit Logs",               "price": 100, "description": "Full audit trail of all user actions"},
+        {"code": "payment_gateway",        "name": "Payment Gateway",          "price": 100, "description": "Collect online payments from subscribers"},
+        {"code": "custom_payment_gateway", "name": "Custom Payment Gateway",   "price": 100, "description": "Use your own Razorpay/Cashfree credentials"},
+        {"code": "announcement",           "name": "Announcements",            "price": 100, "description": "Send bulk announcements (max 3/day)"},
+        {"code": "payment_reminder",       "name": "Payment Reminders",        "price": 100, "description": "Auto WhatsApp reminders & invoice delivery"},
+        {"code": "whatsapp_notifications", "name": "WhatsApp Notifications",   "price": 100, "description": "Send WhatsApp notifications to subscribers"},
+    ]
+    for addon_data in required_addons:
+        existing = await db.addons.find_one({"code": addon_data["code"], "deleted_at": None})
+        if not existing:
+            await db.addons.insert_one({
+                "id": generate_id(), **addon_data,
+                "status": "active", "created_at": now.isoformat(), "deleted_at": None
+            })
+            seeded.append(f"addon:{addon_data['code']}")
+
+    # SaaS Plans — only seed if none exist
+    if not await db.saas_plans.find_one({"deleted_at": None}):
+        plans = [
+            {"id": generate_id(), "name": "Starter (Trial)", "monthly_price": 0,
+             "max_subscribers": 250, "max_staff": 0, "trial_enabled": True, "trial_days": 3,
+             "gst_applicable": False, "included_addons": [],
+             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
+            {"id": generate_id(), "name": "Basic", "monthly_price": 1100,
+             "max_subscribers": 500, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
+             "gst_applicable": True, "included_addons": ["payment_gateway", "payment_reminder"],
+             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
+            {"id": generate_id(), "name": "Professional", "monthly_price": 2000,
+             "max_subscribers": 1000, "max_staff": 10, "trial_enabled": False, "trial_days": 0,
+             "gst_applicable": True,
+             "included_addons": ["payment_gateway", "payment_reminder", "audit_log", "announcement"],
+             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
+            {"id": generate_id(), "name": "Enterprise", "monthly_price": 5800,
+             "max_subscribers": 3000, "max_staff": 20, "trial_enabled": False, "trial_days": 0,
+             "gst_applicable": True,
+             "included_addons": ["payment_gateway", "custom_payment_gateway", "payment_reminder",
+                                  "audit_log", "announcement", "whatsapp_notifications"],
+             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
+        ]
+        await db.saas_plans.insert_many(plans)
+        seeded.append("saas_plans")
+
+    if not seeded:
         return {"message": "Data already seeded"}
 
-    now = datetime.now(timezone.utc)
-    admin_user = {
-        "id": generate_id(), "email": "admin@saas.com", "name": "Super Admin",
-        "phone": "9999999999", "password": hash_password("admin123"),
-        "role": "admin", "operator_id": None, "status": "active",
-        "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    return {
+        "message": "Data seeded successfully",
+        "seeded": seeded,
+        "admin_email": "admin@saas.com",
+        "admin_password": "admin123"
     }
-    await db.users.insert_one(admin_user)
-
-    plans = [
-        {"id": generate_id(), "name": "Starter (Trial)", "monthly_price": 0,
-         "max_subscribers": 10, "max_staff": 1, "trial_enabled": True, "trial_days": 3,
-         "notification_module": False, "auto_reminder": False, "audit_logs": False,
-         "payment_gateway_setup": False, "gst_applicable": False, "included_addons": [],
-         "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-        {"id": generate_id(), "name": "Basic", "monthly_price": 999,
-         "max_subscribers": 100, "max_staff": 3, "trial_enabled": False, "trial_days": 0,
-         "notification_module": True, "auto_reminder": True, "audit_logs": False,
-         "payment_gateway_setup": True, "gst_applicable": True, "included_addons": [],
-         "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-        {"id": generate_id(), "name": "Professional", "monthly_price": 2499,
-         "max_subscribers": 500, "max_staff": 10, "trial_enabled": False, "trial_days": 0,
-         "notification_module": True, "auto_reminder": True, "audit_logs": True,
-         "payment_gateway_setup": True, "gst_applicable": True, "included_addons": [],
-         "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-        {"id": generate_id(), "name": "Enterprise", "monthly_price": 4999,
-         "max_subscribers": 2000, "max_staff": 25, "trial_enabled": False, "trial_days": 0,
-         "notification_module": True, "auto_reminder": True, "audit_logs": True,
-         "payment_gateway_setup": True, "gst_applicable": True, "included_addons": [],
-         "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-    ]
-    await db.saas_plans.insert_many(plans)
-
-    return {"message": "Data seeded successfully", "admin_email": "admin@saas.com", "admin_password": "admin123"}
 
 
 # ── Shutdown ────────────────────────────────────────────────────────────────

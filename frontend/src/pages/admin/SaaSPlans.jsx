@@ -16,7 +16,15 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, Puzzle } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+import { Badge } from "../../components/ui/badge";
+import { Plus, Pencil, Trash2, Package, Puzzle, Users, UserCog, IndianRupee } from "lucide-react";
 
 const AdminSaaSPlans = () => {
   const { authAxios } = useAuth();
@@ -29,17 +37,34 @@ const AdminSaaSPlans = () => {
   const [showAddonDialog, setShowAddonDialog] = useState(false);
   const [editingAddon, setEditingAddon] = useState(null);
   const [addonForm, setAddonForm] = useState({ name: "", code: "", price: 0, description: "" });
+  // Tier pricing (must match backend models.py)
+  const SUBSCRIBER_TIERS = {250: 500, 500: 1000, 750: 1500, 1000: 2000, 1500: 3000, 2000: 4000, 3000: 5500};
+  const STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300};
+
+  const normalizeTier = (value, tierMap) => {
+    const keys = Object.keys(tierMap).map(Number);
+    if (keys.includes(value)) return value;
+    return keys.reduce((prev, curr) =>
+      Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+    );
+  };
+
+  const calcPrice = (maxSubs, maxStaff, selectedAddons) => {
+    const base = SUBSCRIBER_TIERS[maxSubs] || 0;
+    const staff = STAFF_TIERS[maxStaff] || 0;
+    const addonTotal = selectedAddons.reduce((sum, code) => {
+      const addon = addons.find(a => a.code === code);
+      return sum + (addon?.price || 0);
+    }, 0);
+    return base + staff + addonTotal;
+  };
+
   const [formData, setFormData] = useState({
     name: "",
-    monthly_price: 0,
-    max_subscribers: 100,
-    max_staff: 3,
+    max_subscribers: 250,
+    max_staff: 0,
     trial_enabled: false,
     trial_days: 0,
-    notification_module: false,
-    auto_reminder: false,
-    audit_logs: false,
-    payment_gateway_setup: false,
     gst_applicable: true,
     included_addons: []
   });
@@ -98,15 +123,10 @@ const AdminSaaSPlans = () => {
     setEditingPlan(plan);
     setFormData({
       name: plan.name,
-      monthly_price: plan.monthly_price,
-      max_subscribers: plan.max_subscribers,
-      max_staff: plan.max_staff,
+      max_subscribers: normalizeTier(plan.max_subscribers, SUBSCRIBER_TIERS),
+      max_staff: normalizeTier(plan.max_staff, STAFF_TIERS),
       trial_enabled: plan.trial_enabled,
       trial_days: plan.trial_days,
-      notification_module: plan.notification_module,
-      auto_reminder: plan.auto_reminder,
-      audit_logs: plan.audit_logs,
-      payment_gateway_setup: plan.payment_gateway_setup,
       gst_applicable: plan.gst_applicable,
       included_addons: plan.included_addons || []
     });
@@ -117,15 +137,10 @@ const AdminSaaSPlans = () => {
     setEditingPlan(null);
     setFormData({
       name: "",
-      monthly_price: 0,
-      max_subscribers: 100,
-      max_staff: 3,
+      max_subscribers: 250,
+      max_staff: 0,
       trial_enabled: false,
       trial_days: 0,
-      notification_module: false,
-      auto_reminder: false,
-      audit_logs: false,
-      payment_gateway_setup: false,
       gst_applicable: true,
       included_addons: []
     });
@@ -227,30 +242,20 @@ const AdminSaaSPlans = () => {
                   </div>
 
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Max Subscribers</span>
-                      <span className="font-medium">{plan.max_subscribers}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Subscribers</span>
+                      <span className="font-medium">{plan.max_subscribers.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Max Staff</span>
-                      <span className="font-medium">{plan.max_staff}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 flex items-center gap-1"><UserCog className="w-3.5 h-3.5" /> Staff</span>
+                      <span className="font-medium">{plan.max_staff === 0 ? "No staff" : plan.max_staff}</span>
                     </div>
-                  </div>
-
-                  <div className="border-t pt-3 space-y-1.5 text-xs">
-                    {[
-                      { key: "notification_module", label: "Notification Module" },
-                      { key: "auto_reminder", label: "Auto Reminder" },
-                      { key: "audit_logs", label: "Audit Logs" },
-                      { key: "payment_gateway_setup", label: "Payment Gateway" },
-                    ].map(f => (
-                      <div key={f.key} className="flex items-center gap-2">
-                        <span className={plan[f.key] ? "text-emerald-600" : "text-slate-400"}>
-                          {plan[f.key] ? "✓" : "×"}
-                        </span>
-                        <span>{f.label}</span>
+                    {plan.trial_enabled && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Trial</span>
+                        <span className="font-medium text-amber-600">{plan.trial_days} days</span>
                       </div>
-                    ))}
+                    )}
                   </div>
 
                   {/* Included Addons */}
@@ -369,72 +374,102 @@ const AdminSaaSPlans = () => {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Plan Name</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Professional"
+                  required
+                  data-testid="plan-name-input"
+                />
+              </div>
+
+              {/* Tier Selectors */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-2">
-                  <Label>Plan Name</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Professional"
-                    required
-                    data-testid="plan-name-input"
-                  />
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Subscriber Count</Label>
+                  <Select
+                    value={String(formData.max_subscribers)}
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, max_subscribers: parseInt(v) }))}
+                  >
+                    <SelectTrigger data-testid="subscribers-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(SUBSCRIBER_TIERS).map(([count, price]) => (
+                        <SelectItem key={count} value={count}>
+                          {parseInt(count).toLocaleString()} users — ₹{price}/mo
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Monthly Price (₹)</Label>
-                  <Input
-                    type="number"
-                    value={formData.monthly_price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, monthly_price: parseFloat(e.target.value) }))}
-                    min="0"
-                    required
-                    data-testid="plan-price-input"
-                  />
+                  <Label className="flex items-center gap-1"><UserCog className="w-3.5 h-3.5" /> Staff Count</Label>
+                  <Select
+                    value={String(formData.max_staff)}
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, max_staff: parseInt(v) }))}
+                  >
+                    <SelectTrigger data-testid="staff-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(STAFF_TIERS).map(([count, price]) => (
+                        <SelectItem key={count} value={count}>
+                          {parseInt(count) === 0 ? "No staff" : `${count} staff`} — {price === 0 ? "Free" : `+₹${price}/mo`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Max Subscribers</Label>
-                  <Input
-                    type="number"
-                    value={formData.max_subscribers}
-                    onChange={(e) => setFormData(prev => ({ ...prev, max_subscribers: parseInt(e.target.value) }))}
-                    min="1"
-                    required
-                  />
+              {/* Live Price Preview */}
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1">
+                  <IndianRupee className="w-3 h-3" /> Price Breakdown
+                </p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Subscribers ({formData.max_subscribers})</span>
+                    <span>₹{(SUBSCRIBER_TIERS[formData.max_subscribers] || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Staff ({formData.max_staff === 0 ? "None" : formData.max_staff})</span>
+                    <span>+₹{(STAFF_TIERS[formData.max_staff] || 0).toLocaleString()}</span>
+                  </div>
+                  {formData.included_addons.length > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Add-ons ({formData.included_addons.length})</span>
+                      <span>+₹{formData.included_addons.reduce((s, c) => s + (addons.find(a => a.code === c)?.price || 0), 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-slate-900 border-t pt-1 mt-1">
+                    <span>Total / month</span>
+                    <span className="text-blue-700">₹{calcPrice(formData.max_subscribers, formData.max_staff, formData.included_addons).toLocaleString()}</span>
+                  </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Max Staff</Label>
-                  <Input
-                    type="number"
-                    value={formData.max_staff}
-                    onChange={(e) => setFormData(prev => ({ ...prev, max_staff: parseInt(e.target.value) }))}
-                    min="1"
-                    required
-                  />
-                </div>
-
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Trial Days</Label>
                   <Input
                     type="number"
                     value={formData.trial_days}
-                    onChange={(e) => setFormData(prev => ({ ...prev, trial_days: parseInt(e.target.value) }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, trial_days: parseInt(e.target.value) || 0 }))}
                     min="0"
                   />
                 </div>
               </div>
 
               <div className="border-t pt-4 space-y-3">
-                <p className="text-sm font-medium text-slate-700">Plan Features</p>
+                <p className="text-sm font-medium text-slate-700">Plan Options</p>
                 <div className="space-y-3">
                   {[
-                    { key: "trial_enabled", label: "Enable Trial" },
-                    { key: "notification_module", label: "Notification Module" },
-                    { key: "auto_reminder", label: "Auto Reminder" },
-                    { key: "audit_logs", label: "Audit Logs" },
-                    { key: "payment_gateway_setup", label: "Payment Gateway Setup" },
+                    { key: "trial_enabled", label: "Enable Trial Period" },
                     { key: "gst_applicable", label: "GST Applicable" }
                   ].map((feature) => (
                     <div key={feature.key} className="flex items-center justify-between">

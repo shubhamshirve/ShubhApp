@@ -125,20 +125,28 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
 const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
   const location = useLocation();
-  const { logout, user } = useAuth();
+  const { logout, user, features } = useAuth();
   const navigate = useNavigate();
+  const isImpersonated = !!user?.impersonated_by;
 
-  const links = [
-    { href: "/operator", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/operator/subscribers", label: "Subscribers", icon: Users },
-    { href: "/operator/plans", label: "Plans", icon: Package },
-    { href: "/operator/invoices", label: "Invoices", icon: FileText },
-    { href: "/operator/announcements", label: "Announcements", icon: Bell },
-    { href: "/operator/staff", label: "Staff", icon: UserCog, operatorOnly: true },
-    { href: "/operator/reports", label: "Reports", icon: BarChart3 },
-    { href: "/operator/subscription", label: "Subscription", icon: CreditCard },
-    { href: "/operator/settings", label: "Settings", icon: Settings, operatorOnly: true },
+  const allLinks = [
+    { href: "/operator",              label: "Dashboard",    icon: LayoutDashboard, always: true },
+    { href: "/operator/subscribers",  label: "Subscribers",  icon: Users,           always: true },
+    { href: "/operator/plans",        label: "Plans",        icon: Package,         always: true },
+    { href: "/operator/invoices",     label: "Invoices",     icon: FileText,        always: true },
+    { href: "/operator/announcements",label: "Announcements",icon: Bell,            feature: "announcement" },
+    { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },
+    { href: "/operator/staff",        label: "Staff",        icon: UserCog,         always: true, operatorOnly: true },
+    { href: "/operator/reports",      label: "Reports",      icon: BarChart3,       always: true },
+    { href: "/operator/subscription", label: "Subscription", icon: CreditCard,      always: true },
+    { href: "/operator/settings",     label: "Settings",     icon: Settings,        always: true, operatorOnly: true },
   ];
+
+  const links = allLinks.filter(link => {
+    if (link.feature && !features[link.feature]) return false;
+    if (link.operatorOnly && user?.role === "staff") return false;
+    return true;
+  });
 
   const handleLogout = () => {
     logout();

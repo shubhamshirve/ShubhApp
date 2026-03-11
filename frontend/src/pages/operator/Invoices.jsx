@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 
 const OperatorInvoices = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, features } = useAuth();
   const [invoices, setInvoices] = useState([]);
   const [subscribers, setSubscribers] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -392,14 +392,17 @@ const OperatorInvoices = () => {
                               <Download className="w-4 h-4 mr-2 text-slate-600" />
                               Download PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
-                              <Send className="w-4 h-4 mr-2 text-emerald-600" />
-                              Send via WhatsApp API
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)} data-testid={`wa-web-${invoice.id}`}>
-                              <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
-                              Send via WhatsApp Web
-                            </DropdownMenuItem>
+                            {features?.payment_reminder ? (
+                              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
+                                <Send className="w-4 h-4 mr-2 text-emerald-600" />
+                                Send via WhatsApp API
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)} data-testid={`wa-web-${invoice.id}`}>
+                                <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
+                                Send via WhatsApp Web
+                              </DropdownMenuItem>
+                            )}
                             {invoice.status === "overdue" && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
                                 <Bell className="w-4 h-4 mr-2 text-amber-600" />

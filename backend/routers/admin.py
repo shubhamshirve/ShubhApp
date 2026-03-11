@@ -10,6 +10,7 @@ from models import (
     GlobalSettingsUpdate, AdminPaymentGatewayConfig,
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
+    calc_plan_price,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -34,19 +35,28 @@ def _parse_operator(o: dict) -> OperatorResponse:
 @router.post("/saas-plans", response_model=SaaSPlanResponse)
 async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)
+    # Calculate price from tiers + addon prices
+    if data.monthly_price is not None:
+        price = data.monthly_price
+    else:
+        addon_prices = []
+        for code in data.included_addons:
+            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+            if addon:
+                addon_prices.append(addon.get("price", 0))
+        price = calc_plan_price(data.max_subscribers, data.max_staff, addon_prices)
+
     plan = {
-        "id": generate_id(), "name": data.name, "monthly_price": data.monthly_price,
+        "id": generate_id(), "name": data.name, "monthly_price": price,
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
-        "notification_module": data.notification_module, "auto_reminder": data.auto_reminder,
-        "audit_logs": data.audit_logs, "payment_gateway_setup": data.payment_gateway_setup,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
         "status": "active", "created_at": now.isoformat(),
         "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.saas_plans.insert_one(plan)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "create", "saas_plans", None, {"name": data.name})
+                    "create", "saas_plans", None, {"name": data.name, "price": price})
     return SaaSPlanResponse(**{**plan, "created_at": now})
 
 
@@ -62,12 +72,21 @@ async def update_saas_plan(plan_id: str, data: SaaSPlanCreate, current_user: dic
     if not existing:
         raise HTTPException(status_code=404, detail="Plan not found")
     now = datetime.now(timezone.utc)
+    # Calculate price
+    if data.monthly_price is not None:
+        price = data.monthly_price
+    else:
+        addon_prices = []
+        for code in data.included_addons:
+            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+            if addon:
+                addon_prices.append(addon.get("price", 0))
+        price = calc_plan_price(data.max_subscribers, data.max_staff, addon_prices)
+
     update_data = {
-        "name": data.name, "monthly_price": data.monthly_price,
+        "name": data.name, "monthly_price": price,
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
-        "notification_module": data.notification_module, "auto_reminder": data.auto_reminder,
-        "audit_logs": data.audit_logs, "payment_gateway_setup": data.payment_gateway_setup,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
         "updated_at": now.isoformat()
     }

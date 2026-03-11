@@ -112,19 +112,32 @@ class ExtendSubscriptionRequest(BaseModel):
 
 # ============== SAAS PLAN MODELS ==============
 
+# Subscriber tier: count → base monthly price
+SUBSCRIBER_TIERS = {250: 500, 500: 1000, 750: 1500, 1000: 2000, 1500: 3000, 2000: 4000, 3000: 5500}
+# Staff tier: count → additional monthly price
+STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
+
+VALID_SUBSCRIBER_COUNTS = sorted(SUBSCRIBER_TIERS.keys())
+VALID_STAFF_COUNTS = sorted(STAFF_TIERS.keys())
+
+
+def calc_plan_price(max_subscribers: int, max_staff: int, addon_prices: List[float]) -> float:
+    base = SUBSCRIBER_TIERS.get(max_subscribers, 0)
+    staff = STAFF_TIERS.get(max_staff, 0)
+    return base + staff + sum(addon_prices)
+
+
 class SaaSPlanCreate(BaseModel):
     name: str
-    monthly_price: float
-    max_subscribers: int
-    max_staff: int
-    trial_enabled: bool = True
-    trial_days: int = 3
-    notification_module: bool = False
-    auto_reminder: bool = False
-    audit_logs: bool = False
-    payment_gateway_setup: bool = False
+    max_subscribers: int  # must be one of VALID_SUBSCRIBER_COUNTS
+    max_staff: int        # must be one of VALID_STAFF_COUNTS
+    trial_enabled: bool = False
+    trial_days: int = 0
     gst_applicable: bool = True
     included_addons: List[str] = []
+    # monthly_price is auto-calculated from tiers + addons
+    # but can be overridden (e.g. for trial/free plans)
+    monthly_price: Optional[float] = None
 
 
 class SaaSPlanResponse(BaseModel):
@@ -136,10 +149,6 @@ class SaaSPlanResponse(BaseModel):
     max_staff: int
     trial_enabled: bool
     trial_days: int
-    notification_module: bool
-    auto_reminder: bool
-    audit_logs: bool
-    payment_gateway_setup: bool
     gst_applicable: bool
     included_addons: List[str] = []
     status: str

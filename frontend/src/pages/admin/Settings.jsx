@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { Textarea } from "../../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
   Select,
@@ -29,38 +28,31 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../../components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Settings, CreditCard, Package, Trash2, Plus, Pencil, Info } from "lucide-react";
+import {
+  Settings, CreditCard, Trash2, Plus, Info,
+  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield
+} from "lucide-react";
 
 const AdminSettings = () => {
   const { authAxios } = useAuth();
   const [settings, setSettings] = useState(null);
   const [gateways, setGateways] = useState([]);
-  const [addons, setAddons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGatewayDialog, setShowGatewayDialog] = useState(false);
-  const [showAddonDialog, setShowAddonDialog] = useState(false);
-  const [editingAddon, setEditingAddon] = useState(null);
-  const [deleteAddonId, setDeleteAddonId] = useState(null);
   const [gatewayForm, setGatewayForm] = useState({
     gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true
   });
-  const [addonForm, setAddonForm] = useState({
-    name: "", code: "", price: 0, description: ""
-  });
+
+  // Backup state
+  const [backups, setBackups] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [restorePassword, setRestorePassword] = useState("");
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchAddons()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchBackups()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -78,10 +70,10 @@ const AdminSettings = () => {
     } catch { /* ignore */ }
   };
 
-  const fetchAddons = async () => {
+  const fetchBackups = async () => {
     try {
-      const res = await authAxios.get("/admin/addons");
-      setAddons(res.data);
+      const res = await authAxios.get("/admin/backup/list");
+      setBackups(res.data);
     } catch { /* ignore */ }
   };
 
@@ -112,52 +104,53 @@ const AdminSettings = () => {
       await authAxios.delete(`/admin/payment-gateways/${id}`);
       toast.success("Gateway removed");
       fetchGateways();
-    } catch (error) {
+    } catch {
       toast.error("Failed to remove gateway");
     }
   };
 
-  const openAddonDialog = (addon = null) => {
-    if (addon) {
-      setEditingAddon(addon);
-      setAddonForm({ name: addon.name, code: addon.code, price: addon.price, description: addon.description || "" });
-    } else {
-      setEditingAddon(null);
-      setAddonForm({ name: "", code: "", price: 0, description: "" });
-    }
-    setShowAddonDialog(true);
-  };
-
-  const handleSaveAddon = async (e) => {
-    e.preventDefault();
+  // Backup handlers
+  const handleCreateBackup = async () => {
+    setCreating(true);
     try {
-      if (editingAddon) {
-        await authAxios.put(`/admin/addons/${editingAddon.id}`, addonForm);
-        toast.success("Add-on updated");
-      } else {
-        await authAxios.post("/admin/addons", addonForm);
-        toast.success("Add-on created");
-      }
-      setShowAddonDialog(false);
-      setEditingAddon(null);
-      setAddonForm({ name: "", code: "", price: 0, description: "" });
-      fetchAddons();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to save add-on");
+      const res = await authAxios.post("/admin/backup/create");
+      toast.success(`Backup created: ${res.data.backup.filename}`);
+      fetchBackups();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Backup failed");
+    } finally {
+      setCreating(false);
     }
   };
 
-  const handleDeleteAddon = async () => {
-    if (!deleteAddonId) return;
+  const handleDeleteBackup = async (id) => {
+    if (!confirm("Delete this backup permanently?")) return;
     try {
-      await authAxios.delete(`/admin/addons/${deleteAddonId}`);
-      toast.success("Add-on deleted");
-      setDeleteAddonId(null);
-      fetchAddons();
-    } catch (error) {
-      toast.error("Failed to delete add-on");
+      await authAxios.delete(`/admin/backup/${id}`);
+      toast.success("Backup deleted");
+      fetchBackups();
+    } catch {
+      toast.error("Failed to delete backup");
     }
   };
+
+  const handleRestore = async () => {
+    if (!restoreTarget || !restorePassword) return;
+    setRestoring(true);
+    try {
+      const res = await authAxios.post(`/admin/backup/restore/${restoreTarget.id}`, { password: restorePassword });
+      toast.success(`Restored — ${res.data.records_restored} records across ${res.data.collections_restored.length} collections`);
+      setRestoreTarget(null);
+      setRestorePassword("");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Restore failed");
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const formatSize = (kb) => kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+  const formatDate = (iso) => new Date(iso).toLocaleString();
 
   if (loading) {
     return (
@@ -173,10 +166,10 @@ const AdminSettings = () => {
     <AdminLayout title="Platform Settings">
       <div className="space-y-6 animate-fade-in">
         <Tabs defaultValue="general">
-          <TabsList data-testid="settings-tabs">
-            <TabsTrigger value="general" data-testid="tab-general">General</TabsTrigger>
-            <TabsTrigger value="gateways" data-testid="tab-gateways">Payment Gateways</TabsTrigger>
-            <TabsTrigger value="addons" data-testid="tab-addons">Add-ons</TabsTrigger>
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="gateways">Payment Gateways</TabsTrigger>
+            <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -196,9 +189,7 @@ const AdminSettings = () => {
                       value={settings?.active_payment_gateway || "razorpay"}
                       onValueChange={(v) => setSettings(s => ({ ...s, active_payment_gateway: v }))}
                     >
-                      <SelectTrigger data-testid="gateway-select">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="razorpay">Razorpay</SelectItem>
                         <SelectItem value="cashfree">Cashfree</SelectItem>
@@ -212,7 +203,6 @@ const AdminSettings = () => {
                       type="number"
                       value={settings?.auto_invoice_days_before || 3}
                       onChange={(e) => setSettings(s => ({ ...s, auto_invoice_days_before: parseInt(e.target.value) }))}
-                      data-testid="auto-invoice-days"
                     />
                   </div>
                   <div className="space-y-2">
@@ -221,7 +211,6 @@ const AdminSettings = () => {
                       type="number"
                       value={settings?.gst_rate || 18}
                       onChange={(e) => setSettings(s => ({ ...s, gst_rate: parseFloat(e.target.value) }))}
-                      data-testid="gst-rate"
                     />
                   </div>
                   <div className="space-y-2">
@@ -230,13 +219,10 @@ const AdminSettings = () => {
                       type="number"
                       value={settings?.late_fee_percentage || 0}
                       onChange={(e) => setSettings(s => ({ ...s, late_fee_percentage: parseFloat(e.target.value) }))}
-                      data-testid="late-fee"
                     />
                   </div>
                 </div>
-                <Button onClick={handleUpdateSettings} data-testid="save-settings-btn">
-                  Save Settings
-                </Button>
+                <Button onClick={handleUpdateSettings}>Save Settings</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -246,17 +232,16 @@ const AdminSettings = () => {
             <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
               <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
               <p className="text-sm text-blue-800">
-                These payment gateway credentials are used for <strong>Operator-to-Admin SaaS subscription payments</strong>. 
-                When operators pay for their subscription or add-ons, the configured gateway will process those payments.
+                These credentials process <strong>Operator SaaS subscription & add-on payments</strong>.
               </p>
             </div>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5" />
-                  SaaS Payment Gateway Config
+                  SaaS Payment Gateway
                 </CardTitle>
-                <Button size="sm" onClick={() => setShowGatewayDialog(true)} data-testid="add-gateway-btn">
+                <Button size="sm" onClick={() => setShowGatewayDialog(true)}>
                   <Plus className="w-4 h-4 mr-1" /> Add Gateway
                 </Button>
               </CardHeader>
@@ -275,25 +260,25 @@ const AdminSettings = () => {
                     {gateways.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-slate-500">
-                          No payment gateways configured. Add one to accept SaaS subscription payments.
+                          No payment gateways configured.
                         </TableCell>
                       </TableRow>
                     ) : gateways.map((gw) => (
-                      <TableRow key={gw.id} data-testid={`gateway-row-${gw.id}`}>
+                      <TableRow key={gw.id}>
                         <TableCell className="font-medium capitalize">{gw.gateway_type}</TableCell>
                         <TableCell className="font-mono text-sm">{gw.api_key?.slice(0, 16)}...</TableCell>
                         <TableCell>
-                          <span className="text-xs bg-slate-100 px-2 py-1 rounded font-medium">
-                            {gw.is_platform_gateway ? "SaaS Subscription Payments" : `Operator: ${gw.operator_id?.slice(0, 8)}`}
+                          <span className="text-xs bg-slate-100 px-2 py-1 rounded">
+                            {gw.is_platform_gateway ? "SaaS Payments" : `Operator: ${gw.operator_id?.slice(0, 8)}`}
                           </span>
                         </TableCell>
                         <TableCell>
-                          {gw.is_active 
-                            ? <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-medium">Active</span> 
-                            : <span className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded font-medium">Inactive</span>}
+                          {gw.is_active
+                            ? <span className="badge-active">Active</span>
+                            : <span className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded">Inactive</span>}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteGateway(gw.id)} data-testid={`delete-gw-${gw.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteGateway(gw.id)}>
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </Button>
                         </TableCell>
@@ -305,56 +290,106 @@ const AdminSettings = () => {
             </Card>
           </TabsContent>
 
-          {/* Add-ons Tab */}
-          <TabsContent value="addons" className="mt-6">
+          {/* Backup & Restore Tab */}
+          <TabsContent value="backup" className="mt-6 space-y-4">
+            {/* Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="bg-blue-50 border-blue-100">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Database className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <p className="text-2xl font-bold text-blue-700">{backups.length}</p>
+                    <p className="text-sm text-blue-600">Total Backups</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-emerald-50 border-emerald-100">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Clock className="w-8 h-8 text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-700">{backups.filter(b => b.type === "auto").length} Auto</p>
+                    <p className="text-xs text-emerald-600">Daily at 02:00 UTC</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-amber-50 border-amber-100">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <HardDrive className="w-8 h-8 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-700">
+                      {formatSize(backups.reduce((s, b) => s + (b.size_kb || 0), 0))}
+                    </p>
+                    <p className="text-xs text-amber-600">Total Storage</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5" />
-                  SaaS Add-ons
+                  <Database className="w-5 h-5" /> Available Backups
                 </CardTitle>
-                <Button size="sm" onClick={() => openAddonDialog()} data-testid="add-addon-btn">
-                  <Plus className="w-4 h-4 mr-1" /> Create Add-on
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={fetchBackups}>
+                    <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+                  </Button>
+                  <Button size="sm" onClick={handleCreateBackup} disabled={creating}>
+                    {creating ? <><RefreshCw className="w-4 h-4 mr-1 animate-spin" /> Creating...</> : <><Plus className="w-4 h-4 mr-1" /> Create Backup</>}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent>
-                {addons.length === 0 ? (
-                  <p className="text-center py-8 text-slate-500">No add-ons created yet</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Created At</TableHead>
+                      <TableHead>Filename</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Records</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {backups.length === 0 ? (
                       <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Code</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="w-[100px] text-right">Actions</TableHead>
+                        <TableCell colSpan={6} className="text-center py-10 text-slate-500">
+                          <Database className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                          No backups yet. Click "Create Backup" to start.
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {addons.map((addon) => (
-                        <TableRow key={addon.id} data-testid={`addon-row-${addon.id}`}>
-                          <TableCell className="font-medium">{addon.name}</TableCell>
-                          <TableCell>
-                            <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">{addon.code}</span>
-                          </TableCell>
-                          <TableCell className="font-semibold">₹{addon.price}</TableCell>
-                          <TableCell className="text-sm text-slate-500 max-w-[200px] truncate">{addon.description || "-"}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => openAddonDialog(addon)} data-testid={`edit-addon-${addon.id}`}>
-                                <Pencil className="w-4 h-4 text-slate-600" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => setDeleteAddonId(addon.id)} data-testid={`delete-addon-${addon.id}`}>
-                                <Trash2 className="w-4 h-4 text-red-500" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                    ) : backups.map((b) => (
+                      <TableRow key={b.id}>
+                        <TableCell className="text-sm">{formatDate(b.created_at)}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-600">{b.filename}</TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            b.type === "auto" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-700"
+                          }`}>{b.type === "auto" ? "Auto" : "Manual"}</span>
+                        </TableCell>
+                        <TableCell className="text-sm">{formatSize(b.size_kb || 0)}</TableCell>
+                        <TableCell className="text-sm">{(b.total_records || 0).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm"
+                              className="text-amber-600 hover:bg-amber-50 border-amber-200"
+                              onClick={() => { setRestoreTarget(b); setRestorePassword(""); }}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Restore
+                            </Button>
+                            <Button variant="outline" size="sm"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => handleDeleteBackup(b.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>
@@ -365,9 +400,7 @@ const AdminSettings = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Payment Gateway</DialogTitle>
-              <DialogDescription>
-                Configure a payment gateway for SaaS subscription collections from operators.
-              </DialogDescription>
+              <DialogDescription>Configure a payment gateway for SaaS subscription collections.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddGateway} className="space-y-4">
               <div className="space-y-2">
@@ -383,82 +416,61 @@ const AdminSettings = () => {
               </div>
               <div className="space-y-2">
                 <Label>API Key</Label>
-                <Input value={gatewayForm.api_key} onChange={(e) => setGatewayForm(f => ({ ...f, api_key: e.target.value }))} required data-testid="gw-api-key" />
+                <Input value={gatewayForm.api_key} onChange={(e) => setGatewayForm(f => ({ ...f, api_key: e.target.value }))} required />
               </div>
               <div className="space-y-2">
                 <Label>API Secret</Label>
-                <Input type="password" value={gatewayForm.api_secret} onChange={(e) => setGatewayForm(f => ({ ...f, api_secret: e.target.value }))} required data-testid="gw-api-secret" />
+                <Input type="password" value={gatewayForm.api_secret} onChange={(e) => setGatewayForm(f => ({ ...f, api_secret: e.target.value }))} required />
               </div>
               <div className="space-y-2">
                 <Label>Webhook Secret (optional)</Label>
-                <Input value={gatewayForm.webhook_secret} onChange={(e) => setGatewayForm(f => ({ ...f, webhook_secret: e.target.value }))} data-testid="gw-webhook-secret" />
+                <Input value={gatewayForm.webhook_secret} onChange={(e) => setGatewayForm(f => ({ ...f, webhook_secret: e.target.value }))} />
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" type="button" onClick={() => setShowGatewayDialog(false)}>Cancel</Button>
-                <Button type="submit" data-testid="save-gateway-btn">Save Gateway</Button>
+                <Button type="submit">Save Gateway</Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
 
-        {/* Add/Edit Addon Dialog */}
-        <Dialog open={showAddonDialog} onOpenChange={setShowAddonDialog}>
-          <DialogContent>
+        {/* Restore Password Dialog */}
+        <Dialog open={!!restoreTarget} onOpenChange={() => { setRestoreTarget(null); setRestorePassword(""); }}>
+          <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>{editingAddon ? "Edit Add-on" : "Create Add-on"}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2 text-amber-700">
+                <AlertTriangle className="w-5 h-5" /> Confirm Restore
+              </DialogTitle>
               <DialogDescription>
-                {editingAddon ? "Update the add-on details." : "Create a new purchasable add-on for operators."}
+                This will <strong>replace ALL current data</strong> with the backup from{" "}
+                <span className="font-medium">{restoreTarget && formatDate(restoreTarget.created_at)}</span>.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSaveAddon} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name *</Label>
-                <Input value={addonForm.name} onChange={(e) => setAddonForm(f => ({ ...f, name: e.target.value }))} required data-testid="addon-name" placeholder="e.g., WhatsApp Notifications" />
+            <div className="space-y-4 mt-2">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                  All current data will be replaced. This cannot be undone.
+                </p>
               </div>
               <div className="space-y-2">
-                <Label>Code *</Label>
-                {editingAddon ? (
-                  <Input value={addonForm.code} disabled className="bg-slate-50" />
-                ) : (
-                  <Input value={addonForm.code} onChange={(e) => setAddonForm(f => ({ ...f, code: e.target.value.toLowerCase().replace(/\s+/g, '_') }))} required data-testid="addon-code" placeholder="e.g., notifications" />
-                )}
-                <p className="text-xs text-slate-500">Unique identifier. Use lowercase with underscores.</p>
+                <Label className="flex items-center gap-2"><Shield className="w-4 h-4" /> Confirm Password</Label>
+                <Input type="password" placeholder="Enter backup password" value={restorePassword}
+                  onChange={(e) => setRestorePassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleRestore()}
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Price (₹/month) *</Label>
-                <Input type="number" min="0" value={addonForm.price} onChange={(e) => setAddonForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} required data-testid="addon-price" />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea value={addonForm.description} onChange={(e) => setAddonForm(f => ({ ...f, description: e.target.value }))} data-testid="addon-description" placeholder="Describe what this add-on provides" rows={3} />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" type="button" onClick={() => setShowAddonDialog(false)}>Cancel</Button>
-                <Button type="submit" data-testid="save-addon-btn">
-                  {editingAddon ? "Update Add-on" : "Create Add-on"}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setRestoreTarget(null)}>Cancel</Button>
+                <Button className="flex-1 bg-amber-600 hover:bg-amber-700" onClick={handleRestore}
+                  disabled={restoring || !restorePassword}
+                >
+                  {restoring ? <><RefreshCw className="w-4 h-4 mr-1 animate-spin" /> Restoring...</> : <><RotateCcw className="w-4 h-4 mr-1" /> Restore Now</>}
                 </Button>
               </div>
-            </form>
+            </div>
           </DialogContent>
         </Dialog>
-
-        {/* Delete Addon Confirmation */}
-        <AlertDialog open={!!deleteAddonId} onOpenChange={(open) => !open && setDeleteAddonId(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Add-on</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete this add-on? Operators who have purchased it will lose access.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteAddon} className="bg-red-600 hover:bg-red-700" data-testid="confirm-delete-addon">
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </AdminLayout>
   );

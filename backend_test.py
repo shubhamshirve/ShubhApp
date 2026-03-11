@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import json
 
 class SaaSBillingTester:
-    def __init__(self, base_url="https://93e37f04-ed3c-45b3-8d75-2b332d20d27f.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://multi-tenant-clean-1.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.admin_token = None
         self.operator_token = None

@@ -25,6 +25,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
 
 
+# ── Addon helper ──────────────────────────────────────────────────────────────
+
+async def _has_addon(operator_id: str, addon_code: str) -> bool:
+    """Check if operator has an addon via their SaaS plan or purchased addons."""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        return False
+    if addon_code in operator.get("active_addons", []):
+        return True
+    plan_id = operator.get("saas_plan_id")
+    if plan_id:
+        plan = await db.saas_plans.find_one({"id": plan_id, "deleted_at": None}, {"_id": 0})
+        if plan and addon_code in plan.get("included_addons", []):
+            return True
+    return False
+
+
 
 # ─── Profile ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +52,25 @@ def _parse_operator(o: dict) -> OperatorResponse:
         "trial_ends_at": datetime.fromisoformat(o["trial_ends_at"]) if o.get("trial_ends_at") else None,
         "subscription_ends_at": datetime.fromisoformat(o["subscription_ends_at"]) if o.get("subscription_ends_at") else None,
     })
+
+
+# ─── Features endpoint ────────────────────────────────────────────────────────
+
+@router.get("/features")
+async def get_operator_features(current_user: dict = Depends(require_operator)):
+    """Return which addon features are active for this operator."""
+    if current_user["role"] == "admin":
+        return {code: True for code in [
+            "audit_log", "payment_gateway", "custom_payment_gateway",
+            "announcement", "payment_reminder", "whatsapp_notifications"
+        ]}
+    operator_id = current_user["operator_id"]
+    addon_codes = [
+        "audit_log", "payment_gateway", "custom_payment_gateway",
+        "announcement", "payment_reminder", "whatsapp_notifications"
+    ]
+    result = {code: await _has_addon(operator_id, code) for code in addon_codes}
+    return result
 
 
 @router.get("/profile", response_model=OperatorResponse)
@@ -95,12 +131,20 @@ async def update_invoice_settings(data: InvoiceCustomization, current_user: dict
 async def create_announcement(data: AnnouncementCreate, current_user: dict = Depends(require_operator)):
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
-    active_addons = operator.get("active_addons", [])
-    saas_plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id")}, {"_id": 0})
-    if data.send_whatsapp:
-        if not (saas_plan and saas_plan.get("notification_module")) and "notifications" not in active_addons:
-            raise HTTPException(status_code=403, detail="WhatsApp notification addon not enabled.")
+
+    # Check announcement addon
+    if not await _has_addon(current_user["operator_id"], "announcement"):
+        raise HTTPException(status_code=403, detail="Announcement add-on is not enabled for your plan.")
+
+    # Enforce max 3 announcements per day
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    today_count = await db.announcements.count_documents({
+        "operator_id": current_user["operator_id"],
+        "created_at": {"$gte": today_start}
+    })
+    if today_count >= 3:
+        raise HTTPException(status_code=429, detail="Daily announcement limit reached (max 3 per day).")
+
     now = datetime.now(timezone.utc)
     if data.send_to_all:
         subscribers = await db.subscribers.find(
@@ -878,12 +922,40 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.invoices.insert_one(invoice)
-    return InvoiceResponse(**{
+
+    # Auto-send WhatsApp if payment_reminder addon is active
+    auto_wa_sent = False
+    if await _has_addon(current_user["operator_id"], "payment_reminder"):
+        try:
+            wa_config = await db.whatsapp_configs.find_one(
+                {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
+            )
+            if wa_config:
+                from services.whatsapp_service import WhatsAppService
+                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                await wa_service.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    customer_name=subscriber["name"],
+                    invoice_number=invoice["invoice_number"],
+                    amount=f"₹{invoice['final_amount']:,.2f}",
+                    due_date=data.due_date.strftime("%d %b %Y"),
+                    payment_link=None
+                )
+                auto_wa_sent = True
+        except Exception as e:
+            logger.warning(f"Auto WhatsApp send failed: {e}")
+
+    response = InvoiceResponse(**{
         **invoice, "created_at": now,
         "service_start_date": data.service_start_date,
         "service_end_date": data.service_end_date,
         "due_date": data.due_date
     })
+    # Return extra meta for frontend to decide WhatsApp Web button visibility
+    result = response.model_dump()
+    result["auto_wa_sent"] = auto_wa_sent
+    result["has_payment_reminder_addon"] = await _has_addon(current_user["operator_id"], "payment_reminder")
+    return result
 
 
 @router.get("/invoices", response_model=List[InvoiceResponse])
@@ -1068,11 +1140,8 @@ async def configure_payment_gateway(data: PaymentGatewayConfig, current_user: di
         raise HTTPException(status_code=400, detail="Admin cannot configure operator payment gateway")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    if operator:
-        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
-        if plan and not plan.get("payment_gateway_setup"):
-            raise HTTPException(status_code=403, detail="Payment gateway setup add-on is not enabled")
+    if not await _has_addon(current_user["operator_id"], "payment_gateway"):
+        raise HTTPException(status_code=403, detail="Payment Gateway add-on is not enabled for your plan.")
     now = datetime.now(timezone.utc)
     gateway_config = {
         "id": generate_id(), "operator_id": current_user["operator_id"],
@@ -1170,11 +1239,8 @@ async def get_operator_audit_logs(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Use admin audit logs endpoint")
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    if operator:
-        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
-        if plan and not plan.get("audit_logs"):
-            raise HTTPException(status_code=403, detail="Audit logs add-on is not enabled")
+    if not await _has_addon(current_user["operator_id"], "audit_log"):
+        raise HTTPException(status_code=403, detail="Audit Logs add-on is not enabled for your plan.")
     logs = await db.audit_logs.find(
         {"operator_id": current_user["operator_id"]}, {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
