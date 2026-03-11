@@ -652,6 +652,17 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
     ).to_list(1000)
     total_revenue = sum(inv.get("final_amount", 0) for inv in paid_invoice_list)
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    # Fetch plan limits
+    max_subscribers = None
+    max_staff = None
+    if operator and operator.get("saas_plan_id"):
+        sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+        if sp:
+            max_subscribers = sp.get("max_subscribers")
+            # Use operator-level max_staff override if set (staff_management addon)
+            max_staff = operator.get("max_staff") or sp.get("max_staff")
+    current_staff = await db.users.count_documents({"operator_id": operator_id, "role": "staff", "deleted_at": None})
+    slots_remaining = max(0, max_subscribers - total_subscribers) if max_subscribers is not None else None
     return {
         "total_subscribers": total_subscribers, "active_subscribers": active_subscribers,
         "total_invoices": total_invoices, "pending_invoices": pending_invoices,
@@ -660,7 +671,11 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
         "is_read_only": operator.get("is_read_only", False) if operator else False,
         "subscription_ends_at": operator.get("subscription_ends_at") if operator else None,
         "trial_ends_at": operator.get("trial_ends_at") if operator else None,
-        "status": operator.get("status") if operator else "unknown"
+        "status": operator.get("status") if operator else "unknown",
+        "max_subscribers": max_subscribers,
+        "subscriber_slots_remaining": slots_remaining,
+        "max_staff": max_staff,
+        "current_staff": current_staff,
     }
 
 
@@ -846,7 +861,10 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         if plan:
             current_count = await db.subscribers.count_documents({"operator_id": current_user["operator_id"], "deleted_at": None})
             if current_count >= plan["max_subscribers"]:
-                raise HTTPException(status_code=403, detail=f"Subscriber limit ({plan['max_subscribers']}) reached")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Subscriber limit reached ({current_count}/{plan['max_subscribers']}). Please upgrade your plan to add more subscribers."
+                )
     op_plan = await db.operator_plans.find_one(
         {"id": data.plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
     )
@@ -1013,13 +1031,36 @@ async def bulk_upload_subscribers(
     ).to_list(500)
     plan_map = {p["name"].strip().lower(): p for p in op_plans}
 
-    # Fetch SaaS plan limits
+    # ── Pre-flight: check subscriber limit BEFORE processing any rows ──────────
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     max_subscribers = None
     if operator and operator.get("saas_plan_id"):
         sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
         if sp:
             max_subscribers = sp.get("max_subscribers")
+
+    if max_subscribers is not None:
+        current_count = await db.subscribers.count_documents(
+            {"operator_id": current_user["operator_id"], "deleted_at": None}
+        )
+        # Count valid rows (name + whatsapp present) to get the intended upload size
+        valid_row_count = sum(
+            1 for r in rows
+            if r.get("name", "").strip() and r.get("whatsapp_number", "").strip()
+        )
+        available_slots = max_subscribers - current_count
+        if valid_row_count > available_slots:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Upload exceeds subscriber limit. "
+                    f"Your plan allows {max_subscribers} subscribers. "
+                    f"You currently have {current_count} and are trying to add {valid_row_count} more "
+                    f"(total would be {current_count + valid_row_count}). "
+                    f"Available slots: {available_slots}. "
+                    f"Please upgrade your plan."
+                )
+            )
 
     now = datetime.now(timezone.utc)
     created, skipped, errors = [], [], []
@@ -1037,15 +1078,6 @@ async def bulk_upload_subscribers(
         if not plan:
             errors.append({"row": idx, "name": name, "reason": f"Plan '{row.get('plan_name','')}' not found"})
             continue
-
-        # Check limit
-        if max_subscribers is not None:
-            current_count = await db.subscribers.count_documents(
-                {"operator_id": current_user["operator_id"], "deleted_at": None}
-            ) + len(created)
-            if current_count >= max_subscribers:
-                errors.append({"row": idx, "name": name, "reason": "Subscriber limit reached"})
-                break
 
         # Check duplicate WhatsApp
         dup = await db.subscribers.find_one(

@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "../../components/ui/dialog";
 import {
   Select,
@@ -51,6 +52,7 @@ const OperatorSubscribers = () => {
   const [bulkFile, setBulkFile] = useState(null);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
+  const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -111,7 +113,13 @@ const OperatorSubscribers = () => {
       resetForm();
       fetchSubscribers();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to save subscriber");
+      const detail = error.response?.data?.detail || "Failed to save subscriber";
+      if (!editingSubscriber && (detail.toLowerCase().includes("upgrade") || detail.toLowerCase().includes("limit"))) {
+        setShowDialog(false);
+        setLimitError(detail);
+      } else {
+        toast.error(detail);
+      }
     }
   };
 
@@ -192,6 +200,7 @@ const OperatorSubscribers = () => {
     if (!bulkFile) return;
     setBulkUploading(true);
     setBulkResult(null);
+    setLimitError(null);
     try {
       const form = new FormData();
       form.append("file", bulkFile);
@@ -200,9 +209,17 @@ const OperatorSubscribers = () => {
       });
       setBulkResult(res.data);
       fetchSubscribers();
+      fetchDashboard();
       if (res.data.created > 0) toast.success(`${res.data.created} subscriber(s) created`);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Upload failed");
+      const detail = e.response?.data?.detail || "Upload failed";
+      // If it's a plan limit error, show prominent dialog; otherwise show toast
+      if (detail.toLowerCase().includes("upgrade") || detail.toLowerCase().includes("limit")) {
+        setShowBulkDialog(false);
+        setLimitError(detail);
+      } else {
+        toast.error(detail);
+      }
     } finally {
       setBulkUploading(false);
     }
@@ -229,6 +246,7 @@ const OperatorSubscribers = () => {
   const isReadOnly = dashboardStats?.is_read_only;
 
   return (
+    <>
     <OperatorLayout title="Subscribers" isReadOnly={isReadOnly}>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
@@ -262,6 +280,41 @@ const OperatorSubscribers = () => {
             </Button>
           </div>
         </div>
+
+        {/* Subscriber usage bar */}
+        {dashboardStats?.max_subscribers != null && (
+          <div className="flex items-center gap-3 px-1">
+            <span className="text-sm text-slate-500 whitespace-nowrap">
+              Subscribers:
+              <span className={`ml-1 font-semibold ${
+                dashboardStats.total_subscribers >= dashboardStats.max_subscribers
+                  ? "text-red-600"
+                  : dashboardStats.total_subscribers >= dashboardStats.max_subscribers * 0.8
+                  ? "text-amber-600"
+                  : "text-slate-700"
+              }`}>
+                {dashboardStats.total_subscribers} / {dashboardStats.max_subscribers}
+              </span>
+            </span>
+            <div className="flex-1 max-w-[200px] h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  dashboardStats.total_subscribers >= dashboardStats.max_subscribers
+                    ? "bg-red-500"
+                    : dashboardStats.total_subscribers >= dashboardStats.max_subscribers * 0.8
+                    ? "bg-amber-400"
+                    : "bg-emerald-500"
+                }`}
+                style={{ width: `${Math.min(100, (dashboardStats.total_subscribers / dashboardStats.max_subscribers) * 100)}%` }}
+              />
+            </div>
+            {dashboardStats.total_subscribers >= dashboardStats.max_subscribers && (
+              <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                Limit reached
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Subscribers Table */}
         <Card>
@@ -562,6 +615,47 @@ const OperatorSubscribers = () => {
         </Dialog>
       </div>
     </OperatorLayout>
+
+    {/* Plan Limit Exceeded Dialog */}
+    <Dialog open={!!limitError} onOpenChange={() => setLimitError(null)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <AlertCircle className="w-5 h-5" />
+            Subscriber Limit Reached
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-3 space-y-4">
+          <p className="text-slate-700 text-sm leading-relaxed">{limitError}</p>
+          {dashboardStats?.max_subscribers != null && (
+            <div className="p-3 bg-slate-50 rounded-lg space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Current subscribers</span>
+                <span className="font-semibold">{dashboardStats.total_subscribers}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Plan limit</span>
+                <span className="font-semibold">{dashboardStats.max_subscribers}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Available slots</span>
+                <span className="font-semibold text-amber-600">{Math.max(0, dashboardStats.max_subscribers - dashboardStats.total_subscribers)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setLimitError(null)}>Close</Button>
+          <Button
+            onClick={() => { setLimitError(null); window.location.href = "/operator/subscription"; }}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            Upgrade Plan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 
