@@ -56,11 +56,18 @@ class CronJobService:
                 
                 for subscriber in subscribers:
                     try:
+                        # Get subscriber's plan to know validity for duplicate check
+                        plan_for_check = await self.db.operator_plans.find_one(
+                            {"id": subscriber.get("plan_id"), "deleted_at": None}, {"_id": 0}
+                        )
+                        plan_validity = (plan_for_check or {}).get("validity", "monthly")
+
                         # Check if invoice already exists for this period
                         existing = await self._check_existing_invoice(
                             operator["id"],
                             subscriber["id"],
-                            now
+                            now,
+                            validity=plan_validity,
                         )
                         
                         if existing:
@@ -201,19 +208,27 @@ class CronJobService:
         self,
         operator_id: str,
         subscriber_id: str,
-        current_date: datetime
+        current_date: datetime,
+        validity: str = "monthly",
     ) -> bool:
-        """Check if invoice already exists for current billing period"""
-        # Get invoices from last 25 days
-        cutoff = (current_date - timedelta(days=25)).isoformat()
-        
+        """Check if invoice already exists for current billing period.
+        Uses the plan validity to set an appropriate lookback window."""
+        validity_days = {
+            "monthly": 28,
+            "quarterly": 85,
+            "half_yearly": 175,
+            "yearly": 360,
+        }
+        window = validity_days.get(validity, 28)
+        cutoff = (current_date - timedelta(days=window)).isoformat()
+
         existing = await self.db.invoices.find_one({
             "operator_id": operator_id,
             "subscriber_id": subscriber_id,
-            "created_at": {"$gte": cutoff},
+            "status": {"$nin": ["cancelled"]},
+            "service_start_date": {"$gte": cutoff},
             "deleted_at": None
         })
-        
         return existing is not None
     
     async def _create_auto_invoice(
@@ -244,9 +259,17 @@ class CronJobService:
         }
         
         service_days = validity_days.get(plan.get("validity", "monthly"), 30)
-        service_start = now
-        service_end = now + timedelta(days=service_days)
-        due_date = now + timedelta(days=5)  # 5 days to pay
+        # Set service_start to the subscriber's actual billing date this month
+        billing_day = subscriber.get("billing_date", now.day)
+        try:
+            service_start = now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0)
+        except ValueError:
+            # billing_day > days in current month (e.g., 31 in Feb) — use last day
+            import calendar
+            last_day = calendar.monthrange(now.year, now.month)[1]
+            service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0)
+        service_end = service_start + timedelta(days=service_days)
+        due_date = service_start + timedelta(days=5)  # 5 days from billing date to pay
         
         # Calculate amounts
         base_amount = plan.get("price", 0)
@@ -260,11 +283,18 @@ class CronJobService:
             elif plan.get("tax_type") == "inclusive":
                 tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
         
-        final_amount = base_amount - discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+        if plan.get("tax_type") == "exclusive":
+            final_amount = base_amount - discount + tax_amount
+        else:
+            final_amount = base_amount - discount
         
-        # Generate invoice number
+        # Use operator's configured invoice prefix from invoice_settings
+        inv_settings = await self.db.invoice_settings.find_one(
+            {"operator_id": operator["id"]}, {"_id": 0}
+        )
+        invoice_prefix = (inv_settings or {}).get("invoice_prefix") or "INV"
         timestamp = now.strftime("%Y%m%d%H%M%S")
-        invoice_number = f"INV-{operator['id'][:8].upper()}-{timestamp}"
+        invoice_number = f"{invoice_prefix}-{operator['id'][:8].upper()}-{timestamp}"
         
         # Create invoice
         invoice = {

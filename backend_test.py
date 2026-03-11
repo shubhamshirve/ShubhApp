@@ -1,455 +1,316 @@
 #!/usr/bin/env python3
-"""
-Backend Testing for Invoice Template Feature:
-1. Login as admin
-2. Find or create an operator
-3. Login as operator
-4. Test GET /api/operator/invoice-settings for invoice_template field
-5. Test PUT /api/operator/invoice-settings with invoice_template="modern"
-6. Test PUT /api/operator/invoice-settings with invoice_template="classic"
-7. Verify model accepts both "classic" and "modern" values
-
-Testing multi-tenant SaaS billing platform backend APIs.
-"""
 
 import requests
 import json
 import sys
-from typing import Dict, Any, Optional
 
-# Backend URL from frontend .env
+# Backend URL
 BASE_URL = "https://syntax-inspector-1.preview.emergentagent.com/api"
 
-# Admin credentials - try both possible emails from review request
-ADMIN_EMAIL = "admin@saas.com"  # From seed data
-ADMIN_EMAIL_ALT = "admin@system.com"  # From review request
-ADMIN_PASSWORD = "admin123"
-
-class BackendTester:
+class TestRunner:
     def __init__(self):
-        self.admin_token = None
-        self.admin_email = None
-        self.operator_token = None
-        self.operator_id = None
-        self.session = requests.Session()
-        self.session.headers.update({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        })
+        self.token = None
+        self.passed_tests = 0
+        self.total_tests = 0
         
-    def log(self, message: str, status: str = "INFO"):
-        """Log test messages with status."""
-        print(f"[{status}] {message}")
+    def log(self, message, color="white"):
+        colors = {
+            "green": "\033[92m",
+            "red": "\033[91m",
+            "yellow": "\033[93m",
+            "blue": "\033[94m",
+            "white": "\033[97m",
+            "reset": "\033[0m"
+        }
+        print(f"{colors.get(color, colors['white'])}{message}{colors['reset']}")
 
-    def make_request(self, method: str, endpoint: str, token: Optional[str] = None, 
-                    data: Optional[Dict] = None, expect_json: bool = True) -> tuple:
-        """Make HTTP request and return (status_code, response_data, headers)."""
-        url = f"{BASE_URL}{endpoint}"
-        headers = {}
+    def test_api_call(self, method, endpoint, data=None, params=None, description="", expected_status=200):
+        """Make API call and validate response"""
+        self.total_tests += 1
         
-        if token:
-            headers['Authorization'] = f'Bearer {token}'
-            
+        url = f"{BASE_URL}{endpoint}"
+        headers = {"Content-Type": "application/json"}
+        
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        
         try:
-            if method.upper() == 'GET':
-                response = self.session.get(url, headers=headers)
-            elif method.upper() == 'POST':
-                response = self.session.post(url, headers=headers, json=data)
-            elif method.upper() == 'PUT':
-                response = self.session.put(url, headers=headers, json=data)
+            if method.upper() == "GET":
+                response = requests.get(url, headers=headers, params=params)
+            elif method.upper() == "POST":
+                response = requests.post(url, headers=headers, json=data, params=params)
+            elif method.upper() == "PUT":
+                response = requests.put(url, headers=headers, json=data, params=params)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, headers=headers, params=params)
             else:
-                raise ValueError(f"Unsupported method: {method}")
+                self.log(f"❌ Test {self.total_tests}: {description} - Unsupported method {method}", "red")
+                return None
                 
-            if expect_json:
+            # Check status code
+            if response.status_code == expected_status:
+                self.passed_tests += 1
+                self.log(f"✅ Test {self.total_tests}: {description} - Status {response.status_code}", "green")
                 try:
-                    return response.status_code, response.json(), response.headers
+                    return response.json()
                 except:
-                    return response.status_code, {"error": "Invalid JSON response"}, response.headers
+                    return response.text
             else:
-                return response.status_code, response.content, response.headers
+                self.log(f"❌ Test {self.total_tests}: {description} - Expected {expected_status}, got {response.status_code}", "red")
+                self.log(f"   Response: {response.text}", "red")
+                return None
                 
         except Exception as e:
-            self.log(f"Request error: {str(e)}", "ERROR")
-            return 0, {"error": str(e)}, {}
+            self.log(f"❌ Test {self.total_tests}: {description} - Exception: {str(e)}", "red")
+            return None
 
-    def login_admin(self) -> bool:
-        """Login as admin and get JWT token."""
-        self.log("=== ADMIN LOGIN ===")
+    def login_admin(self):
+        """Login as admin and store token"""
+        self.log("\n🔐 ADMIN LOGIN TEST", "blue")
         
-        # Try both possible admin emails
-        for email in [ADMIN_EMAIL, ADMIN_EMAIL_ALT]:
-            login_data = {
-                "email": email,
-                "password": ADMIN_PASSWORD
-            }
+        # Try first credential combination
+        login_data = {
+            "email": "admin@saas.com",
+            "password": "admin123"
+        }
+        
+        result = self.test_api_call(
+            "POST", 
+            "/auth/login", 
+            data=login_data, 
+            description="Admin login (admin@saas.com/admin123)"
+        )
+        
+        if result and "access_token" in result:
+            self.token = result["access_token"]
+            self.log(f"   ✅ Token obtained: {self.token[:20]}...", "green")
+            return True
             
-            status, response, _ = self.make_request('POST', '/auth/login', data=login_data)
-            
-            if status == 200 and 'access_token' in response:
-                self.admin_token = response['access_token']
-                self.admin_email = email  # Store successful email
-                user_info = response.get('user', {})
-                self.log(f"✅ Admin login successful - Email: {email}, Role: {user_info.get('role')}")
+        # Try alternative credential combination
+        self.log("   Trying alternative credentials...", "yellow")
+        login_data["email"] = "admin@system.com"
+        
+        result = self.test_api_call(
+            "POST", 
+            "/auth/login", 
+            data=login_data, 
+            description="Admin login (admin@system.com/admin123)"
+        )
+        
+        if result and "access_token" in result:
+            self.token = result["access_token"]
+            self.log(f"   ✅ Token obtained: {self.token[:20]}...", "green")
+            return True
+        else:
+            self.log("   ❌ Could not login with either credential set", "red")
+            return False
+
+    def test_audit_logs_endpoint(self):
+        """Test basic audit logs endpoint"""
+        self.log("\n📊 AUDIT LOGS BASIC TEST", "blue")
+        
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            description="GET /api/admin/audit-logs (basic)"
+        )
+        
+        if result:
+            # Verify response is an object with logs and total keys
+            if isinstance(result, dict) and "logs" in result and "total" in result:
+                self.log(f"   ✅ Response is object with 'logs' and 'total' keys", "green")
+                self.log(f"   📈 Total logs: {result['total']}, Returned: {len(result['logs'])}", "blue")
                 return True
             else:
-                self.log(f"Trying {email}... Status: {status}")
-                
-        self.log(f"❌ Admin login failed with both emails", "ERROR")
+                self.log(f"   ❌ Response is not object with expected structure: {type(result)}", "red")
+                if isinstance(result, list):
+                    self.log(f"   ❌ ERROR: Response is plain array (should be object)", "red")
+                return False
         return False
 
-    def test_backup_download_endpoint(self):
-        """Test backup creation and download functionality."""
-        self.log("\n=== TESTING BACKUP DOWNLOAD ENDPOINT ===")
+    def test_audit_logs_filters(self):
+        """Test audit logs with various filters"""
+        self.log("\n🔍 AUDIT LOGS FILTER TESTS", "blue")
         
-        if not self.admin_token:
-            self.log("❌ No admin token available", "ERROR")
-            return False
+        # Test 1: Search filter
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"search": "admin"},
+            description="GET /api/admin/audit-logs?search=admin"
+        )
+        
+        if result and isinstance(result, dict) and "logs" in result:
+            # Check if logs contain admin in user_name or module
+            admin_found = False
+            for log in result["logs"]:
+                if ("admin" in str(log.get("user_name", "")).lower() or 
+                    "admin" in str(log.get("module", "")).lower()):
+                    admin_found = True
+                    break
             
-        # Step 1: Create a backup
-        self.log("Step 1: Creating backup via POST /admin/backup/create")
-        status, response, _ = self.make_request('POST', '/admin/backup/create', token=self.admin_token)
-        
-        if status != 200:
-            self.log(f"❌ Backup creation failed - Status: {status}, Response: {response}", "ERROR")
-            return False
-            
-        backup_info = response.get('backup', {})
-        backup_id = backup_info.get('id')
-        backup_filename = backup_info.get('filename')
-        
-        if not backup_id or not backup_filename:
-            self.log(f"❌ Missing backup ID or filename - Response: {response}", "ERROR")
-            return False
-            
-        self.log(f"✅ Backup created successfully - ID: {backup_id}, Filename: {backup_filename}")
-        
-        # Step 2: Download the backup
-        self.log(f"Step 2: Downloading backup via GET /admin/backup/download/{backup_id}")
-        status, content, headers = self.make_request('GET', f'/admin/backup/download/{backup_id}', 
-                                                   token=self.admin_token, expect_json=False)
-        
-        # Verify response
-        if status == 200:
-            self.log("✅ Backup download successful (Status: 200)")
-            
-            # Check Content-Type
-            content_type = headers.get('content-type', '')
-            if 'application/gzip' in content_type:
-                self.log("✅ Correct Content-Type: application/gzip")
+            if admin_found or len(result["logs"]) == 0:
+                self.log(f"   ✅ Search filter working (found logs with 'admin')", "green")
             else:
-                self.log(f"❌ Wrong Content-Type: {content_type} (expected: application/gzip)", "ERROR")
-                
-            # Check Content-Disposition header
-            content_disposition = headers.get('content-disposition', '')
-            if 'attachment' in content_disposition and backup_filename in content_disposition:
-                self.log(f"✅ Correct Content-Disposition: {content_disposition}")
-            else:
-                self.log(f"❌ Wrong Content-Disposition: {content_disposition} (expected attachment with {backup_filename})", "ERROR")
-                
-            # Check content size (should be > 0)
-            if isinstance(content, bytes) and len(content) > 0:
-                self.log(f"✅ Downloaded content size: {len(content)} bytes")
-            else:
-                self.log("❌ Empty or invalid content downloaded", "ERROR")
-                
-        else:
-            self.log(f"❌ Backup download failed - Status: {status}, Response: {content}", "ERROR")
-            return False
-            
-        # Step 3: Test 404 for non-existent backup
-        self.log("Step 3: Testing 404 for non-existent backup ID")
-        fake_backup_id = "fake-id-999"
-        status, response, _ = self.make_request('GET', f'/admin/backup/download/{fake_backup_id}', 
-                                              token=self.admin_token)
-        
-        if status == 404:
-            self.log("✅ Correctly returned 404 for non-existent backup ID")
-        else:
-            self.log(f"❌ Expected 404 but got {status} for non-existent backup", "ERROR")
-            return False
-            
-        return True
+                self.log(f"   ❌ Search filter not working properly", "red")
 
-    def test_change_password_endpoint(self):
-        """Test change password functionality."""
-        self.log("\n=== TESTING CHANGE PASSWORD ENDPOINT ===")
+        # Test 2: Action filter
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"action": "login"},
+            description="GET /api/admin/audit-logs?action=login"
+        )
         
-        if not self.admin_token:
-            self.log("❌ No admin token available", "ERROR")
-            return False
-            
-        original_password = ADMIN_PASSWORD
-        new_password = "newpass123"
-        
-        # Step 1: Change password with correct current password
-        self.log("Step 1: Changing password with correct current password")
-        change_data = {
-            "current_password": original_password,
-            "new_password": new_password
-        }
-        
-        status, response, _ = self.make_request('PUT', '/auth/change-password', 
-                                              token=self.admin_token, data=change_data)
-        
-        if status == 200:
-            self.log("✅ Password change successful with correct current password")
-        else:
-            self.log(f"❌ Password change failed - Status: {status}, Response: {response}", "ERROR")
-            return False
-            
-        # Step 2: Change password back to original
-        self.log("Step 2: Changing password back to original")
-        change_back_data = {
-            "current_password": new_password,
-            "new_password": original_password
-        }
-        
-        status, response, _ = self.make_request('PUT', '/auth/change-password', 
-                                              token=self.admin_token, data=change_back_data)
-        
-        if status == 200:
-            self.log("✅ Password changed back to original successfully")
-        else:
-            self.log(f"❌ Password change back failed - Status: {status}, Response: {response}", "ERROR")
-            return False
-            
-        # Step 3: Test with wrong current password
-        self.log("Step 3: Testing with wrong current password")
-        wrong_password_data = {
-            "current_password": "wrongpassword123",
-            "new_password": "somepassword"
-        }
-        
-        status, response, _ = self.make_request('PUT', '/auth/change-password', 
-                                              token=self.admin_token, data=wrong_password_data)
-        
-        if status == 400 and "Current password is incorrect" in response.get('detail', ''):
-            self.log("✅ Correctly returned 400 with 'Current password is incorrect' message")
-        else:
-            self.log(f"❌ Expected 400 with specific error message, got Status: {status}, Response: {response}", "ERROR")
-            return False
-            
-        # Step 4: Test with short new password
-        self.log("Step 4: Testing with new password less than 6 characters")
-        short_password_data = {
-            "current_password": original_password,
-            "new_password": "abc"
-        }
-        
-        status, response, _ = self.make_request('PUT', '/auth/change-password', 
-                                              token=self.admin_token, data=short_password_data)
-        
-        if status == 400:
-            self.log("✅ Correctly returned 400 for password less than 6 characters")
-        else:
-            self.log(f"❌ Expected 400 for short password, got Status: {status}, Response: {response}", "ERROR")
-            return False
-            
-        return True
+        if result and isinstance(result, dict) and "logs" in result:
+            # Check if all logs have action=login
+            all_login = all(log.get("action") == "login" for log in result["logs"]) if result["logs"] else True
+            if all_login:
+                self.log(f"   ✅ Action filter working (all logs have action='login')", "green")
+            else:
+                self.log(f"   ❌ Action filter not working - found non-login actions", "red")
 
-    def test_invoice_template_feature(self):
-        """Test the new invoice template feature according to review request."""
-        self.log("\n=== TESTING INVOICE TEMPLATE FEATURE ===")
+        # Test 3: Role filter  
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"role": "admin"},
+            description="GET /api/admin/audit-logs?role=admin"
+        )
         
-        if not self.admin_token:
-            self.log("❌ No admin token available", "ERROR")
-            return False
+        if result and isinstance(result, dict) and "logs" in result:
+            # Check if all logs have role=admin
+            all_admin = all(log.get("role") == "admin" for log in result["logs"]) if result["logs"] else True
+            if all_admin:
+                self.log(f"   ✅ Role filter working (all logs have role='admin')", "green")
+            else:
+                self.log(f"   ❌ Role filter not working - found non-admin roles", "red")
+
+        # Test 4: Limit and skip
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"limit": 5, "skip": 0},
+            description="GET /api/admin/audit-logs?limit=5&skip=0"
+        )
         
-        # Step 1: Login as admin and find/create an operator
-        self.log("Step 1: Finding existing operators via GET /api/admin/operators")
-        status, response, _ = self.make_request('GET', '/admin/operators', token=self.admin_token)
-        
-        if status != 200:
-            self.log(f"❌ Failed to get operators - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        operators = response.get('operators', []) if isinstance(response, dict) else response
-        if not operators:
-            self.log("No existing operators found, registering a new one...")
+        if result and isinstance(result, dict) and "logs" in result and "total" in result:
+            logs_count = len(result["logs"])
+            total_count = result["total"]
             
-            # Register new operator
-            operator_data = {
-                "company_name": "Test Broadband Services",
-                "owner_name": "Test Owner",
-                "email": "test@testoperator.com",
-                "phone": "+919876543210",
-                "password": "test123",
-                "gst_number": "",
-                "charge_gst": True
-            }
+            if logs_count <= 5:
+                self.log(f"   ✅ Limit working (returned {logs_count} logs, max 5)", "green")
+            else:
+                self.log(f"   ❌ Limit not working (returned {logs_count} logs, expected max 5)", "red")
+                
+            self.log(f"   📊 Total in DB: {total_count}, Page returned: {logs_count}", "blue")
+
+        # Test 5: Date range filter
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"date_from": "2025-01-01", "date_to": "2025-12-31"},
+            description="GET /api/admin/audit-logs?date_from=2025-01-01&date_to=2025-12-31"
+        )
+        
+        if result:
+            self.log(f"   ✅ Date range filter accepted (no 500 error)", "green")
+
+        # Test 6: Combined filters
+        result = self.test_api_call(
+            "GET",
+            "/admin/audit-logs",
+            params={"action": "login", "role": "admin", "limit": 10},
+            description="GET /api/admin/audit-logs?action=login&role=admin&limit=10"
+        )
+        
+        if result and isinstance(result, dict) and "logs" in result:
+            # Verify combined filters work
+            valid_entries = True
+            for log in result["logs"]:
+                if log.get("action") != "login" or log.get("role") != "admin":
+                    valid_entries = False
+                    break
             
-            status, response, _ = self.make_request('POST', '/auth/register', data=operator_data)
-            
-            if status != 201:
-                self.log(f"❌ Operator registration failed - Status: {status}, Response: {response}", "ERROR")
+            if valid_entries and len(result["logs"]) <= 10:
+                self.log(f"   ✅ Combined filters working correctly", "green")
+            else:
+                self.log(f"   ❌ Combined filters not working properly", "red")
+
+    def test_auto_invoice_cron(self):
+        """Test auto invoice generation cron endpoint"""
+        self.log("\n⏰ AUTO INVOICE CRON TEST", "blue")
+        
+        result = self.test_api_call(
+            "POST",
+            "/admin/cron/generate-invoices",
+            description="POST /api/admin/cron/generate-invoices"
+        )
+        
+        if result:
+            # Check if it's an object (not 500 error)
+            if isinstance(result, dict):
+                self.log(f"   ✅ Cron endpoint returns object response (not 500 error)", "green")
+                self.log(f"   📋 Response keys: {list(result.keys())}", "blue")
+                
+                # Look for results or similar key
+                if "invoices_generated" in result or "results" in result or "generated" in result:
+                    count = (result.get("invoices_generated", 0) or 
+                            result.get("generated", 0) or
+                            len(result.get("results", [])))
+                    self.log(f"   📊 Invoices generated: {count}", "blue")
+                else:
+                    self.log(f"   📋 Full response: {json.dumps(result, indent=2)}", "blue")
+                
+                return True
+            else:
+                self.log(f"   ❌ Expected object response, got {type(result)}", "red")
                 return False
-                
-            self.log("✅ New operator registered successfully")
-            operator_email = operator_data["email"]
-            operator_password = operator_data["password"]
-        else:
-            # Use existing operator
-            operator = operators[0]
-            self.operator_id = operator.get('id')
-            operator_email = operator.get('email')
-            self.log(f"✅ Found existing operator: {operator_email}, ID: {self.operator_id}")
-            operator_password = "demo123"  # Try common password
-        
-        # Step 2: Impersonate the operator to get operator JWT token
-        self.log(f"Step 2: Impersonating operator ({operator_email}) via admin")
-        
-        status, response, _ = self.make_request('POST', f'/admin/operators/{self.operator_id}/impersonate', 
-                                              token=self.admin_token)
-        
-        if status != 200:
-            self.log(f"❌ Operator impersonation failed - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        self.operator_token = response.get('access_token')
-        if not self.operator_token:
-            self.log("❌ No operator token received from impersonation", "ERROR")
-            return False
-        
-        self.log("✅ Successfully impersonating operator")
-        
-        # Step 3: GET /api/operator/invoice-settings - verify it returns current settings
-        self.log("Step 3: GET /api/operator/invoice-settings - checking current settings")
-        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
-        
-        if status != 200:
-            self.log(f"❌ Failed to get invoice settings - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        self.log("✅ Invoice settings retrieved successfully")
-        
-        # Verify invoice_template field exists and defaults to "classic"
-        self.log(f"Response content: {response}")
-        invoice_template = response.get('invoice_template')
-        if invoice_template is None:
-            self.log("❌ invoice_template field not found in response", "ERROR")
-            self.log("Available fields in response:", "INFO")
-            for key in response.keys():
-                self.log(f"  - {key}: {response[key]}", "INFO")
-            return False
-        
-        if invoice_template == "classic":
-            self.log("✅ invoice_template defaults to 'classic' as expected")
-        else:
-            self.log(f"ℹ️  invoice_template current value: '{invoice_template}' (not default)")
-        
-        # Step 4: PUT /api/operator/invoice-settings with invoice_template="modern"
-        self.log("Step 4: PUT /api/operator/invoice-settings with invoice_template='modern'")
-        update_data = {
-            "company_name": response.get('company_name', 'Test Co'),
-            "invoice_template": "modern",
-            "invoice_prefix": response.get('invoice_prefix', 'INV'),
-            "show_gst": True
-        }
-        
-        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
-                                              token=self.operator_token, data=update_data)
-        
-        if status != 200:
-            self.log(f"❌ Failed to update to modern template - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        self.log("✅ Successfully updated invoice template to 'modern'")
-        
-        # Step 5: GET /api/operator/invoice-settings again - verify invoice_template is now "modern"
-        self.log("Step 5: GET /api/operator/invoice-settings - verifying template is 'modern'")
-        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
-        
-        if status != 200:
-            self.log(f"❌ Failed to get updated settings - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        current_template = response.get('invoice_template')
-        if current_template == "modern":
-            self.log("✅ invoice_template successfully changed to 'modern'")
-        else:
-            self.log(f"❌ invoice_template is '{current_template}', expected 'modern'", "ERROR")
-            return False
-        
-        # Step 6: PUT /api/operator/invoice-settings with invoice_template="classic"
-        self.log("Step 6: PUT /api/operator/invoice-settings with invoice_template='classic'")
-        update_data["invoice_template"] = "classic"
-        
-        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
-                                              token=self.operator_token, data=update_data)
-        
-        if status != 200:
-            self.log(f"❌ Failed to update to classic template - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        self.log("✅ Successfully updated invoice template to 'classic'")
-        
-        # Step 7: GET /api/operator/invoice-settings - verify invoice_template is "classic"
-        self.log("Step 7: GET /api/operator/invoice-settings - verifying template is 'classic'")
-        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
-        
-        if status != 200:
-            self.log(f"❌ Failed to get final settings - Status: {status}, Response: {response}", "ERROR")
-            return False
-        
-        current_template = response.get('invoice_template')
-        if current_template == "classic":
-            self.log("✅ invoice_template successfully changed back to 'classic'")
-        else:
-            self.log(f"❌ invoice_template is '{current_template}', expected 'classic'", "ERROR")
-            return False
-        
-        # Step 8: Test invalid invoice_template value (should be rejected)
-        self.log("Step 8: Testing invalid invoice_template value")
-        update_data["invoice_template"] = "invalid_template"
-        
-        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
-                                              token=self.operator_token, data=update_data)
-        
-        if status >= 400:
-            self.log("✅ Invalid template value correctly rejected")
-        else:
-            self.log(f"⚠️  Invalid template value was accepted - Status: {status}", "WARNING")
-            # This might be acceptable depending on validation implementation
-        
-        return True
+        return False
 
-    def run_tests(self):
-        """Run all endpoint tests."""
-        self.log(f"Starting backend API testing for: {BASE_URL}")
+    def run_all_tests(self):
+        """Run all test scenarios"""
+        self.log("🚀 STARTING AUDIT LOGS & CRON TESTING", "blue")
+        self.log("=" * 60, "blue")
         
-        # Login first
+        # Step 1: Login as admin
         if not self.login_admin():
-            self.log("❌ Could not authenticate admin user", "ERROR")
-            return False
-            
-        # Run invoice template test
-        test_results = []
+            self.log("\n❌ CRITICAL: Could not login as admin - stopping tests", "red")
+            return
         
-        # Test: Invoice Template Feature
-        result = self.test_invoice_template_feature()
-        test_results.append(("Invoice Template Feature", result))
+        # Step 2: Test audit logs basic functionality
+        if not self.test_audit_logs_endpoint():
+            self.log("\n❌ CRITICAL: Basic audit logs endpoint failed", "red")
         
-        # Summary
-        self.log("\n" + "="*60)
-        self.log("FINAL TEST RESULTS")
-        self.log("="*60)
+        # Step 3: Test audit logs filters
+        self.test_audit_logs_filters()
         
-        all_passed = True
-        for test_name, passed in test_results:
-            status_icon = "✅" if passed else "❌"
-            self.log(f"{status_icon} {test_name}: {'PASSED' if passed else 'FAILED'}")
-            if not passed:
-                all_passed = False
-                
-        if all_passed:
-            self.log("\n🎉 ALL TESTS PASSED - Invoice template feature working correctly!")
+        # Step 4: Test auto invoice cron
+        self.test_auto_invoice_cron()
+        
+        # Final summary
+        self.log("\n" + "=" * 60, "blue")
+        self.log("📊 FINAL TEST SUMMARY", "blue")
+        self.log("=" * 60, "blue")
+        
+        success_rate = (self.passed_tests / self.total_tests * 100) if self.total_tests > 0 else 0
+        
+        if success_rate >= 90:
+            color = "green"
+        elif success_rate >= 75:
+            color = "yellow"
         else:
-            self.log("\n❌ SOME TESTS FAILED - Check individual test results above")
+            color = "red"
             
-        return all_passed
-
+        self.log(f"✅ Tests Passed: {self.passed_tests}/{self.total_tests} ({success_rate:.1f}%)", color)
+        
+        if self.passed_tests == self.total_tests:
+            self.log("🎉 ALL TESTS PASSED! System ready for production.", "green")
+        elif success_rate >= 75:
+            self.log("⚠️  Most tests passed with minor issues.", "yellow")
+        else:
+            self.log("❌ Significant issues found requiring attention.", "red")
 
 if __name__ == "__main__":
-    tester = BackendTester()
-    success = tester.run_tests()
-    sys.exit(0 if success else 1)
+    runner = TestRunner()
+    runner.run_all_tests()

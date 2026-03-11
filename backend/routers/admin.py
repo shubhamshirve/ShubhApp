@@ -539,11 +539,43 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
 
 # ─── Audit Logs ──────────────────────────────────────────────────────────────
 
-@router.get("/audit-logs", response_model=List[AuditLogResponse])
+@router.get("/audit-logs")
 async def get_all_audit_logs(
-    skip: int = 0, limit: int = 50, current_user: dict = Depends(require_admin)
+    skip: int = 0,
+    limit: int = 50,
+    search: Optional[str] = None,
+    action: Optional[str] = None,
+    role: Optional[str] = None,
+    module: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(require_admin),
 ):
-    logs = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    query: dict = {}
+    # Text search across user_name, module, ip_address
+    if search:
+        query["$or"] = [
+            {"user_name": {"$regex": search, "$options": "i"}},
+            {"module":    {"$regex": search, "$options": "i"}},
+            {"ip_address":{"$regex": search, "$options": "i"}},
+        ]
+    if action:
+        query["action"] = action
+    if role:
+        query["role"] = role
+    if module and not search:
+        query["module"] = {"$regex": module, "$options": "i"}
+    if date_from or date_to:
+        date_q: dict = {}
+        if date_from:
+            date_q["$gte"] = date_from
+        if date_to:
+            # include the full end day
+            date_q["$lt"] = date_to + "T23:59:59"
+        query["created_at"] = date_q
+
+    total = await db.audit_logs.count_documents(query)
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     result = []
     for log in logs:
         try:
@@ -552,10 +584,12 @@ async def get_all_audit_logs(
             if isinstance(log.get("new_value"), str):
                 log["new_value"] = {"value": log["new_value"]}
             log["created_at"] = datetime.fromisoformat(log["created_at"])
-            result.append(AuditLogResponse(**log))
+            serialized = AuditLogResponse(**log).model_dump()
+            serialized["created_at"] = serialized["created_at"].isoformat()
+            result.append(serialized)
         except Exception:
             continue
-    return result
+    return {"logs": result, "total": total}
 
 
 # ─── Reports ─────────────────────────────────────────────────────────────────
@@ -704,7 +738,7 @@ async def get_saas_subscriptions(
 async def trigger_invoice_generation(current_user: dict = Depends(require_admin)):
     from services.cron_service import CronJobService
     service = CronJobService(db)
-    results = await service.generate_upcoming_invoices(days_before=5)
+    results = await service.generate_upcoming_invoices(days_before=3)
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "trigger", "cron_jobs", None, {"action": "generate_invoices", "results": results},
