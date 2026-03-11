@@ -10,7 +10,7 @@ from models import (
     GlobalSettingsUpdate, AdminPaymentGatewayConfig,
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
-    calc_plan_price,
+    WhatsAppConfig,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -35,19 +35,8 @@ def _parse_operator(o: dict) -> OperatorResponse:
 @router.post("/saas-plans", response_model=SaaSPlanResponse)
 async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)
-    # Calculate price from tiers + addon prices
-    if data.monthly_price is not None:
-        price = data.monthly_price
-    else:
-        addon_prices = []
-        for code in data.included_addons:
-            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
-            if addon:
-                addon_prices.append(addon.get("price", 0))
-        price = calc_plan_price(data.max_subscribers, data.max_staff, addon_prices)
-
     plan = {
-        "id": generate_id(), "name": data.name, "monthly_price": price,
+        "id": generate_id(), "name": data.name, "monthly_price": data.monthly_price,
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
@@ -56,7 +45,8 @@ async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(re
     }
     await db.saas_plans.insert_one(plan)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "create", "saas_plans", None, {"name": data.name, "price": price})
+                    "create", "saas_plans", None, {"name": data.name, "price": data.monthly_price},
+                    ip_address=current_user.get("_ip_address"))
     return SaaSPlanResponse(**{**plan, "created_at": now})
 
 
@@ -72,19 +62,8 @@ async def update_saas_plan(plan_id: str, data: SaaSPlanCreate, current_user: dic
     if not existing:
         raise HTTPException(status_code=404, detail="Plan not found")
     now = datetime.now(timezone.utc)
-    # Calculate price
-    if data.monthly_price is not None:
-        price = data.monthly_price
-    else:
-        addon_prices = []
-        for code in data.included_addons:
-            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
-            if addon:
-                addon_prices.append(addon.get("price", 0))
-        price = calc_plan_price(data.max_subscribers, data.max_staff, addon_prices)
-
     update_data = {
-        "name": data.name, "monthly_price": price,
+        "name": data.name, "monthly_price": data.monthly_price,
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
@@ -173,7 +152,8 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "create", "operators", None,
-        {"company_name": data.company_name, "email": data.email, "plan": plan["name"]}
+        {"company_name": data.company_name, "email": data.email, "plan": plan["name"]},
+        ip_address=current_user.get("_ip_address")
     )
     return OperatorResponse(**{
         **operator, "created_at": now, "trial_ends_at": None,
@@ -213,7 +193,8 @@ async def extend_operator_subscription(
         current_user["id"], current_user["name"], current_user["role"],
         "extend_subscription", "operators",
         {"old_expiry": operator.get("subscription_ends_at")},
-        {"new_expiry": new_expiry, "months": data.months}
+        {"new_expiry": new_expiry, "months": data.months},
+        ip_address=current_user.get("_ip_address")
     )
     return {"message": "Subscription extended successfully", "new_expiry_date": new_expiry, "operator_id": operator_id}
 
@@ -234,7 +215,8 @@ async def delete_operator(operator_id: str, current_user: dict = Depends(require
         current_user["id"], current_user["name"], current_user["role"],
         "delete", "operators",
         {"company_name": operator["company_name"], "email": operator["email"]},
-        {"deleted_at": deleted_at}
+        {"deleted_at": deleted_at},
+        ip_address=current_user.get("_ip_address")
     )
     return {"message": "Operator and all related data deleted successfully",
             "operator_id": operator_id, "company_name": operator["company_name"]}
@@ -357,7 +339,8 @@ async def delete_addon(addon_id: str, current_user: dict = Depends(require_admin
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Addon not found")
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "delete", "addons", {"addon_id": addon_id}, {})
+                    "delete", "addons", {"addon_id": addon_id}, {},
+                    ip_address=current_user.get("_ip_address"))
     return {"message": "Addon deleted"}
 
 
@@ -401,8 +384,46 @@ async def update_global_settings(data: GlobalSettingsUpdate, current_user: dict 
     settings = {"type": "platform", **data.model_dump(), "updated_at": now.isoformat(), "updated_by": current_user["id"]}
     await db.global_settings.update_one({"type": "platform"}, {"$set": settings}, upsert=True)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "update", "global_settings", None, data.model_dump())
+                    "update", "global_settings", None, data.model_dump(),
+                    ip_address=current_user.get("_ip_address"))
     return {"message": "Settings updated successfully"}
+
+
+# ─── Platform WhatsApp Config ─────────────────────────────────────────────────
+
+@router.get("/whatsapp-config")
+async def get_platform_whatsapp_config(current_user: dict = Depends(require_admin)):
+    config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+    if not config:
+        return {"phone_number_id": "", "access_token_preview": "", "business_account_id": "", "is_configured": False}
+    # Mask the access_token for display
+    token = config.get("access_token", "")
+    masked_token = token[:8] + "****" if len(token) > 8 else ("****" if token else "")
+    return {
+        "phone_number_id": config.get("phone_number_id", ""),
+        "access_token_preview": masked_token,
+        "business_account_id": config.get("business_account_id", ""),
+        "is_configured": bool(token)
+    }
+
+
+@router.put("/whatsapp-config")
+async def update_platform_whatsapp_config(data: WhatsAppConfig, current_user: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
+    config = {
+        "type": "platform_whatsapp",
+        "phone_number_id": data.phone_number_id,
+        "access_token": data.access_token,
+        "business_account_id": data.business_account_id or "",
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"]
+    }
+    await db.global_settings.update_one({"type": "platform_whatsapp"}, {"$set": config}, upsert=True)
+    await log_audit(current_user["id"], current_user["name"], current_user["role"],
+                    "update", "whatsapp_config",
+                    None, {"phone_number_id": data.phone_number_id},
+                    ip_address=current_user.get("_ip_address"))
+    return {"message": "WhatsApp configuration updated successfully"}
 
 
 # ─── Payment Gateways ────────────────────────────────────────────────────────
@@ -597,7 +618,8 @@ async def trigger_invoice_generation(current_user: dict = Depends(require_admin)
     results = await service.generate_upcoming_invoices(days_before=5)
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
-        "trigger", "cron_jobs", None, {"action": "generate_invoices", "results": results}
+        "trigger", "cron_jobs", None, {"action": "generate_invoices", "results": results},
+        ip_address=current_user.get("_ip_address")
     )
     return results
 

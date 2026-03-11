@@ -1,5 +1,5 @@
 """FastAPI dependency functions for authentication and authorization."""
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import db
 from utils import decode_token
@@ -8,6 +8,7 @@ security = HTTPBearer()
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
     token = credentials.credentials
@@ -18,6 +19,9 @@ async def get_current_user(
     # Carry impersonated_by from JWT payload if present
     if payload.get("impersonated_by"):
         user["impersonated_by"] = payload["impersonated_by"]
+    # Extract client IP address for audit logging
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    user["_ip_address"] = forwarded_for.split(",")[0].strip() if forwarded_for else (request.client.host if request.client else None)
     return user
 
 

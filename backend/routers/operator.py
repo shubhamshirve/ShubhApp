@@ -378,6 +378,7 @@ async def verify_checkout_payment(
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "payment", "checkout", None, {"type": order["item_type"], "amount": order["total_amount"]},
+        ip_address=current_user.get("_ip_address"),
         operator_id=operator["id"]
     )
     return {"status": "success", "message": result_msg}

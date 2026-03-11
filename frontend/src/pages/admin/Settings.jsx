@@ -31,7 +31,7 @@ import {
 import { toast } from "sonner";
 import {
   Settings, CreditCard, Trash2, Plus, Info,
-  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield
+  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff
 } from "lucide-react";
 
 const AdminSettings = () => {
@@ -51,8 +51,13 @@ const AdminSettings = () => {
   const [restorePassword, setRestorePassword] = useState("");
   const [restoring, setRestoring] = useState(false);
 
+  // WhatsApp config state
+  const [waConfig, setWaConfig] = useState({ phone_number_id: "", access_token: "", business_account_id: "" });
+  const [waLoading, setWaLoading] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchBackups()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -75,6 +80,37 @@ const AdminSettings = () => {
       const res = await authAxios.get("/admin/backup/list");
       setBackups(res.data);
     } catch { /* ignore */ }
+  };
+
+  const fetchWaConfig = async () => {
+    try {
+      const res = await authAxios.get("/admin/whatsapp-config");
+      // Pre-fill with existing values (access_token is masked from backend)
+      setWaConfig(prev => ({
+        ...prev,
+        phone_number_id: res.data.phone_number_id || "",
+        business_account_id: res.data.business_account_id || "",
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const handleUpdateWhatsApp = async (e) => {
+    e.preventDefault();
+    if (!waConfig.phone_number_id || !waConfig.access_token) {
+      toast.error("Phone Number ID and Access Token are required");
+      return;
+    }
+    setWaLoading(true);
+    try {
+      await authAxios.put("/admin/whatsapp-config", waConfig);
+      toast.success("WhatsApp configuration updated");
+      setWaConfig(prev => ({ ...prev, access_token: "" })); // clear for security
+      fetchWaConfig();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update WhatsApp config");
+    } finally {
+      setWaLoading(false);
+    }
   };
 
   const handleUpdateSettings = async () => {
@@ -169,6 +205,7 @@ const AdminSettings = () => {
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="gateways">Payment Gateways</TabsTrigger>
+            <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
           </TabsList>
 
@@ -286,6 +323,73 @@ const AdminSettings = () => {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* WhatsApp Tab */}
+          <TabsContent value="whatsapp" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-green-600" />
+                  Platform WhatsApp API Configuration
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Configure the platform-level WhatsApp Business API used for sending invoices and payment reminders to customers.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUpdateWhatsApp} className="space-y-4 max-w-lg">
+                  <div className="space-y-2">
+                    <Label>Phone Number ID</Label>
+                    <Input
+                      value={waConfig.phone_number_id}
+                      onChange={(e) => setWaConfig(prev => ({ ...prev, phone_number_id: e.target.value }))}
+                      placeholder="e.g., 123456789012345"
+                      data-testid="wa-phone-number-id"
+                    />
+                    <p className="text-xs text-slate-400">Found in Meta Business Suite → WhatsApp → API Setup</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Business Account ID</Label>
+                    <Input
+                      value={waConfig.business_account_id}
+                      onChange={(e) => setWaConfig(prev => ({ ...prev, business_account_id: e.target.value }))}
+                      placeholder="e.g., 987654321098765"
+                      data-testid="wa-business-account-id"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Access Token</Label>
+                    <div className="relative">
+                      <Input
+                        type={showToken ? "text" : "password"}
+                        value={waConfig.access_token}
+                        onChange={(e) => setWaConfig(prev => ({ ...prev, access_token: e.target.value }))}
+                        placeholder="Enter new access token to update"
+                        className="pr-10"
+                        data-testid="wa-access-token"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowToken(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400">Leave blank to keep the existing token unchanged.</p>
+                  </div>
+
+                  <div className="pt-2 flex items-center gap-3">
+                    <Button type="submit" disabled={waLoading} data-testid="save-wa-config-btn">
+                      {waLoading ? "Saving..." : "Save WhatsApp Config"}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>

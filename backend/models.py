@@ -129,15 +129,13 @@ def calc_plan_price(max_subscribers: int, max_staff: int, addon_prices: List[flo
 
 class SaaSPlanCreate(BaseModel):
     name: str
-    max_subscribers: int  # must be one of VALID_SUBSCRIBER_COUNTS
-    max_staff: int        # must be one of VALID_STAFF_COUNTS
+    monthly_price: float
+    max_subscribers: int
+    max_staff: int = 999  # default high; staff access managed via addon
     trial_enabled: bool = False
     trial_days: int = 0
     gst_applicable: bool = True
     included_addons: List[str] = []
-    # monthly_price is auto-calculated from tiers + addons
-    # but can be overridden (e.g. for trial/free plans)
-    monthly_price: Optional[float] = None
 
 
 class SaaSPlanResponse(BaseModel):
@@ -349,6 +347,7 @@ class PaymentGatewayConfig(BaseModel):
 class WhatsAppConfig(BaseModel):
     phone_number_id: str
     access_token: str
+    business_account_id: Optional[str] = None
 
 
 class SendNotificationRequest(BaseModel):

@@ -33,7 +33,6 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },
-    { href: "/admin/backup", label: "Backup & Restore", icon: Database },
   ];
 
   const handleLogout = () => {
