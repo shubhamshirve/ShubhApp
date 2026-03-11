@@ -1,92 +1,66 @@
-# Multi-Tenant SaaS Recurring Billing Platform
-## Product Requirements Document (Updated Mar 5, 2026)
+# SaaS Billing Platform - PRD
 
-### Original Problem Statement
-Build a scalable multi-tenant SaaS recurring billing web application for India-focused, GST compliant operations.
+## Original Problem Statement
+Refactor and build a multi-tenant SaaS billing platform. Initial request: analyze code, remove obsolete PHP files, modularize backend. Then implement two batches of features.
 
-### Technical Stack
-- **Frontend**: React, Tailwind CSS, Shadcn UI
-- **Backend**: FastAPI, MongoDB
-- **Services**: Razorpay, WhatsApp Business API (MOCKED - keys in .env but empty)
-- **PDF**: ReportLab
+## Architecture
+- **Frontend**: React SPA, Tailwind CSS, React Router, Axios, Shadcn/UI
+- **Backend**: FastAPI (modular routers), MongoDB, APScheduler
+- **Structure**:
+  ```
+  /app/
+  ├── backend/
+  │   ├── routers/ (admin.py, auth.py, backup.py, operator.py)
+  │   ├── services/ (cron_service.py, pdf_service.py, razorpay_service.py, whatsapp_service.py)
+  │   ├── models.py, database.py, config.py, dependencies.py, audit.py, utils.py
+  │   └── server.py
+  └── frontend/src/
+      ├── App.js (AuthProvider + FeaturesContext + Routes)
+      ├── components/Layout.jsx (AdminLayout, OperatorLayout, sidebars)
+      └── pages/ (admin/, operator/)
+  ```
 
-### Default Credentials
-- Admin: admin@saas.com / admin123
-- Operator: demo@democorp.com / demo123
-- Staff: staff@democorp.com / staff123
-- Razorpay: rzp_test_sFaXdx3kATIGiw / dOvQqMbfE2sPkYulgTeU2SpW
+## What's Been Implemented
 
-### What's Been Implemented
+### Batch 0 — Refactoring (Completed)
+- Removed PHP files, modularized server.py into routers
 
-#### Phase 1-2: Core MVP + Payments
-- [x] Auth, Multi-tenant isolation, Admin/Operator/Staff CRUD
-- [x] Razorpay payment links, Invoice PDF, WhatsApp config UI
-- [x] Auto invoice cron, Webhook handler, Landing page
+### Batch 1 — Features (Completed, Tested)
+- Bulk CSV/XLSX upload for subscribers and plans
+- Add-on management UI moved into SaaS Plans admin page
+- Audit log before/after details modal
+- Backup & Restore system (manual + daily scheduled at 02:00 UTC)
 
-#### Phase 3: Staff Permissions & Admin Features (Mar 1)
-- [x] Staff DELETE blocked (403 + hidden buttons)
-- [x] Admin impersonation, Settings (General/Gateways/Add-ons), Reports
+### Batch 2 — Features (Completed Mar 2026, Tested 11/11)
+1. **Dynamic SaaS Plan Pricing**: Tier dropdowns (subscribers: 250–3000, staff: 0–20), real-time price breakdown = subscriber_tier + staff_tier + addons
+2. **Conditional Operator Settings tabs**: Payment Gateway & WhatsApp tabs only visible when admin is impersonating
+3. **Addon-gated sidebar links**: Announcements (announcement addon), Audit Logs (audit_log addon)
+4. **Operator Audit Logs page**: /operator/audit-logs (feature-gated, 403 if no addon)
+5. **Invoice WhatsApp button logic**: "Send via WhatsApp API" when payment_reminder addon active, else "Send via WhatsApp Web"
+6. **Addon-gating backend**: audit_log, announcement (3/day limit), payment_gateway addons gate their respective endpoints
+7. **Auto WhatsApp on invoice creation**: If payment_reminder addon active
+8. **Admin Settings**: 3 tabs — General, Payment Gateways, Backup & Restore (Addons tab removed)
 
-#### Phase 4: User-Requested Fixes (Mar 4)
-- [x] Create Operator dialog aligned with registration form
-- [x] Delete operators, SaaS Plans + included add-ons
-- [x] Payment Gateways context, Admin addon full CRUD
+## Pricing Tiers (backend models.py)
+```python
+SUBSCRIBER_TIERS = {250: 500, 500: 1000, 750: 1500, 1000: 2000, 1500: 3000, 2000: 4000, 3000: 5500}
+STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
+```
 
-#### Phase 5-6: Invoice Customization, Subscription, Announcements (Mar 4)
-- [x] Invoice customization UI (operator Settings > Invoice tab)
-- [x] Subscription renewal with Razorpay payment links
-- [x] Announcements page (create + history)
-- [x] CSV export on operator Reports (Invoices + GST)
+## Key API Endpoints
+- `GET /api/operator/features` — Returns active features for current operator
+- `POST /api/admin/saas-plans` / `PUT /api/admin/saas-plans/{id}` — Tier-based plan creation
+- `GET /api/operator/audit-logs` — Requires audit_log addon
+- `POST /api/operator/announcements` — Requires announcement addon, 3/day limit
+- `POST /api/operator/payment-gateway` — Requires payment_gateway addon
+- `GET /api/admin/backup/list`, `POST /api/admin/backup/create`, etc.
 
-#### Phase 7: Impersonation UX, WhatsApp Web, Audit Logs (Mar 5)
-- [x] "Return to Admin" indigo banner when impersonating operator
-- [x] JWT token carries impersonated_by, return-from-impersonate endpoint
-- [x] WhatsApp Web integration: wa.me links on Invoices + Subscribers pages
-- [x] Admin WhatsApp API keys added to .env (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID)
-- [x] Admin audit logs fixed: handles malformed old_value/new_value, skips broken entries
+## Test Credentials
+- **Admin**: admin@saas.com / admin123
+- **Seed**: POST /api/seed
 
-#### Phase 8: Add-on Purchase Flow (Mar 5)
-- [x] Operator Add-ons Store page with purchase via Razorpay
-- [x] Free activation for plan-included add-ons
-- [x] Razorpay payment link for paid add-ons
-- [x] "I've Paid — Activate Now" manual activation button
-- [x] Sidebar link with Puzzle icon
-
-#### Phase 9: Razorpay Fast Checkout Refactor (Mar 10)
-- [x] Backend: `/api/operator/checkout/create-order` endpoint (subscription + addon)
-- [x] Backend: `/api/operator/checkout/verify` endpoint (signature verify + activate)
-- [x] Frontend: Razorpay JS checkout script added to index.html
-- [x] Frontend: Add-ons store merged into Subscription page (unified view)
-- [x] Frontend: Subscription renewal uses Fast Checkout modal ("Platform Name" / "Monthly Recurring")
-- [x] Frontend: Add-on purchase uses Fast Checkout modal
-- [x] Frontend: Removed standalone Addons.jsx page, route, and sidebar link
-- [x] Customer invoices retain Payment Links (unchanged)
-
-#### Phase 10: Revenue Dashboards & Payment History (Mar 10)
-- [x] Admin dashboard: Real SaaS revenue from saas_payments (subscription + addon + GST, this month + all-time)
-- [x] Admin dashboard: Recent payments table (operator name, type, amounts, date)
-- [x] Operator dashboard: Revenue label clarified as "Invoice Revenue (Collected)" with sub-label
-- [x] Subscription page: Payment History tab with full table (type, description, base, GST, total, date) + running total
-- [x] Backend: `/api/operator/payment-history` endpoint
-
-#### Phase 11: Local Deployment Setup (Mar 11)
-- [x] `/app/backend/requirements_local.txt` — 31 public PyPI packages (no emergentintegrations)
-- [x] `/app/frontend/requirements_local.txt` — reference list of npm packages
-- [x] `/app/setup.bat` — Windows setup: venv, pip install, npm/yarn install, .env creation
-- [x] `/app/RunApp.bat` — Windows launcher: starts backend + frontend, opens browser
-- [x] PHP directory already removed (was empty)
-
-### Prioritized Backlog
-
-#### P1 (High Priority)
-- [ ] QR Codes for Invoice Payment Links
-- [ ] Admin Payment Reports (placeholder needs real data/KPIs)
-- [ ] Dashboard analytics graphs/charts
-- [ ] Operator audit logs page UI
-
-#### P2 (Medium Priority)
-- [ ] Multi-currency support
-- [ ] Email notifications as backup
-- [ ] Customer self-service portal
-- [ ] Payment QR code display in invoices UI
-- [ ] WhatsApp message template approval flow
+## Backlog (P2)
+- Better 403 page for feature-gated routes (currently shows empty state + toast)
+- authAxios useMemo optimization in App.js
+- Operator plan page showing which addons are active/available
+- Payment reminder automation scheduling (currently triggers on invoice creation only if WhatsApp configured)
