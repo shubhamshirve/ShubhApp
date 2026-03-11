@@ -323,6 +323,7 @@ class InvoiceCustomization(BaseModel):
     invoice_footer: Optional[str] = None
     show_gst: bool = True
     terms_conditions: Optional[str] = None
+    invoice_template: str = "classic"  # "classic" or "modern"
 
 
 # ============== ANNOUNCEMENT MODELS ==============

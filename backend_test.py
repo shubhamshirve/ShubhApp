@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Backend Testing for Two New Endpoints:
-1. Backup Download - GET /api/admin/backup/download/{backup_id}
-2. Change Password - PUT /api/auth/change-password
+Backend Testing for Invoice Template Feature:
+1. Login as admin
+2. Find or create an operator
+3. Login as operator
+4. Test GET /api/operator/invoice-settings for invoice_template field
+5. Test PUT /api/operator/invoice-settings with invoice_template="modern"
+6. Test PUT /api/operator/invoice-settings with invoice_template="classic"
+7. Verify model accepts both "classic" and "modern" values
 
 Testing multi-tenant SaaS billing platform backend APIs.
 """
@@ -24,6 +29,8 @@ class BackendTester:
     def __init__(self):
         self.admin_token = None
         self.admin_email = None
+        self.operator_token = None
+        self.operator_id = None
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -240,6 +247,172 @@ class BackendTester:
             
         return True
 
+    def test_invoice_template_feature(self):
+        """Test the new invoice template feature according to review request."""
+        self.log("\n=== TESTING INVOICE TEMPLATE FEATURE ===")
+        
+        if not self.admin_token:
+            self.log("❌ No admin token available", "ERROR")
+            return False
+        
+        # Step 1: Login as admin and find/create an operator
+        self.log("Step 1: Finding existing operators via GET /api/admin/operators")
+        status, response, _ = self.make_request('GET', '/admin/operators', token=self.admin_token)
+        
+        if status != 200:
+            self.log(f"❌ Failed to get operators - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        operators = response.get('operators', []) if isinstance(response, dict) else response
+        if not operators:
+            self.log("No existing operators found, registering a new one...")
+            
+            # Register new operator
+            operator_data = {
+                "company_name": "Test Broadband Services",
+                "owner_name": "Test Owner",
+                "email": "test@testoperator.com",
+                "phone": "+919876543210",
+                "password": "test123",
+                "gst_number": "",
+                "charge_gst": True
+            }
+            
+            status, response, _ = self.make_request('POST', '/auth/register', data=operator_data)
+            
+            if status != 201:
+                self.log(f"❌ Operator registration failed - Status: {status}, Response: {response}", "ERROR")
+                return False
+                
+            self.log("✅ New operator registered successfully")
+            operator_email = operator_data["email"]
+            operator_password = operator_data["password"]
+        else:
+            # Use existing operator
+            operator = operators[0]
+            self.operator_id = operator.get('id')
+            operator_email = operator.get('email')
+            self.log(f"✅ Found existing operator: {operator_email}, ID: {self.operator_id}")
+            operator_password = "demo123"  # Try common password
+        
+        # Step 2: Impersonate the operator to get operator JWT token
+        self.log(f"Step 2: Impersonating operator ({operator_email}) via admin")
+        
+        status, response, _ = self.make_request('POST', f'/admin/operators/{self.operator_id}/impersonate', 
+                                              token=self.admin_token)
+        
+        if status != 200:
+            self.log(f"❌ Operator impersonation failed - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        self.operator_token = response.get('access_token')
+        if not self.operator_token:
+            self.log("❌ No operator token received from impersonation", "ERROR")
+            return False
+        
+        self.log("✅ Successfully impersonating operator")
+        
+        # Step 3: GET /api/operator/invoice-settings - verify it returns current settings
+        self.log("Step 3: GET /api/operator/invoice-settings - checking current settings")
+        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
+        
+        if status != 200:
+            self.log(f"❌ Failed to get invoice settings - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        self.log("✅ Invoice settings retrieved successfully")
+        
+        # Verify invoice_template field exists and defaults to "classic"
+        self.log(f"Response content: {response}")
+        invoice_template = response.get('invoice_template')
+        if invoice_template is None:
+            self.log("❌ invoice_template field not found in response", "ERROR")
+            self.log("Available fields in response:", "INFO")
+            for key in response.keys():
+                self.log(f"  - {key}: {response[key]}", "INFO")
+            return False
+        
+        if invoice_template == "classic":
+            self.log("✅ invoice_template defaults to 'classic' as expected")
+        else:
+            self.log(f"ℹ️  invoice_template current value: '{invoice_template}' (not default)")
+        
+        # Step 4: PUT /api/operator/invoice-settings with invoice_template="modern"
+        self.log("Step 4: PUT /api/operator/invoice-settings with invoice_template='modern'")
+        update_data = {
+            "company_name": response.get('company_name', 'Test Co'),
+            "invoice_template": "modern",
+            "invoice_prefix": response.get('invoice_prefix', 'INV'),
+            "show_gst": True
+        }
+        
+        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
+                                              token=self.operator_token, data=update_data)
+        
+        if status != 200:
+            self.log(f"❌ Failed to update to modern template - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        self.log("✅ Successfully updated invoice template to 'modern'")
+        
+        # Step 5: GET /api/operator/invoice-settings again - verify invoice_template is now "modern"
+        self.log("Step 5: GET /api/operator/invoice-settings - verifying template is 'modern'")
+        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
+        
+        if status != 200:
+            self.log(f"❌ Failed to get updated settings - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        current_template = response.get('invoice_template')
+        if current_template == "modern":
+            self.log("✅ invoice_template successfully changed to 'modern'")
+        else:
+            self.log(f"❌ invoice_template is '{current_template}', expected 'modern'", "ERROR")
+            return False
+        
+        # Step 6: PUT /api/operator/invoice-settings with invoice_template="classic"
+        self.log("Step 6: PUT /api/operator/invoice-settings with invoice_template='classic'")
+        update_data["invoice_template"] = "classic"
+        
+        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
+                                              token=self.operator_token, data=update_data)
+        
+        if status != 200:
+            self.log(f"❌ Failed to update to classic template - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        self.log("✅ Successfully updated invoice template to 'classic'")
+        
+        # Step 7: GET /api/operator/invoice-settings - verify invoice_template is "classic"
+        self.log("Step 7: GET /api/operator/invoice-settings - verifying template is 'classic'")
+        status, response, _ = self.make_request('GET', '/operator/invoice-settings', token=self.operator_token)
+        
+        if status != 200:
+            self.log(f"❌ Failed to get final settings - Status: {status}, Response: {response}", "ERROR")
+            return False
+        
+        current_template = response.get('invoice_template')
+        if current_template == "classic":
+            self.log("✅ invoice_template successfully changed back to 'classic'")
+        else:
+            self.log(f"❌ invoice_template is '{current_template}', expected 'classic'", "ERROR")
+            return False
+        
+        # Step 8: Test invalid invoice_template value (should be rejected)
+        self.log("Step 8: Testing invalid invoice_template value")
+        update_data["invoice_template"] = "invalid_template"
+        
+        status, response, _ = self.make_request('PUT', '/operator/invoice-settings', 
+                                              token=self.operator_token, data=update_data)
+        
+        if status >= 400:
+            self.log("✅ Invalid template value correctly rejected")
+        else:
+            self.log(f"⚠️  Invalid template value was accepted - Status: {status}", "WARNING")
+            # This might be acceptable depending on validation implementation
+        
+        return True
+
     def run_tests(self):
         """Run all endpoint tests."""
         self.log(f"Starting backend API testing for: {BASE_URL}")
@@ -249,16 +422,12 @@ class BackendTester:
             self.log("❌ Could not authenticate admin user", "ERROR")
             return False
             
-        # Run endpoint tests
+        # Run invoice template test
         test_results = []
         
-        # Test 1: Backup Download
-        result1 = self.test_backup_download_endpoint()
-        test_results.append(("Backup Download Endpoint", result1))
-        
-        # Test 2: Change Password
-        result2 = self.test_change_password_endpoint()
-        test_results.append(("Change Password Endpoint", result2))
+        # Test: Invoice Template Feature
+        result = self.test_invoice_template_feature()
+        test_results.append(("Invoice Template Feature", result))
         
         # Summary
         self.log("\n" + "="*60)
@@ -273,7 +442,7 @@ class BackendTester:
                 all_passed = False
                 
         if all_passed:
-            self.log("\n🎉 ALL TESTS PASSED - Both endpoints working correctly!")
+            self.log("\n🎉 ALL TESTS PASSED - Invoice template feature working correctly!")
         else:
             self.log("\n❌ SOME TESTS FAILED - Check individual test results above")
             

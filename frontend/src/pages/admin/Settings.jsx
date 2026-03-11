@@ -57,7 +57,13 @@ const AdminSettings = () => {
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
 
   // WhatsApp config state
-  const [waConfig, setWaConfig] = useState({ phone_number_id: "", access_token: "", business_account_id: "" });
+  const [waConfig, setWaConfig] = useState({
+    phone_number_id: "",
+    access_token: "",
+    business_account_id: "",
+    access_token_preview: "",
+    is_configured: false,
+  });
   const [waLoading, setWaLoading] = useState(false);
   const [showToken, setShowToken] = useState(false);
 
@@ -90,11 +96,12 @@ const AdminSettings = () => {
   const fetchWaConfig = async () => {
     try {
       const res = await authAxios.get("/admin/whatsapp-config");
-      // Pre-fill with existing values (access_token is masked from backend)
       setWaConfig(prev => ({
         ...prev,
         phone_number_id: res.data.phone_number_id || "",
         business_account_id: res.data.business_account_id || "",
+        access_token_preview: res.data.access_token_preview || "",
+        is_configured: res.data.is_configured || false,
       }));
     } catch { /* ignore */ }
   };
@@ -350,7 +357,11 @@ const AdminSettings = () => {
                     ) : gateways.map((gw) => (
                       <TableRow key={gw.id}>
                         <TableCell className="font-medium capitalize">{gw.gateway_type}</TableCell>
-                        <TableCell className="font-mono text-sm">{gw.api_key?.slice(0, 16)}...</TableCell>
+                        <TableCell className="font-mono text-sm text-slate-700">
+                          {gw.api_key
+                            ? <span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{gw.api_key}</span>
+                            : <span className="text-slate-400">••••••••</span>}
+                        </TableCell>
                         <TableCell>
                           <span className="text-xs bg-slate-100 px-2 py-1 rounded">
                             {gw.is_platform_gateway ? "SaaS Payments" : `Operator: ${gw.operator_id?.slice(0, 8)}`}
@@ -388,6 +399,19 @@ const AdminSettings = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleUpdateWhatsApp} className="space-y-4 max-w-lg">
+                  {waConfig.is_configured && (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-emerald-800">WhatsApp is configured</p>
+                        {waConfig.access_token_preview && (
+                          <p className="text-xs text-emerald-600 font-mono mt-0.5">
+                            Token: {waConfig.access_token_preview}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>Phone Number ID</Label>
                     <Input

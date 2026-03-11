@@ -110,8 +110,14 @@ async def get_invoice_settings(current_user: dict = Depends(require_operator)):
             "company_name": operator.get("company_name", ""),
             "company_address": "", "company_phone": operator.get("phone", ""),
             "company_email": operator.get("email", ""), "logo_url": None,
-            "invoice_prefix": "INV", "invoice_footer": None, "show_gst": True, "terms_conditions": None
+            "invoice_prefix": "INV", "invoice_footer": None, "show_gst": True, "terms_conditions": None,
+            "invoice_template": "classic"  # Default value for new invoice template feature
         }
+    
+    # Ensure invoice_template field is present in existing records
+    if "invoice_template" not in settings:
+        settings["invoice_template"] = "classic"
+    
     return settings
 
 
@@ -1286,9 +1292,14 @@ async def get_invoice_pdf(invoice_id: str, current_user: dict = Depends(require_
             except Exception:
                 pass
     pdf_service = InvoicePDFService()
+    inv_settings = await db.invoice_settings.find_one(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0}
+    )
+    template = (inv_settings or {}).get("invoice_template", "classic")
     pdf_bytes = pdf_service.generate_invoice_pdf(
-        invoice_data=invoice, operator_data=operator or {},
-        subscriber_data=subscriber or {}, plan_data=plan or {}, qr_code_base64=qr_code
+        invoice_data=invoice, operator_data={**(operator or {}), **(inv_settings or {})},
+        subscriber_data=subscriber or {}, plan_data=plan or {}, qr_code_base64=qr_code,
+        template=template,
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",

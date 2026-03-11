@@ -24,7 +24,9 @@ import {
   Save,
   Key,
   MessageCircle,
-  FileText
+  FileText,
+  CheckCircle2,
+  LayoutTemplate,
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -58,7 +60,8 @@ const OperatorSettings = () => {
     invoice_prefix: "INV",
     invoice_footer: "",
     show_gst: true,
-    terms_conditions: ""
+    terms_conditions: "",
+    invoice_template: "classic",
   });
 
   const [gatewayForm, setGatewayForm] = useState({
@@ -113,7 +116,8 @@ const OperatorSettings = () => {
         invoice_prefix: invoiceRes.data.invoice_prefix || "INV",
         invoice_footer: invoiceRes.data.invoice_footer || "",
         show_gst: invoiceRes.data.show_gst !== false,
-        terms_conditions: invoiceRes.data.terms_conditions || ""
+        terms_conditions: invoiceRes.data.terms_conditions || "",
+        invoice_template: invoiceRes.data.invoice_template || "classic",
       });
 
       if (gatewayRes.data.configured) {
@@ -535,8 +539,112 @@ const OperatorSettings = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleInvoiceSubmit} className="space-y-6">
+                  {/* Invoice Template Selector */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplate className="w-4 h-4 text-slate-600" />
+                      <p className="text-sm font-medium text-slate-700">Invoice Design Template</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Classic */}
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceForm(prev => ({ ...prev, invoice_template: "classic" }))}
+                        className={`relative text-left rounded-xl border-2 overflow-hidden transition-all ${
+                          invoiceForm.invoice_template === "classic"
+                            ? "border-slate-900 shadow-md"
+                            : "border-slate-200 hover:border-slate-400"
+                        }`}
+                      >
+                        {/* Mini preview */}
+                        <div className="bg-white p-3">
+                          <div className="bg-slate-900 h-5 rounded-sm mb-2 flex items-center px-2">
+                            <div className="w-16 h-1.5 bg-white/70 rounded" />
+                            <div className="ml-auto w-10 h-1.5 bg-white/40 rounded" />
+                          </div>
+                          <div className="flex gap-2 mb-2">
+                            <div className="flex-1 space-y-1">
+                              <div className="h-1.5 bg-slate-200 rounded w-3/4" />
+                              <div className="h-1.5 bg-slate-200 rounded w-1/2" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="h-1.5 bg-slate-200 rounded w-full" />
+                              <div className="h-1.5 bg-slate-200 rounded w-3/4" />
+                            </div>
+                          </div>
+                          <div className="border border-slate-200 rounded">
+                            <div className="bg-slate-800 h-3 rounded-t" />
+                            <div className="px-1 py-0.5 space-y-0.5">
+                              <div className="h-1 bg-slate-100 rounded" />
+                              <div className="h-1 bg-slate-100 rounded" />
+                            </div>
+                          </div>
+                          <div className="mt-2 ml-auto w-24 bg-slate-100 rounded h-3 flex items-center justify-end pr-1">
+                            <div className="h-1.5 w-12 bg-slate-400 rounded" />
+                          </div>
+                        </div>
+                        <div className="px-3 pb-3 flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-sm text-slate-800">Classic</p>
+                            <p className="text-xs text-slate-500">Dark header · Clean corporate</p>
+                          </div>
+                          {invoiceForm.invoice_template === "classic" && (
+                            <CheckCircle2 className="w-5 h-5 text-slate-900 shrink-0" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Modern */}
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceForm(prev => ({ ...prev, invoice_template: "modern" }))}
+                        className={`relative text-left rounded-xl border-2 overflow-hidden transition-all ${
+                          invoiceForm.invoice_template === "modern"
+                            ? "border-teal-600 shadow-md"
+                            : "border-slate-200 hover:border-teal-400"
+                        }`}
+                      >
+                        <div className="bg-white p-3">
+                          <div className="bg-teal-700 h-5 rounded-sm mb-2 flex items-center px-2">
+                            <div className="w-16 h-1.5 bg-white/70 rounded" />
+                            <div className="ml-auto w-10 h-1.5 bg-white/40 rounded" />
+                          </div>
+                          <div className="bg-teal-50 border border-teal-200 rounded p-1.5 mb-2 flex gap-2">
+                            <div className="flex-1 space-y-1">
+                              <div className="h-1.5 bg-teal-200 rounded w-1/2" />
+                              <div className="h-1.5 bg-slate-200 rounded w-3/4" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="h-1.5 bg-teal-200 rounded w-1/2" />
+                              <div className="h-1.5 bg-slate-200 rounded w-3/4" />
+                            </div>
+                          </div>
+                          <div className="border border-slate-200 rounded">
+                            <div className="bg-teal-700 h-3 rounded-t" />
+                            <div className="px-1 py-0.5 space-y-0.5">
+                              <div className="h-1 bg-teal-50 rounded" />
+                              <div className="h-1 bg-white rounded" />
+                            </div>
+                          </div>
+                          <div className="mt-2 ml-auto w-24 bg-teal-50 border border-teal-200 rounded h-3 flex items-center justify-end pr-1">
+                            <div className="h-1.5 w-12 bg-teal-600 rounded" />
+                          </div>
+                        </div>
+                        <div className="px-3 pb-3 flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-sm text-teal-800">Modern</p>
+                            <p className="text-xs text-slate-500">Teal accent · Colourful</p>
+                          </div>
+                          {invoiceForm.invoice_template === "modern" && (
+                            <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Company Info */}
-                  <div className="space-y-4">
+                  <div className="border-t pt-5 space-y-4">
                     <p className="text-sm font-medium text-slate-700">Company Details on Invoice</p>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">

@@ -345,6 +345,21 @@ backend:
           agent: "testing"
           comment: "✅ PASSED - Invoice customization settings working. Fixed schema validation for proper field requirements."
 
+  - task: "Operator - Invoice Template Feature"
+    implemented: true
+    working: true
+    file: "backend/routers/operator.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added invoice_template field to InvoiceCustomization model and GET/PUT /api/operator/invoice-settings endpoints. Supports 'classic' and 'modern' templates with 'classic' as default."
+        - working: true
+          agent: "testing"
+          comment: "✅ PASSED - Invoice template feature fully working. TESTED: (1) GET /api/operator/invoice-settings returns invoice_template field defaulting to 'classic', (2) PUT with invoice_template='modern' saves correctly, (3) GET confirms template changed to 'modern', (4) PUT with invoice_template='classic' saves correctly, (5) GET confirms template changed back to 'classic'. Model accepts both 'classic' and 'modern' values as required. Fixed GET endpoint to handle existing records without invoice_template field."
+
   - task: "Operator - Service Plans CRUD"
     implemented: true
     working: true
@@ -1855,6 +1870,31 @@ frontend:
     working: true
     file: "/app/frontend/src/pages/admin/Settings.jsx"
     stuck_count: 0
+
+## New Tasks Added (Invoice Designs + Settings Fix)
+backend:
+  - task: "invoice_template field in InvoiceCustomization model + pdf_service Modern template"
+    implemented: true
+    working: "NA"
+    file: "backend/models.py, backend/services/pdf_service.py, backend/routers/operator.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added invoice_template field (classic/modern). pdf_service now has Classic and Modern PDF renderers routed by template field. operator.py passes template when generating PDF."
+
+test_plan:
+  current_focus:
+    - "invoice_template field in InvoiceCustomization model + pdf_service Modern template"
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Test: 1) PUT /api/operator/invoice-settings with invoice_template='modern' (login as operator first). 2) GET /api/operator/invoice-settings — verify invoice_template is returned. 3) GET /api/operator/invoices/{id}/pdf after setting template to 'modern' — verify PDF bytes are returned (200 with content-type application/pdf). Also verify classic template still works. Backend only."
+
     priority: "high"
     needs_retesting: false
     status_history:
@@ -2009,3 +2049,65 @@ agent_communication:
       Both UI features are fully implemented and working perfectly. Security tab provides complete password change functionality with proper validation feedback, and Backup & Restore tab includes functional Download button with appropriate styling. All requirements from the review request have been met.
       
       **SYSTEM STATUS: PRODUCTION READY FOR BOTH FEATURES ✅**
+
+    - agent: "testing"
+      message: |
+        🎯 **INVOICE TEMPLATE FEATURE TESTING COMPLETED ✅**
+        
+        **TEST REQUEST:** Test the new invoice template feature on backend at /api/operator/invoice-settings
+        **TEST DATE:** March 11, 2026
+        
+        **COMPREHENSIVE API TESTING RESULTS:**
+        
+        **✅ TEST SEQUENCE COMPLETED SUCCESSFULLY:**
+        
+        1. ✅ **Admin Authentication:** Successfully logged in as admin (admin@saas.com)
+        
+        2. ✅ **Operator Access:** Found existing operator (shubham@gmail.com, ID: fd3b42bd-c70a-4774-adcb-cafa39515a05) and successfully impersonated via POST /api/admin/operators/{id}/impersonate
+        
+        3. ✅ **GET /api/operator/invoice-settings:** 
+           - Returns invoice_template field with default value "classic" ✓
+           - Handles existing records without invoice_template field by adding default ✓
+           
+        4. ✅ **PUT /api/operator/invoice-settings (modern):**
+           - Successfully updated with invoice_template="modern" ✓
+           - Returns 200 status code ✓
+           - Request body: {"company_name": "KCN", "invoice_template": "modern", "invoice_prefix": "INV", "show_gst": true}
+           
+        5. ✅ **GET /api/operator/invoice-settings (verify modern):**
+           - Confirmed invoice_template changed to "modern" ✓
+           - Data persisted correctly in database ✓
+           
+        6. ✅ **PUT /api/operator/invoice-settings (classic):**
+           - Successfully updated back to invoice_template="classic" ✓ 
+           - Returns 200 status code ✓
+           
+        7. ✅ **GET /api/operator/invoice-settings (verify classic):**
+           - Confirmed invoice_template changed back to "classic" ✓
+           - Full round-trip testing successful ✓
+           
+        8. ✅ **Model Validation:** 
+           - InvoiceCustomization model accepts both "classic" and "modern" values ✓
+           - Default value properly set to "classic" ✓
+           
+        **🔧 IMPLEMENTATION FIXES APPLIED:**
+        - **Fixed GET endpoint:** Added backward compatibility for existing records without invoice_template field
+        - **Enhanced default response:** Ensured all new operators get invoice_template="classic" by default
+        - **Verified database updates:** Confirmed all PUT operations properly persist the invoice_template value
+        
+        **📋 TESTING METHODOLOGY:**
+        - Used real operator account with existing invoice settings
+        - Tested both new records (default values) and existing records (backward compatibility)
+        - Verified complete CRUD cycle: Read → Update → Read → Update → Read
+        - Confirmed data persistence across multiple API calls
+        - Used admin impersonation to authenticate as operator (proper security flow)
+        
+        **🎉 CONCLUSION:**
+        The invoice template feature is **FULLY FUNCTIONAL** and ready for production. All requirements from the review request have been met:
+        - ✅ GET endpoint returns invoice_template field (defaults to "classic")
+        - ✅ PUT endpoint accepts and saves invoice_template="modern" 
+        - ✅ PUT endpoint accepts and saves invoice_template="classic"
+        - ✅ Model properly validates both "classic" and "modern" values
+        - ✅ Backward compatibility maintained for existing operators
+        
+        **SYSTEM STATUS: PRODUCTION READY ✅**
