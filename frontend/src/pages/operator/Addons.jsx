@@ -255,28 +255,43 @@ const OperatorAddons = () => {
                 You're about to purchase <strong>{showConfirm?.name}</strong>
               </DialogDescription>
             </DialogHeader>
-            {showConfirm && (
-              <div className="space-y-3 py-4">
-                <p className="text-sm text-slate-600">{showConfirm.description}</p>
-                <div className="p-4 bg-slate-50 rounded-lg space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Base Price</span>
-                    <span>₹{showConfirm.price}</span>
+            {showConfirm && (() => {
+              const base = showConfirm.price;
+              const gst = parseFloat((base * 0.18).toFixed(2));
+              const exact = parseFloat((base + gst).toFixed(2));
+              const rounded = Math.round(exact);
+              const diff = parseFloat((rounded - exact).toFixed(2));
+              return (
+                <div className="space-y-3 py-4">
+                  <p className="text-sm text-slate-600">{showConfirm.description}</p>
+                  <div className="p-4 bg-slate-50 rounded-lg space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Base Price</span>
+                      <span>₹{base.toLocaleString("en-IN")}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">GST (18%)</span>
+                      <span>₹{gst.toLocaleString("en-IN")}</span>
+                    </div>
+                    {diff !== 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Rounding</span>
+                        <span className={diff > 0 ? "text-red-500" : "text-emerald-600"}>
+                          {diff > 0 ? `+₹${diff.toFixed(2)}` : `-₹${Math.abs(diff).toFixed(2)}`}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-semibold border-t pt-2 mt-1">
+                      <span>Total (Rounded)</span>
+                      <span data-testid="purchase-total">₹{rounded.toLocaleString("en-IN")}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">GST (18%)</span>
-                    <span>₹{Math.round(showConfirm.price * 0.18)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold border-t pt-2 mt-1">
-                    <span>Total</span>
-                    <span data-testid="purchase-total">₹{Math.round(showConfirm.price * 1.18)}</span>
-                  </div>
+                  <p className="text-xs text-slate-500">
+                    A Razorpay payment link will be generated. Complete the payment to activate the add-on.
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500">
-                  A Razorpay payment link will be generated. Complete the payment to activate the add-on.
-                </p>
-              </div>
-            )}
+              );
+            })()}
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowConfirm(null)}>Cancel</Button>
               <Button onClick={() => handlePurchase(showConfirm)} data-testid="confirm-purchase-btn">

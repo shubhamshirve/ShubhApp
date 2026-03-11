@@ -289,7 +289,10 @@ async def create_checkout_order(
         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
     gst_amount = round(base_amount * gst_rate / 100, 2)
-    total = round(base_amount + gst_amount, 2)
+    exact_total = round(base_amount + gst_amount, 2)
+    import math
+    rounded_total = math.floor(exact_total + 0.5)          # standard half-up rounding → int
+    rounding_diff = round(rounded_total - exact_total, 2)  # +ve = rounded up, -ve = rounded down
 
     razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
     razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
@@ -300,7 +303,7 @@ async def create_checkout_order(
     rz = RazorpayService(razorpay_key, razorpay_secret)
     order_id = generate_id()
     order = rz.create_order(
-        amount=total, receipt=f"{receipt_prefix}-{order_id[:8]}",
+        amount=rounded_total, receipt=f"{receipt_prefix}-{order_id[:8]}",
         notes={"type": item_type, "item_code": item_code, "plan_id": plan_id,
                "months": str(months), "operator_id": operator["id"], "internal_order_id": order_id}
     )
@@ -311,7 +314,9 @@ async def create_checkout_order(
         "operator_id": operator["id"], "item_type": item_type,
         "item_code": item_code, "plan_id": plan_id, "months": months,
         "addon_codes": selected_addon_codes,
-        "base_amount": base_amount, "gst_amount": gst_amount, "total_amount": total,
+        "base_amount": base_amount, "gst_amount": gst_amount,
+        "exact_total": exact_total, "rounding_diff": rounding_diff,
+        "total_amount": rounded_total,
         "description": description, "status": "created",
         "created_at": now.isoformat(), "deleted_at": None
     })
@@ -319,9 +324,11 @@ async def create_checkout_order(
     platform_name = settings.get("platform_name", "SaaS Billing Platform") if settings else "SaaS Billing Platform"
     return {
         "razorpay_order_id": order["id"], "razorpay_key": razorpay_key,
-        "amount": int(total * 100), "currency": "INR",
+        "amount": rounded_total * 100, "currency": "INR",
         "name": platform_name, "description": description,
-        "base_amount": base_amount, "gst_amount": gst_amount, "total_amount": total,
+        "base_amount": base_amount, "gst_amount": gst_amount,
+        "exact_total": exact_total, "rounding_diff": rounding_diff,
+        "total_amount": rounded_total,
         "prefill": {"name": operator.get("owner_name", ""), "email": operator.get("email", ""), "contact": operator.get("phone", "")}
     }
 
@@ -472,7 +479,10 @@ async def renew_operator_subscription(
         settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
         gst_rate = settings.get("gst_rate", 18) if settings else 18
         gst_amount = round(amount * gst_rate / 100, 2)
-    total_amount = amount + gst_amount
+    import math
+    exact_total = round(amount + gst_amount, 2)
+    total_amount = math.floor(exact_total + 0.5)           # standard half-up round to int
+    rounding_diff = round(total_amount - exact_total, 2)
     renewal_id = generate_id()
     payment_link = None
     razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
@@ -498,6 +508,7 @@ async def renew_operator_subscription(
         "id": renewal_id, "operator_id": operator["id"],
         "plan_id": target_plan_id, "plan_name": saas_plan["name"],
         "months": months, "base_amount": amount, "gst_amount": gst_amount,
+        "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": total_amount, "payment_link": payment_link,
         "status": "pending", "created_at": now.isoformat(), "deleted_at": None
     }
