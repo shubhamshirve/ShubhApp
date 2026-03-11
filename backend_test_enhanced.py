@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import json
 
 class EnhancedSaaSBillingTester:
-    def __init__(self, base_url="https://syntax-inspector-1.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://saas-billing-qa.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.admin_token = None
         self.operator_token = None
@@ -283,7 +283,7 @@ class EnhancedSaaSBillingTester:
         """Test if landing page endpoint exists (root URL)"""
         try:
             # Test the main domain landing page
-            response = requests.get("https://syntax-inspector-1.preview.emergentagent.com/")
+            response = requests.get("https://saas-billing-qa.preview.emergentagent.com/")
             
             # Should return 200 and HTML content
             success = response.status_code == 200

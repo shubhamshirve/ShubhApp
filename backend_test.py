@@ -5,7 +5,7 @@ import json
 import sys
 
 # Backend URL
-BASE_URL = "https://syntax-inspector-1.preview.emergentagent.com/api"
+BASE_URL = "https://saas-billing-qa.preview.emergentagent.com/api"
 
 class TestRunner:
     def __init__(self):

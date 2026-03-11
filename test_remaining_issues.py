@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timedelta
 
 # Test the 4 remaining problematic endpoints with proper authentication
-BASE_URL = "https://syntax-inspector-1.preview.emergentagent.com/api"
+BASE_URL = "https://saas-billing-qa.preview.emergentagent.com/api"
 
 def make_request(method, endpoint, data=None, token=None, params=None):
     """Make HTTP request"""
