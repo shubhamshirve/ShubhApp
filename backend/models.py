@@ -368,4 +368,29 @@ class AddonCreate(BaseModel):
     name: str
     code: str
     price: float
+
+
+# ============== DISCOUNT CODE MODELS ==============
+
+class DiscountCodeCreate(BaseModel):
+    code: str
+    description: Optional[str] = None
+    discount_type: str  # "percentage" or "flat"
+    discount_value: float  # e.g. 20 for 20% or 100 for ₹100 flat
+    expiry_date: Optional[str] = None  # ISO date string YYYY-MM-DD
+    max_redemptions: int = 0  # 0 = unlimited
+    is_active: bool = True
+
+
+class DiscountCodeResponse(BaseModel):
+    id: str
+    code: str
+    description: Optional[str] = None
+    discount_type: str
+    discount_value: float
+    expiry_date: Optional[str] = None
+    max_redemptions: int = 0
+    used_count: int = 0
+    is_active: bool = True
+    created_at: datetime
     description: Optional[str] = None

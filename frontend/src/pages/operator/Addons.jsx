@@ -23,6 +23,10 @@ const OperatorAddons = () => {
   const [showConfirm, setShowConfirm] = useState(null);
   const [activating, setActivating] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  // Coupon state for confirm dialog
+  const [coupon, setCoupon] = useState("");
+  const [couponResult, setCouponResult] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
 
   useEffect(() => { fetchAddons(); fetchSubscription(); }, []);
 
@@ -31,6 +35,21 @@ const OperatorAddons = () => {
       const res = await authAxios.get("/operator/subscription");
       setSubscriptionStatus(res.data?.status);
     } catch { /* silent */ }
+  };
+
+  const applyCoupon = async (base) => {
+    if (!coupon.trim()) return;
+    setCouponLoading(true);
+    try {
+      const res = await authAxios.post(`/operator/checkout/validate-coupon?code=${coupon.trim()}&amount=${base}`);
+      setCouponResult(res.data);
+      toast.success(res.data.message);
+    } catch (err) {
+      setCouponResult(null);
+      toast.error(err.response?.data?.detail || "Invalid coupon code");
+    } finally {
+      setCouponLoading(false);
+    }
   };
 
   const fetchAddons = async () => {
@@ -47,20 +66,43 @@ const OperatorAddons = () => {
   const handlePurchase = async (addon) => {
     setShowConfirm(null);
     setPurchasing(addon.code);
+    const couponParam = couponResult?.valid ? `&coupon_code=${couponResult.code}` : "";
+    setCoupon("");
+    setCouponResult(null);
     try {
-      const res = await authAxios.post(`/operator/addons/purchase?addon_code=${addon.code}`);
-      if (res.data.status === "activated") {
+      const res = await authAxios.post(`/operator/checkout/create-order?item_type=addon&item_code=${addon.code}${couponParam}`);
+      if (res.data.status === "activated_free") {
         toast.success(res.data.message);
         fetchAddons();
-      } else if (res.data.payment_link) {
-        setPaymentResult(res.data);
-        toast.success("Payment link generated!");
-      } else {
-        setPaymentResult(res.data);
-        toast.info("Purchase initiated. Contact admin to complete payment.");
+        return;
       }
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to purchase add-on");
+      const rzKey = res.data.razorpay_key;
+      if (!rzKey) { toast.error("Payment gateway not configured"); return; }
+      const options = {
+        key: rzKey,
+        amount: res.data.amount,
+        currency: res.data.currency || "INR",
+        name: res.data.name || "SaaS Billing",
+        description: res.data.description || addon.name,
+        order_id: res.data.razorpay_order_id,
+        prefill: res.data.prefill || {},
+        handler: async function (response) {
+          try {
+            await authAxios.post("/operator/checkout/verify-payment", {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            toast.success("Add-on activated successfully!");
+            fetchAddons();
+          } catch { toast.error("Payment verification failed"); }
+        },
+        modal: { ondismiss: () => toast.info("Payment cancelled") },
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to purchase add-on");
     } finally {
       setPurchasing(null);
     }
@@ -265,7 +307,7 @@ const OperatorAddons = () => {
         )}
 
         {/* Purchase Confirmation Dialog */}
-        <Dialog open={!!showConfirm} onOpenChange={(open) => !open && setShowConfirm(null)}>
+        <Dialog open={!!showConfirm} onOpenChange={(open) => { if (!open) { setShowConfirm(null); setCoupon(""); setCouponResult(null); } }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Purchase Add-on</DialogTitle>
@@ -275,8 +317,14 @@ const OperatorAddons = () => {
             </DialogHeader>
             {showConfirm && (() => {
               const base = showConfirm.price;
-              const gst = parseFloat((base * 0.18).toFixed(2));
-              const exact = parseFloat((base + gst).toFixed(2));
+              const addonDiscount = couponResult?.valid
+                ? parseFloat((couponResult.discount_type === "percentage"
+                    ? base * couponResult.discount_value / 100
+                    : Math.min(couponResult.discount_value, base)).toFixed(2))
+                : 0;
+              const discBase = parseFloat((base - addonDiscount).toFixed(2));
+              const gst = parseFloat((discBase * 0.18).toFixed(2));
+              const exact = parseFloat((discBase + gst).toFixed(2));
               const rounded = Math.round(exact);
               const diff = parseFloat((rounded - exact).toFixed(2));
               return (
@@ -287,6 +335,12 @@ const OperatorAddons = () => {
                       <span className="text-slate-500">Base Price</span>
                       <span>₹{base.toLocaleString("en-IN")}</span>
                     </div>
+                    {addonDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-emerald-600">
+                        <span>Discount ({couponResult?.code})</span>
+                        <span>-₹{addonDiscount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">GST (18%)</span>
                       <span>₹{gst.toLocaleString("en-IN")}</span>
@@ -304,6 +358,31 @@ const OperatorAddons = () => {
                       <span data-testid="purchase-total">₹{rounded.toLocaleString("en-IN")}</span>
                     </div>
                   </div>
+                  {/* Discount Code */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Discount Code</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter coupon code"
+                        value={coupon}
+                        onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setCouponResult(null); }}
+                        className="flex-1 border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => applyCoupon(base)}
+                        disabled={!coupon.trim() || couponLoading}
+                      >
+                        {couponLoading ? "..." : "Apply"}
+                      </Button>
+                    </div>
+                    {couponResult?.valid && (
+                      <p className="text-xs text-emerald-600 font-medium">✓ {couponResult.message}</p>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500">
                     A Razorpay payment link will be generated. Complete the payment to activate the add-on.
                   </p>
@@ -311,7 +390,7 @@ const OperatorAddons = () => {
               );
             })()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowConfirm(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setShowConfirm(null); setCoupon(""); setCouponResult(null); }}>Cancel</Button>
               <Button onClick={() => handlePurchase(showConfirm)} data-testid="confirm-purchase-btn">
                 <ShoppingCart className="w-4 h-4 mr-2" /> Proceed to Pay
               </Button>

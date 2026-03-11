@@ -11,6 +11,7 @@ from models import (
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
     WhatsAppConfig,
+    DiscountCodeCreate, DiscountCodeResponse,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -651,3 +652,61 @@ async def trigger_expiry_check(current_user: dict = Depends(require_admin)):
     from services.cron_service import CronJobService
     service = CronJobService(db)
     return await service.check_subscription_expiry()
+
+
+
+# ─── Discount Codes ──────────────────────────────────────────────────────────
+
+@router.get("/discount-codes", response_model=List[DiscountCodeResponse])
+async def list_discount_codes(current_user: dict = Depends(require_admin)):
+    codes = await db.discount_codes.find({"deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return [
+        DiscountCodeResponse(**{**c, "created_at": datetime.fromisoformat(c["created_at"])})
+        for c in codes
+    ]
+
+
+@router.post("/discount-codes", response_model=DiscountCodeResponse)
+async def create_discount_code(data: DiscountCodeCreate, current_user: dict = Depends(require_admin)):
+    existing = await db.discount_codes.find_one({"code": data.code.upper(), "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="Discount code already exists")
+    now = datetime.now(timezone.utc)
+    doc = {
+        "id": generate_id(),
+        "code": data.code.upper(),
+        "description": data.description,
+        "discount_type": data.discount_type,
+        "discount_value": data.discount_value,
+        "expiry_date": data.expiry_date,
+        "max_redemptions": data.max_redemptions,
+        "used_count": 0,
+        "is_active": data.is_active,
+        "created_by": current_user.get("id", ""),
+        "created_at": now.isoformat(),
+        "deleted_at": None,
+    }
+    await db.discount_codes.insert_one(doc)
+    doc.pop("_id", None)
+    return DiscountCodeResponse(**{**doc, "created_at": now})
+
+
+@router.patch("/discount-codes/{code_id}/toggle")
+async def toggle_discount_code(code_id: str, current_user: dict = Depends(require_admin)):
+    doc = await db.discount_codes.find_one({"id": code_id, "deleted_at": None}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Discount code not found")
+    new_state = not doc.get("is_active", True)
+    await db.discount_codes.update_one({"id": code_id}, {"$set": {"is_active": new_state}})
+    return {"message": f"Discount code {'activated' if new_state else 'deactivated'}", "is_active": new_state}
+
+
+@router.delete("/discount-codes/{code_id}")
+async def delete_discount_code(code_id: str, current_user: dict = Depends(require_admin)):
+    result = await db.discount_codes.update_one(
+        {"id": code_id, "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Discount code not found")
+    return {"message": "Discount code deleted"}

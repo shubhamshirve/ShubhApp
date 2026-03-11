@@ -227,10 +227,50 @@ async def get_addon_store(current_user: dict = Depends(require_operator)):
     return result
 
 
+@router.post("/checkout/validate-coupon")
+async def validate_coupon(
+    code: str, amount: float,
+    current_user: dict = Depends(require_operator)
+):
+    """Validate a discount code and return the discount amount."""
+    if current_user["role"] == "admin" and not current_user.get("impersonated_by"):
+        raise HTTPException(status_code=400, detail="Admin cannot use coupons")
+    now = datetime.now(timezone.utc)
+    doc = await db.discount_codes.find_one({"code": code.upper(), "deleted_at": None}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Invalid discount code")
+    if not doc.get("is_active", True):
+        raise HTTPException(status_code=400, detail="Discount code is inactive")
+    if doc.get("expiry_date"):
+        expiry = datetime.fromisoformat(doc["expiry_date"])
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if now > expiry:
+            raise HTTPException(status_code=400, detail="Discount code has expired")
+    max_r = doc.get("max_redemptions", 0)
+    if max_r > 0 and doc.get("used_count", 0) >= max_r:
+        raise HTTPException(status_code=400, detail="Discount code redemption limit reached")
+    # Calculate discount
+    if doc["discount_type"] == "percentage":
+        discount_amount = round(amount * doc["discount_value"] / 100, 2)
+    else:
+        discount_amount = min(doc["discount_value"], amount)
+    final_amount = max(0, amount - discount_amount)
+    return {
+        "valid": True,
+        "code": doc["code"],
+        "discount_type": doc["discount_type"],
+        "discount_value": doc["discount_value"],
+        "discount_amount": discount_amount,
+        "final_amount": final_amount,
+        "message": f"{'{}%'.format(int(doc['discount_value'])) if doc['discount_type'] == 'percentage' else '₹{}'.format(int(doc['discount_value']))} discount applied!"
+    }
+
+
 @router.post("/checkout/create-order")
 async def create_checkout_order(
     item_type: str, item_code: str = "", months: int = 1, plan_id: str = "",
-    addon_codes: str = "",
+    addon_codes: str = "", coupon_code: str = "",
     current_user: dict = Depends(require_operator)
 ):
     if current_user["role"] == "admin":
@@ -274,28 +314,61 @@ async def create_checkout_order(
         base_amount = saas_plan["monthly_price"] * months
         description = f"{saas_plan['name']} x {months} month(s)"
         receipt_prefix = "SUB"
-        # Add selected addon prices
-        addon_price_total = 0
+        included_in_plan = saas_plan.get("included_addons", [])
+        # Auto-include prices of operator's standalone purchased addons (not in plan)
+        auto_addon_codes = []
+        for code in operator.get("active_addons", []):
+            if code not in included_in_plan:
+                addon_doc = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+                if addon_doc:
+                    base_amount += addon_doc["price"] * months
+                    auto_addon_codes.append(code)
+        # Add newly selected addon prices (not already owned)
         valid_addon_codes = []
         for code in selected_addon_codes:
-            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
-            if addon and code not in operator.get("active_addons", []):
-                included = saas_plan.get("included_addons", [])
-                if code not in included:
-                    addon_price_total += addon["price"]
-                    valid_addon_codes.append(code)
-        if addon_price_total > 0:
-            base_amount += addon_price_total
-            description += f" + {len(valid_addon_codes)} add-on(s)"
-        selected_addon_codes = valid_addon_codes
+            if code in auto_addon_codes:
+                continue  # Already counted
+            addon_doc2 = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+            if addon_doc2 and code not in operator.get("active_addons", []) and code not in included_in_plan:
+                base_amount += addon_doc2["price"] * months
+                valid_addon_codes.append(code)
+        all_addon_codes = auto_addon_codes + valid_addon_codes
+        if all_addon_codes:
+            description += f" + {len(all_addon_codes)} add-on(s)"
+        selected_addon_codes = all_addon_codes
     else:
         raise HTTPException(status_code=400, detail="Invalid item_type. Use 'addon' or 'subscription'")
 
     if base_amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
-    gst_amount = round(base_amount * gst_rate / 100, 2)
-    exact_total = round(base_amount + gst_amount, 2)
+    # Apply coupon discount (before GST)
+    discount_amount = 0.0
+    applied_coupon = None
+    if coupon_code:
+        coupon_doc = await db.discount_codes.find_one({"code": coupon_code.upper(), "deleted_at": None}, {"_id": 0})
+        if coupon_doc and coupon_doc.get("is_active"):
+            now_check = datetime.now(timezone.utc)
+            valid = True
+            if coupon_doc.get("expiry_date"):
+                exp = datetime.fromisoformat(coupon_doc["expiry_date"])
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if now_check > exp:
+                    valid = False
+            max_r = coupon_doc.get("max_redemptions", 0)
+            if max_r > 0 and coupon_doc.get("used_count", 0) >= max_r:
+                valid = False
+            if valid:
+                if coupon_doc["discount_type"] == "percentage":
+                    discount_amount = round(base_amount * coupon_doc["discount_value"] / 100, 2)
+                else:
+                    discount_amount = min(coupon_doc["discount_value"], base_amount)
+                applied_coupon = coupon_code.upper()
+    discounted_base = round(base_amount - discount_amount, 2)
+
+    gst_amount = round(discounted_base * gst_rate / 100, 2)
+    exact_total = round(discounted_base + gst_amount, 2)
     import math
     rounded_total = math.floor(exact_total + 0.5)          # standard half-up rounding → int
     rounding_diff = round(rounded_total - exact_total, 2)  # +ve = rounded up, -ve = rounded down
@@ -320,9 +393,12 @@ async def create_checkout_order(
         "operator_id": operator["id"], "item_type": item_type,
         "item_code": item_code, "plan_id": plan_id, "months": months,
         "addon_codes": selected_addon_codes,
-        "base_amount": base_amount, "gst_amount": gst_amount,
+        "base_amount": base_amount, "discount_amount": discount_amount,
+        "discounted_base": discounted_base,
+        "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": rounded_total,
+        "coupon_code": applied_coupon,
         "description": description, "status": "created",
         "created_at": now.isoformat(), "deleted_at": None
     })
@@ -332,9 +408,12 @@ async def create_checkout_order(
         "razorpay_order_id": order["id"], "razorpay_key": razorpay_key,
         "amount": rounded_total * 100, "currency": "INR",
         "name": platform_name, "description": description,
-        "base_amount": base_amount, "gst_amount": gst_amount,
+        "base_amount": base_amount, "discount_amount": discount_amount,
+        "discounted_base": discounted_base,
+        "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": rounded_total,
+        "coupon_code": applied_coupon,
         "prefill": {"name": operator.get("owner_name", ""), "email": operator.get("email", ""), "contact": operator.get("phone", "")}
     }
 
@@ -421,12 +500,22 @@ async def verify_checkout_payment(
         {"$set": {"status": "paid", "razorpay_payment_id": razorpay_payment_id, "paid_at": now.isoformat()}}
     )
 
+    # Increment coupon used_count if a coupon was applied
+    if order.get("coupon_code"):
+        await db.discount_codes.update_one(
+            {"code": order["coupon_code"]},
+            {"$inc": {"used_count": 1}}
+        )
+
     payment_record = {
         "id": generate_id(), "operator_id": operator["id"],
         "order_id": order["id"], "razorpay_order_id": razorpay_order_id,
         "razorpay_payment_id": razorpay_payment_id,
         "item_type": order["item_type"], "item_code": order.get("item_code", ""),
-        "base_amount": order["base_amount"], "gst_amount": order["gst_amount"],
+        "base_amount": order["base_amount"],
+        "discount_amount": order.get("discount_amount", 0),
+        "coupon_code": order.get("coupon_code"),
+        "gst_amount": order["gst_amount"],
         "total_amount": order["total_amount"], "status": "completed",
         "created_at": now.isoformat(), "deleted_at": None
     }

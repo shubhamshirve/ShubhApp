@@ -862,6 +862,51 @@ backend:
         comment: "✅ PASSED - POST /operator/checkout/create-order?item_type=subscription&plan_id={id}&months=1&addon_codes=audit_log correctly includes addon pricing in total_amount. Base amount increases from $1100 (plan price) to $1200 (plan + audit_log addon), confirming addon bundling logic works correctly."
 
 frontend:
+  - task: "Admin Discount Codes Page"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/admin/DiscountCodes.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Admin discount codes page with CRUD operations - GET/POST /admin/discount-codes, PATCH /admin/discount-codes/{id}/toggle, DELETE /admin/discount-codes/{id}"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Admin Discount Codes page fully functional. Verified: (1) 'Discount Codes' link present in admin sidebar, (2) Page loads with table and 'New Discount Code' button, (3) Successfully created SAVE10 (Percentage, 10%, Max Redemptions=50), (4) Successfully created FLAT100 (Flat Amount, ₹100), (5) All codes display correctly in table with Active status. Screenshot: test1_discount_codes_page.png shows table with FLAT100, SAVE10, and existing WELCOME20 code."
+
+  - task: "Renew Dialog - Discount Code Field"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/operator/Subscription.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Renew dialog includes discount code input field (lines 810-833) with Apply button. Shows discount in billing breakdown with green color (lines 859-863). Also displays owned addons that auto-renew with plan (lines 765-781)."
+      - working: "NA"
+        agent: "testing"
+        comment: "⚠️ UNABLE TO TEST - Could not impersonate operator from /admin/operators page. The 'Login as Operator' button was not found. Attempted workaround by registering new operator but browser crashed. Based on code review: (1) Discount code input field exists at lines 810-833, (2) Apply button triggers applyRenewCoupon function, (3) Discount displays in green at lines 859-863, (4) Owned addons section exists at lines 765-781. Frontend code implementation appears correct. Needs manual verification or different test approach."
+
+  - task: "Addon Purchase Dialog - Discount Code Field"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/operator/Addons.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Addon purchase confirmation dialog includes discount code input field (lines 361-385) with Apply button. Shows discount in billing breakdown (lines 338-342)."
+      - working: "NA"
+        agent: "testing"
+        comment: "⚠️ UNABLE TO TEST - Could not impersonate operator to access addon purchase flow. Based on code review: (1) Discount code input field exists in purchase dialog at lines 361-385, (2) Apply button triggers applyCoupon function (lines 40-53), (3) Discount displays in billing breakdown at lines 338-342, (4) couponResult?.valid check ensures discount applies correctly. Frontend code implementation appears correct. Needs manual verification or different test approach."
+
   - task: "Trial plan addon purchase block UI"
     implemented: true
     working: "NA"
@@ -916,22 +961,17 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 8
+  test_sequence: 9
   run_ui: true
 
 test_plan:
   current_focus:
-    - "Block addon purchase on trial plan"
-    - "Restrict subscriber delete to admin-impersonating only"
-    - "Add suspend/activate subscriber endpoints"
-    - "Trial plan staff creation error message"
-    - "Add staff_management to features endpoint"
-    - "Subscription renewal with bundled addons"
-    - "Trial plan addon purchase block UI"
-    - "Subscriber suspend/activate UI + delete only for admin"
-    - "Staff nav link gated by staff_management addon"
-    - "Subscription renewal with addon bundling UI"
-  stuck_tasks: []
+    - "Admin Discount Codes Page"
+    - "Renew Dialog - Discount Code Field"
+    - "Addon Purchase Dialog - Discount Code Field"
+  stuck_tasks:
+    - "Renew Dialog - Discount Code Field"
+    - "Addon Purchase Dialog - Discount Code Field"
   test_all: false
   test_priority: "high_first"
 
@@ -1175,6 +1215,94 @@ agent_communication:
         - Expiry dates displayed on owned addons ✓
         
         **SYSTEM STATUS: PRODUCTION READY ✅**
+
+    - agent: "testing"
+      message: |
+        🎯 **DISCOUNT CODES FEATURE TESTING - PARTIAL COMPLETION**
+        
+        **TEST DATE:** March 11, 2026
+        **TEST REQUEST:** Test 3 discount code features: Admin page, Renew dialog, Addon purchase dialog
+        
+        **TEST RESULTS:**
+        
+        ### ✅ TEST 1: Admin Discount Codes Page - FULLY PASSED
+        **Tested:** /admin/discount-codes page CRUD operations
+        
+        **Results:**
+        1. ✅ "Discount Codes" link exists and is visible in admin sidebar navigation
+        2. ✅ Page loads successfully with discount codes table
+        3. ✅ "New Discount Code" button present and functional
+        4. ✅ Created SAVE10 discount code:
+           - Type: Percentage
+           - Value: 10%
+           - Max Redemptions: 0/50
+           - Status: Active
+        5. ✅ Created FLAT100 discount code:
+           - Type: Flat Amount
+           - Value: ₹100 off
+           - Status: Active
+        6. ✅ Table displays all codes correctly (FLAT100, SAVE10, and existing WELCOME20)
+        7. ✅ Screenshot captured: test1_discount_codes_page.png
+        
+        **Verification:** All admin discount code management features working perfectly.
+        
+        ---
+        
+        ### ⚠️ TEST 2: Renew Dialog - Discount Code Field - UNABLE TO COMPLETE
+        **Attempted:** Verify discount code field in subscription renewal dialog
+        
+        **Blocker:** Could not impersonate operator from /admin/operators page
+        - The "Login as Operator" button was not found using multiple selectors
+        - Attempted workaround by registering new operator but browser crashed mid-test
+        
+        **Code Review (Completed Instead):**
+        - ✅ Discount code input field exists at Subscription.jsx lines 810-833
+        - ✅ Apply button triggers `applyRenewCoupon` function (lines 155-168)
+        - ✅ Discount displays in billing breakdown with green color (.text-emerald-600) at lines 859-863
+        - ✅ Owned addons auto-renew section exists at lines 765-781
+        - ✅ Backend endpoint /operator/checkout/validate-coupon exists
+        
+        **Assessment:** Frontend code implementation appears correct based on source review.
+        
+        ---
+        
+        ### ⚠️ TEST 3: Addons Page - Discount Code Field - UNABLE TO COMPLETE
+        **Attempted:** Verify discount code field in addon purchase dialog
+        
+        **Blocker:** Could not access operator context due to impersonation failure
+        
+        **Code Review (Completed Instead):**
+        - ✅ Discount code input field exists at Addons.jsx lines 361-385
+        - ✅ Apply button triggers `applyCoupon` function (lines 40-53)
+        - ✅ Discount displays in billing breakdown at lines 338-342
+        - ✅ Coupon validation check `couponResult?.valid` ensures proper discount application
+        - ✅ Backend endpoint /operator/checkout/validate-coupon exists
+        
+        **Assessment:** Frontend code implementation appears correct based on source review.
+        
+        ---
+        
+        **CRITICAL ISSUE IDENTIFIED:**
+        The playwright test could not locate operators to impersonate using:
+        - `button:has-text("Login as Operator")`
+        - `[data-testid="operator-actions"]`
+        - Various other button selectors
+        
+        This suggests either:
+        1. No operators exist in the database currently
+        2. The operator action menu structure differs from expected
+        3. Operators page UI may have changed
+        
+        **RECOMMENDATION:**
+        Main agent should:
+        1. Manually verify operators exist in /admin/operators page
+        2. Check the HTML structure of operator action buttons
+        3. Provide test operator credentials OR
+        4. Manually test discount code application in renew/addon dialogs
+        
+        **OVERALL ASSESSMENT:**
+        - Admin discount codes functionality: ✅ FULLY WORKING
+        - Operator discount code application: ⚠️ CODE LOOKS CORRECT, NEEDS MANUAL VERIFICATION
 
 frontend:
   - task: "Landing Page & Navigation"

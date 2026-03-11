@@ -39,7 +39,7 @@ const OperatorSubscription = () => {
   const [addons, setAddons] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("subscription"); // subscription | history
+  const [activeTab, setActiveTab] = useState("subscription");
   const [showRenewDialog, setShowRenewDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("");
   const [months, setMonths] = useState("1");
@@ -48,6 +48,14 @@ const OperatorSubscription = () => {
   const [showAddonConfirm, setShowAddonConfirm] = useState(null);
   // Addons to bundle with subscription renewal
   const [selectedAddonCodes, setSelectedAddonCodes] = useState([]);
+  // Coupon state for Renew Dialog
+  const [renewCoupon, setRenewCoupon] = useState("");
+  const [renewCouponResult, setRenewCouponResult] = useState(null);
+  const [renewCouponLoading, setRenewCouponLoading] = useState(false);
+  // Coupon state for Addon Confirm Dialog
+  const [addonCoupon, setAddonCoupon] = useState("");
+  const [addonCouponResult, setAddonCouponResult] = useState(null);
+  const [addonCouponLoading, setAddonCouponLoading] = useState(false);
 
   const fetchSubscription = useCallback(async () => {
     try {
@@ -124,11 +132,14 @@ const OperatorSubscription = () => {
     setProcessing(true);
     try {
       const addonParam = selectedAddonCodes.length > 0 ? `&addon_codes=${selectedAddonCodes.join(",")}` : "";
+      const couponParam = renewCouponResult?.valid ? `&coupon_code=${renewCouponResult.code}` : "";
       const res = await authAxios.post(
-        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=${months}${addonParam}`
+        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=${months}${addonParam}${couponParam}`
       );
       setShowRenewDialog(false);
       setSelectedAddonCodes([]);
+      setRenewCoupon("");
+      setRenewCouponResult(null);
       openRazorpay(res.data, () => {
         fetchSubscription();
         fetchAddons();
@@ -141,13 +152,46 @@ const OperatorSubscription = () => {
     }
   };
 
+  const applyRenewCoupon = async () => {
+    if (!renewCoupon.trim()) return;
+    setRenewCouponLoading(true);
+    try {
+      const res = await authAxios.post(`/operator/checkout/validate-coupon?code=${renewCoupon.trim()}&amount=${exactTotal}`);
+      setRenewCouponResult(res.data);
+      toast.success(res.data.message);
+    } catch (err) {
+      setRenewCouponResult(null);
+      toast.error(err.response?.data?.detail || "Invalid coupon code");
+    } finally {
+      setRenewCouponLoading(false);
+    }
+  };
+
+  const applyAddonCoupon = async (basePrice) => {
+    if (!addonCoupon.trim()) return;
+    setAddonCouponLoading(true);
+    try {
+      const res = await authAxios.post(`/operator/checkout/validate-coupon?code=${addonCoupon.trim()}&amount=${basePrice}`);
+      setAddonCouponResult(res.data);
+      toast.success(res.data.message);
+    } catch (err) {
+      setAddonCouponResult(null);
+      toast.error(err.response?.data?.detail || "Invalid coupon code");
+    } finally {
+      setAddonCouponLoading(false);
+    }
+  };
+
   const handleAddonPurchase = async (addon) => {
     setShowAddonConfirm(null);
     setPurchasing(addon.code);
     try {
+      const couponParam = addonCouponResult?.valid ? `&coupon_code=${addonCouponResult.code}` : "";
       const res = await authAxios.post(
-        `/operator/checkout/create-order?item_type=addon&item_code=${addon.code}`
+        `/operator/checkout/create-order?item_type=addon&item_code=${addon.code}${couponParam}`
       );
+      setAddonCoupon("");
+      setAddonCouponResult(null);
       if (res.data.status === "activated_free") {
         toast.success(res.data.message);
         fetchAddons();
@@ -235,17 +279,27 @@ const OperatorSubscription = () => {
   const baseAmount = selectedPlanDetails
     ? selectedPlanDetails.monthly_price * parseInt(months || "1")
     : 0;
+  // Owned standalone addons (purchased, not included in plan) – auto-renewed with subscription
+  const ownedPurchasedAddons = addons.filter((a) => a.status === "purchased");
+  const ownedAddonTotal = ownedPurchasedAddons.reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
   // Addons available to bundle (not already owned)
   const purchasableAddons = addons.filter(
     (a) => a.status !== "purchased" && a.status !== "included_in_plan"
   );
   const selectedAddonTotal = purchasableAddons
     .filter((a) => selectedAddonCodes.includes(a.code))
-    .reduce((sum, a) => sum + a.price, 0);
-  const combinedBase = baseAmount + selectedAddonTotal;
-  // Rounding: compute exact (base + GST) then round to integer
-  const gstAmount = parseFloat((combinedBase * 0.18).toFixed(2));
-  const exactTotal = parseFloat((combinedBase + gstAmount).toFixed(2));
+    .reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
+  const combinedBase = baseAmount + ownedAddonTotal + selectedAddonTotal;
+  // Coupon discount (applied before GST)
+  const renewDiscount = renewCouponResult?.valid
+    ? parseFloat((renewCouponResult.discount_type === "percentage"
+        ? combinedBase * renewCouponResult.discount_value / 100
+        : Math.min(renewCouponResult.discount_value, combinedBase)).toFixed(2))
+    : 0;
+  const discountedBase = parseFloat((combinedBase - renewDiscount).toFixed(2));
+  // Rounding: compute exact (discountedBase + GST) then round to integer
+  const gstAmount = parseFloat((discountedBase * 0.18).toFixed(2));
+  const exactTotal = parseFloat((discountedBase + gstAmount).toFixed(2));
   const totalAmount = Math.round(exactTotal);
   const roundingDiff = parseFloat((totalAmount - exactTotal).toFixed(2));
 
@@ -662,12 +716,19 @@ const OperatorSubscription = () => {
       </div>
 
       {/* Renew Subscription Dialog */}
-      <Dialog open={showRenewDialog} onOpenChange={(open) => { setShowRenewDialog(open); if (!open) setSelectedAddonCodes([]); }}>
+      <Dialog open={showRenewDialog} onOpenChange={(open) => {
+        setShowRenewDialog(open);
+        if (!open) {
+          setSelectedAddonCodes([]);
+          setRenewCoupon("");
+          setRenewCouponResult(null);
+        }
+      }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Renew / Purchase Subscription</DialogTitle>
             <DialogDescription>
-              Choose a plan and duration. You can also bundle add-ons. You will be redirected to Razorpay to complete payment.
+              Choose a plan and duration. Existing add-ons are auto-renewed. You can also bundle new add-ons.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -688,7 +749,7 @@ const OperatorSubscription = () => {
             </div>
             <div className="space-y-2">
               <Label>Duration</Label>
-              <Select value={months} onValueChange={setMonths}>
+              <Select value={months} onValueChange={(v) => { setMonths(v); setRenewCouponResult(null); }}>
                 <SelectTrigger data-testid="renew-months-select">
                   <SelectValue />
                 </SelectTrigger>
@@ -701,13 +762,31 @@ const OperatorSubscription = () => {
               </Select>
             </div>
 
-            {/* Add-ons bundling section */}
+            {/* Owned addons that will auto-renew */}
+            {ownedPurchasedAddons.length > 0 && (
+              <div className="space-y-2">
+                <Label>Add-ons (auto-renewed with plan)</Label>
+                <div className="border border-slate-200 rounded-lg p-3 space-y-1.5 bg-slate-50">
+                  {ownedPurchasedAddons.map((addon) => (
+                    <div key={addon.code} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-700 font-medium flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block"></span>
+                        {addon.name}
+                      </span>
+                      <span className="text-slate-500">₹{addon.price} × {months} mo = ₹{addon.price * parseInt(months)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* New add-ons bundling section */}
             <div className="space-y-2">
-              <Label>Bundle Add-ons (optional)</Label>
+              <Label>Add New Add-ons (optional)</Label>
               {purchasableAddons.length === 0 ? (
                 <p className="text-sm text-slate-400 italic px-1">All available add-ons are already active on your account.</p>
               ) : (
-                <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto">
                   {purchasableAddons.map((addon) => (
                     <label
                       key={addon.code}
@@ -727,6 +806,32 @@ const OperatorSubscription = () => {
               )}
             </div>
 
+            {/* Discount Code */}
+            <div className="space-y-2">
+              <Label>Discount Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter coupon code"
+                  value={renewCoupon}
+                  onChange={(e) => { setRenewCoupon(e.target.value.toUpperCase()); setRenewCouponResult(null); }}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={applyRenewCoupon}
+                  disabled={!renewCoupon.trim() || renewCouponLoading}
+                >
+                  {renewCouponLoading ? "..." : "Apply"}
+                </Button>
+              </div>
+              {renewCouponResult?.valid && (
+                <p className="text-sm text-emerald-600 font-medium">
+                  ✓ {renewCouponResult.message}
+                </p>
+              )}
+            </div>
+
             {selectedPlanDetails && (
               <div className="p-4 bg-slate-50 rounded-lg space-y-1">
                 <div className="flex justify-between text-sm">
@@ -735,12 +840,26 @@ const OperatorSubscription = () => {
                   </span>
                   <span>₹{baseAmount.toLocaleString("en-IN")}</span>
                 </div>
+                {ownedAddonTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">
+                      Existing add-ons renewal ({ownedPurchasedAddons.length})
+                    </span>
+                    <span>₹{ownedAddonTotal.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
                 {selectedAddonTotal > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">
-                      Add-ons ({selectedAddonCodes.length})
+                      New add-ons ({selectedAddonCodes.length})
                     </span>
                     <span>₹{selectedAddonTotal.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+                {renewDiscount > 0 && (
+                  <div className="flex justify-between text-sm text-emerald-600">
+                    <span>Discount ({renewCouponResult?.code})</span>
+                    <span>-₹{renewDiscount.toLocaleString("en-IN")}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
@@ -792,7 +911,7 @@ const OperatorSubscription = () => {
       {/* Add-on Purchase Confirm Dialog */}
       <Dialog
         open={!!showAddonConfirm}
-        onOpenChange={(open) => !open && setShowAddonConfirm(null)}
+        onOpenChange={(open) => { if (!open) { setShowAddonConfirm(null); setAddonCoupon(""); setAddonCouponResult(null); } }}
       >
         <DialogContent>
           <DialogHeader>
@@ -804,8 +923,14 @@ const OperatorSubscription = () => {
           </DialogHeader>
           {showAddonConfirm && (() => {
               const base = showAddonConfirm.price;
-              const gst = parseFloat((base * 0.18).toFixed(2));
-              const exact = parseFloat((base + gst).toFixed(2));
+              const addonDiscount = addonCouponResult?.valid
+                ? parseFloat((addonCouponResult.discount_type === "percentage"
+                    ? base * addonCouponResult.discount_value / 100
+                    : Math.min(addonCouponResult.discount_value, base)).toFixed(2))
+                : 0;
+              const discBase = parseFloat((base - addonDiscount).toFixed(2));
+              const gst = parseFloat((discBase * 0.18).toFixed(2));
+              const exact = parseFloat((discBase + gst).toFixed(2));
               const rounded = Math.round(exact);
               const diff = parseFloat((rounded - exact).toFixed(2));
               return (
@@ -818,6 +943,12 @@ const OperatorSubscription = () => {
                       <span className="text-slate-500">Base Price</span>
                       <span>₹{base.toLocaleString("en-IN")}</span>
                     </div>
+                    {addonDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-emerald-600">
+                        <span>Discount ({addonCouponResult?.code})</span>
+                        <span>-₹{addonDiscount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">GST (18%)</span>
                       <span>₹{gst.toLocaleString("en-IN")}</span>
@@ -836,6 +967,30 @@ const OperatorSubscription = () => {
                         ₹{rounded.toLocaleString("en-IN")}
                       </span>
                     </div>
+                  </div>
+                  {/* Discount Code */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Discount Code</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Enter coupon code"
+                        value={addonCoupon}
+                        onChange={(e) => { setAddonCoupon(e.target.value.toUpperCase()); setAddonCouponResult(null); }}
+                        className="flex-1 h-8 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => applyAddonCoupon(base)}
+                        disabled={!addonCoupon.trim() || addonCouponLoading}
+                      >
+                        {addonCouponLoading ? "..." : "Apply"}
+                      </Button>
+                    </div>
+                    {addonCouponResult?.valid && (
+                      <p className="text-xs text-emerald-600 font-medium">✓ {addonCouponResult.message}</p>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500">
                     Razorpay checkout will open to complete your payment securely.

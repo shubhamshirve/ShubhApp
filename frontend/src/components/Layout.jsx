@@ -16,7 +16,8 @@ import {
   X,
   AlertTriangle,
   Bell,
-  Database
+  Database,
+  Tag
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -30,6 +31,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/operators", label: "Operators", icon: Building2 },
     { href: "/admin/saas-plans", label: "SaaS Plans", icon: Package },
+    { href: "/admin/discount-codes", label: "Discount Codes", icon: Tag },
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },
