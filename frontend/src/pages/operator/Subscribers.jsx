@@ -34,11 +34,12 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban } from "lucide-react";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
   const isStaff = user?.role === "staff";
+  const isAdminImpersonating = !!user?.impersonated_by; // admin logged in as operator
   const [subscribers, setSubscribers] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,13 +116,33 @@ const OperatorSubscribers = () => {
   };
 
   const handleDelete = async (subscriberId) => {
-    if (!confirm("Are you sure you want to delete this subscriber?")) return;
+    if (!confirm("Are you sure you want to delete this subscriber? This action cannot be undone.")) return;
     try {
       await authAxios.delete(`/operator/subscribers/${subscriberId}`);
       toast.success("Subscriber deleted");
       fetchSubscribers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to delete subscriber");
+    }
+  };
+
+  const handleSuspend = async (subscriberId) => {
+    try {
+      await authAxios.post(`/operator/subscribers/${subscriberId}/suspend`);
+      toast.success("Subscriber suspended");
+      fetchSubscribers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to suspend subscriber");
+    }
+  };
+
+  const handleActivate = async (subscriberId) => {
+    try {
+      await authAxios.post(`/operator/subscribers/${subscriberId}/activate`);
+      toast.success("Subscriber activated");
+      fetchSubscribers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to activate subscriber");
     }
   };
 
@@ -318,7 +339,28 @@ const OperatorSubscribers = () => {
                               WhatsApp
                             </DropdownMenuItem>
                             {!isStaff && (
-                              <DropdownMenuItem 
+                              subscriber.status === "active" ? (
+                                <DropdownMenuItem
+                                  onClick={() => handleSuspend(subscriber.id)}
+                                  className="text-amber-600"
+                                  data-testid={`suspend-subscriber-${subscriber.id}`}
+                                >
+                                  <Ban className="w-4 h-4 mr-2" />
+                                  Suspend
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => handleActivate(subscriber.id)}
+                                  className="text-emerald-600"
+                                  data-testid={`activate-subscriber-${subscriber.id}`}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Activate
+                                </DropdownMenuItem>
+                              )
+                            )}
+                            {isAdminImpersonating && (
+                              <DropdownMenuItem
                                 onClick={() => handleDelete(subscriber.id)}
                                 className="text-red-600"
                                 data-testid={`delete-subscriber-${subscriber.id}`}

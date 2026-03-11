@@ -46,6 +46,8 @@ const OperatorSubscription = () => {
   const [processing, setProcessing] = useState(false);
   const [purchasing, setPurchasing] = useState(null);
   const [showAddonConfirm, setShowAddonConfirm] = useState(null);
+  // Addons to bundle with subscription renewal
+  const [selectedAddonCodes, setSelectedAddonCodes] = useState([]);
 
   const fetchSubscription = useCallback(async () => {
     try {
@@ -121,10 +123,12 @@ const OperatorSubscription = () => {
     }
     setProcessing(true);
     try {
+      const addonParam = selectedAddonCodes.length > 0 ? `&addon_codes=${selectedAddonCodes.join(",")}` : "";
       const res = await authAxios.post(
-        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=${months}`
+        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=${months}${addonParam}`
       );
       setShowRenewDialog(false);
+      setSelectedAddonCodes([]);
       openRazorpay(res.data, () => {
         fetchSubscription();
         fetchAddons();
@@ -224,13 +228,28 @@ const OperatorSubscription = () => {
   const statusInfo = getStatusInfo();
   const StatusIcon = statusInfo.icon;
   const days = daysRemaining();
+  const isTrial = subscription?.status === "trial";
   const selectedPlanDetails = subscription?.available_plans?.find(
     (p) => p.id === selectedPlan
   );
   const baseAmount = selectedPlanDetails
     ? selectedPlanDetails.monthly_price * parseInt(months || "1")
     : 0;
-  const totalAmount = Math.round(baseAmount * 1.18);
+  // Addons available to bundle (not already owned)
+  const purchasableAddons = addons.filter(
+    (a) => a.status !== "purchased" && a.status !== "included_in_plan"
+  );
+  const selectedAddonTotal = purchasableAddons
+    .filter((a) => selectedAddonCodes.includes(a.code))
+    .reduce((sum, a) => sum + a.price, 0);
+  const combinedBase = baseAmount + selectedAddonTotal;
+  const totalAmount = Math.round(combinedBase * 1.18);
+
+  const toggleAddonSelection = (code) => {
+    setSelectedAddonCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
 
   return (
     <OperatorLayout title="Subscription" isReadOnly={subscription?.is_read_only}>
@@ -452,6 +471,12 @@ const OperatorSubscription = () => {
             </p>
           </CardHeader>
           <CardContent>
+            {isTrial && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                <Zap className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-amber-800">Add-on purchases are not available on the Trial plan. Please subscribe to a paid plan to unlock add-ons.</p>
+              </div>
+            )}
             {addons.length === 0 ? (
               <div className="py-10 text-center text-slate-500">
                 <Puzzle className="w-10 h-10 mx-auto mb-3 text-slate-300" />
@@ -520,7 +545,8 @@ const OperatorSubscription = () => {
                           <Button
                             size="sm"
                             onClick={() => setShowAddonConfirm(addon)}
-                            disabled={purchasing === addon.code}
+                            disabled={purchasing === addon.code || isTrial}
+                            title={isTrial ? "Subscribe to a paid plan to purchase add-ons" : undefined}
                             data-testid={`buy-addon-${addon.code}`}
                           >
                             {purchasing === addon.code ? (
@@ -617,13 +643,12 @@ const OperatorSubscription = () => {
       </div>
 
       {/* Renew Subscription Dialog */}
-      <Dialog open={showRenewDialog} onOpenChange={setShowRenewDialog}>
-        <DialogContent>
+      <Dialog open={showRenewDialog} onOpenChange={(open) => { setShowRenewDialog(open); if (!open) setSelectedAddonCodes([]); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Renew Subscription</DialogTitle>
+            <DialogTitle>Renew / Purchase Subscription</DialogTitle>
             <DialogDescription>
-              Choose a plan and duration. You will be redirected to the Razorpay
-              checkout to complete the payment.
+              Choose a plan and duration. You can also bundle add-ons. You will be redirected to Razorpay to complete payment.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -656,6 +681,31 @@ const OperatorSubscription = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Add-ons bundling section */}
+            {purchasableAddons.length > 0 && (
+              <div className="space-y-2">
+                <Label>Bundle Add-ons (optional)</Label>
+                <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                  {purchasableAddons.map((addon) => (
+                    <label
+                      key={addon.code}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 rounded p-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAddonCodes.includes(addon.code)}
+                        onChange={() => toggleAddonSelection(addon.code)}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600"
+                      />
+                      <span className="flex-1 text-sm font-medium text-slate-700">{addon.name}</span>
+                      <span className="text-sm text-slate-500">+₹{addon.price}/mo</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {selectedPlanDetails && (
               <div className="p-4 bg-slate-50 rounded-lg space-y-1">
                 <div className="flex justify-between text-sm">
@@ -664,9 +714,17 @@ const OperatorSubscription = () => {
                   </span>
                   <span>₹{baseAmount.toLocaleString("en-IN")}</span>
                 </div>
+                {selectedAddonTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">
+                      Add-ons ({selectedAddonCodes.length})
+                    </span>
+                    <span>₹{selectedAddonTotal.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">GST (18%)</span>
-                  <span>₹{Math.round(baseAmount * 0.18).toLocaleString("en-IN")}</span>
+                  <span>₹{Math.round(combinedBase * 0.18).toLocaleString("en-IN")}</span>
                 </div>
                 <div className="flex justify-between font-semibold border-t pt-2 mt-2">
                   <span>Total</span>

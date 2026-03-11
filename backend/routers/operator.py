@@ -62,12 +62,14 @@ async def get_operator_features(current_user: dict = Depends(require_operator)):
     if current_user["role"] == "admin":
         return {code: True for code in [
             "audit_log", "payment_gateway", "custom_payment_gateway",
-            "announcement", "payment_reminder", "whatsapp_notifications"
+            "announcement", "payment_reminder", "whatsapp_notifications",
+            "staff_management"
         ]}
     operator_id = current_user["operator_id"]
     addon_codes = [
         "audit_log", "payment_gateway", "custom_payment_gateway",
-        "announcement", "payment_reminder", "whatsapp_notifications"
+        "announcement", "payment_reminder", "whatsapp_notifications",
+        "staff_management"
     ]
     result = {code: await _has_addon(operator_id, code) for code in addon_codes}
     return result
@@ -222,6 +224,7 @@ async def get_addon_store(current_user: dict = Depends(require_operator)):
 @router.post("/checkout/create-order")
 async def create_checkout_order(
     item_type: str, item_code: str = "", months: int = 1, plan_id: str = "",
+    addon_codes: str = "",
     current_user: dict = Depends(require_operator)
 ):
     if current_user["role"] == "admin":
@@ -233,8 +236,12 @@ async def create_checkout_order(
     gst_rate = settings.get("gst_rate", 18) if settings else 18
     description = base_amount = receipt_prefix = ""
     base_amount = 0
+    selected_addon_codes = [c.strip() for c in addon_codes.split(",") if c.strip()] if addon_codes else []
 
     if item_type == "addon":
+        # Block addon purchase on trial plan
+        if operator.get("status") == "trial":
+            raise HTTPException(status_code=403, detail="Please subscribe to a paid plan to purchase add-ons.")
         addon = await db.addons.find_one({"code": item_code, "deleted_at": None}, {"_id": 0})
         if not addon:
             raise HTTPException(status_code=404, detail="Add-on not found")
@@ -261,6 +268,20 @@ async def create_checkout_order(
         base_amount = saas_plan["monthly_price"] * months
         description = f"{saas_plan['name']} x {months} month(s)"
         receipt_prefix = "SUB"
+        # Add selected addon prices
+        addon_price_total = 0
+        valid_addon_codes = []
+        for code in selected_addon_codes:
+            addon = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+            if addon and code not in operator.get("active_addons", []):
+                included = saas_plan.get("included_addons", [])
+                if code not in included:
+                    addon_price_total += addon["price"]
+                    valid_addon_codes.append(code)
+        if addon_price_total > 0:
+            base_amount += addon_price_total
+            description += f" + {len(valid_addon_codes)} add-on(s)"
+        selected_addon_codes = valid_addon_codes
     else:
         raise HTTPException(status_code=400, detail="Invalid item_type. Use 'addon' or 'subscription'")
 
@@ -289,6 +310,7 @@ async def create_checkout_order(
         "id": order_id, "razorpay_order_id": order["id"],
         "operator_id": operator["id"], "item_type": item_type,
         "item_code": item_code, "plan_id": plan_id, "months": months,
+        "addon_codes": selected_addon_codes,
         "base_amount": base_amount, "gst_amount": gst_amount, "total_amount": total,
         "description": description, "status": "created",
         "created_at": now.isoformat(), "deleted_at": None
@@ -355,6 +377,16 @@ async def verify_checkout_payment(
         }
         if order.get("plan_id"):
             update_fields["saas_plan_id"] = order["plan_id"]
+        # Activate any addons bundled with this subscription order
+        if order.get("addon_codes"):
+            active = operator.get("active_addons", [])
+            for code in order["addon_codes"]:
+                if code not in active:
+                    active.append(code)
+                    # If staff_management addon, set max_staff = 5
+                    if code == "staff_management":
+                        update_fields["max_staff"] = 5
+            update_fields["active_addons"] = active
         await db.operators.update_one({"id": operator["id"]}, {"$set": update_fields})
         result_msg = f"Subscription extended by {order['months']} month(s)"
     else:
@@ -750,6 +782,9 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
 
 @router.delete("/subscribers/{subscriber_id}")
 async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator_no_staff)):
+    # Only admin impersonating as operator can delete subscribers
+    if not current_user.get("impersonated_by"):
+        raise HTTPException(status_code=403, detail="Only admin can delete subscribers. Use suspend instead.")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     result = await db.subscribers.update_one(
@@ -759,6 +794,36 @@ async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(req
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     return {"message": "Subscriber deleted"}
+
+
+@router.post("/subscribers/{subscriber_id}/suspend")
+async def suspend_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot suspend subscribers directly")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.subscribers.update_one(
+        {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"status": "inactive", "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return {"message": "Subscriber suspended"}
+
+
+@router.post("/subscribers/{subscriber_id}/activate")
+async def activate_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot activate subscribers directly")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.subscribers.update_one(
+        {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"status": "active", "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return {"message": "Subscriber activated"}
 
 
 # ─── Bulk Upload: Subscribers ─────────────────────────────────────────────────
@@ -1081,6 +1146,9 @@ async def create_staff(data: StaffCreate, current_user: dict = Depends(require_o
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if operator:
+        # Block staff creation on trial plan with a clear message
+        if operator.get("status") == "trial":
+            raise HTTPException(status_code=403, detail="Please subscribe to use this feature.")
         # Use operator-level max_staff override (set when staff_management addon is assigned)
         # falling back to the SaaS plan's max_staff
         operator_max_staff = operator.get("max_staff")

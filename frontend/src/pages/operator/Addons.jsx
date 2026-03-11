@@ -15,15 +15,23 @@ import { toast } from "sonner";
 import { Puzzle, Check, ExternalLink, ShoppingCart, Zap, Loader2 } from "lucide-react";
 
 const OperatorAddons = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, user } = useAuth();
   const [addons, setAddons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(null);
   const [paymentResult, setPaymentResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(null);
   const [activating, setActivating] = useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
 
-  useEffect(() => { fetchAddons(); }, []);
+  useEffect(() => { fetchAddons(); fetchSubscription(); }, []);
+
+  const fetchSubscription = async () => {
+    try {
+      const res = await authAxios.get("/operator/subscription");
+      setSubscriptionStatus(res.data?.status);
+    } catch { /* silent */ }
+  };
 
   const fetchAddons = async () => {
     try {
@@ -97,6 +105,17 @@ const OperatorAddons = () => {
     <OperatorLayout title="Add-ons Store">
       <div className="space-y-6 animate-fade-in">
         <p className="text-slate-500">Enhance your platform with powerful add-ons</p>
+
+        {/* Trial restriction banner */}
+        {subscriptionStatus === "trial" && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+            <Zap className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-amber-800">Add-on purchases are not available on the Trial plan</p>
+              <p className="text-sm text-amber-700 mt-1">Please subscribe to a paid plan to unlock add-ons.</p>
+            </div>
+          </div>
+        )}
 
         {/* Payment Result Banner */}
         {paymentResult && paymentResult.payment_link && (
@@ -209,7 +228,8 @@ const OperatorAddons = () => {
                         <Button
                           size="sm"
                           onClick={() => setShowConfirm(addon)}
-                          disabled={purchasing === addon.code}
+                          disabled={purchasing === addon.code || subscriptionStatus === "trial"}
+                          title={subscriptionStatus === "trial" ? "Subscribe to a paid plan to purchase add-ons" : undefined}
                           data-testid={`buy-addon-${addon.code}`}
                         >
                           {purchasing === addon.code 

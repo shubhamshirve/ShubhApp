@@ -135,7 +135,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/invoices",     label: "Invoices",     icon: FileText,        always: true },
     { href: "/operator/announcements",label: "Announcements",icon: Bell,            feature: "announcement" },
     { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },
-    { href: "/operator/staff",        label: "Staff",        icon: UserCog,         always: true, operatorOnly: true },
+    { href: "/operator/staff",        label: "Staff",        icon: UserCog,         feature: "staff_management", operatorOnly: true },
     { href: "/operator/reports",      label: "Reports",      icon: BarChart3,       always: true },
     { href: "/operator/subscription", label: "Subscription", icon: CreditCard,      always: true },
     { href: "/operator/settings",     label: "Settings",     icon: Settings,        always: true, operatorOnly: true },
