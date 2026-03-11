@@ -1,0 +1,1053 @@
+"""Operator router: profile, plans, subscribers, invoices, staff, reports, subscription, checkout, etc."""
+from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import Response
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional
+import os
+import logging
+
+from database import db
+from models import (
+    OperatorResponse, OperatorUpdate, InvoiceCustomization,
+    AnnouncementCreate, OperatorPlanCreate, OperatorPlanResponse,
+    SubscriberCreate, SubscriberResponse,
+    InvoiceCreate, InvoiceResponse, PaymentLinkResponse,
+    StaffCreate, StaffResponse, AuditLogResponse,
+    PaymentGatewayConfig, WhatsAppConfig, SendNotificationRequest, BulkNotificationRequest,
+)
+from utils import generate_id, hash_password, generate_invoice_number
+from dependencies import require_operator, require_operator_no_staff, check_operator_read_only
+from audit import log_audit
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/operator", tags=["Operator"])
+
+
+# ─── Profile ─────────────────────────────────────────────────────────────────
+
+def _parse_operator(o: dict) -> OperatorResponse:
+    return OperatorResponse(**{
+        **o,
+        "created_at": datetime.fromisoformat(o["created_at"]),
+        "trial_ends_at": datetime.fromisoformat(o["trial_ends_at"]) if o.get("trial_ends_at") else None,
+        "subscription_ends_at": datetime.fromisoformat(o["subscription_ends_at"]) if o.get("subscription_ends_at") else None,
+    })
+
+
+@router.get("/profile", response_model=OperatorResponse)
+async def get_operator_profile(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin users don't have operator profile")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    return _parse_operator(operator)
+
+
+@router.put("/profile", response_model=OperatorResponse)
+async def update_operator_profile(data: OperatorUpdate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin users don't have operator profile")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode. Please renew subscription.")
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    update_data.pop("status", None)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.operators.update_one({"id": current_user["operator_id"]}, {"$set": update_data})
+    updated = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+    return _parse_operator(updated)
+
+
+# ─── Invoice Settings ───────────────────────────────────────────────────────
+
+@router.get("/invoice-settings")
+async def get_invoice_settings(current_user: dict = Depends(require_operator)):
+    settings = await db.invoice_settings.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
+    if not settings:
+        operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+        return {
+            "company_name": operator.get("company_name", ""),
+            "company_address": "", "company_phone": operator.get("phone", ""),
+            "company_email": operator.get("email", ""), "logo_url": None,
+            "invoice_prefix": "INV", "invoice_footer": None, "show_gst": True, "terms_conditions": None
+        }
+    return settings
+
+
+@router.put("/invoice-settings")
+async def update_invoice_settings(data: InvoiceCustomization, current_user: dict = Depends(require_operator)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    now = datetime.now(timezone.utc)
+    settings = {"operator_id": current_user["operator_id"], **data.model_dump(), "updated_at": now.isoformat()}
+    await db.invoice_settings.update_one(
+        {"operator_id": current_user["operator_id"]}, {"$set": settings}, upsert=True
+    )
+    return {"message": "Invoice settings updated"}
+
+
+# ─── Announcements ─────────────────────────────────────────────────────────
+
+@router.post("/announcements")
+async def create_announcement(data: AnnouncementCreate, current_user: dict = Depends(require_operator)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+    active_addons = operator.get("active_addons", [])
+    saas_plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id")}, {"_id": 0})
+    if data.send_whatsapp:
+        if not (saas_plan and saas_plan.get("notification_module")) and "notifications" not in active_addons:
+            raise HTTPException(status_code=403, detail="WhatsApp notification addon not enabled.")
+    now = datetime.now(timezone.utc)
+    if data.send_to_all:
+        subscribers = await db.subscribers.find(
+            {"operator_id": current_user["operator_id"], "status": "active", "deleted_at": None}, {"_id": 0}
+        ).to_list(10000)
+    else:
+        subscribers = await db.subscribers.find(
+            {"id": {"$in": data.subscriber_ids or []}, "operator_id": current_user["operator_id"], "deleted_at": None},
+            {"_id": 0}
+        ).to_list(10000)
+
+    announcement = {
+        "id": generate_id(), "operator_id": current_user["operator_id"],
+        "title": data.title, "message": data.message,
+        "recipient_count": len(subscribers), "sent_via_whatsapp": data.send_whatsapp,
+        "created_by": current_user["id"], "created_at": now.isoformat()
+    }
+    await db.announcements.insert_one(announcement)
+    announcement.pop("_id", None)
+
+    sent_count = 0
+    if data.send_whatsapp:
+        for sub in subscribers:
+            notification = {
+                "id": generate_id(), "operator_id": current_user["operator_id"],
+                "subscriber_id": sub["id"], "notification_type": "announcement",
+                "whatsapp_number": sub["whatsapp_number"],
+                "message": f"*{data.title}*\n\n{data.message}",
+                "status": "pending", "created_at": now.isoformat()
+            }
+            await db.notification_queue.insert_one(notification)
+            sent_count += 1
+
+    return {"message": "Announcement created", "recipients": len(subscribers), "queued_notifications": sent_count}
+
+
+@router.get("/announcements")
+async def get_announcements(current_user: dict = Depends(require_operator)):
+    announcements = await db.announcements.find(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return announcements
+
+
+# ─── Addon Store & Subscription & Checkout ──────────────────────────────────────
+
+@router.get("/addons/store")
+async def get_addon_store(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin does not purchase addons")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    all_addons = await db.addons.find({"deleted_at": None}, {"_id": 0}).to_list(100)
+    active = operator.get("active_addons", [])
+    plan_addons = []
+    if operator.get("saas_plan_id"):
+        plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+        if plan:
+            plan_addons = plan.get("included_addons", [])
+    result = []
+    for addon in all_addons:
+        status = "available"
+        if addon["code"] in active:
+            status = "purchased"
+        elif addon["code"] in plan_addons:
+            status = "included_in_plan"
+        result.append({
+            "id": addon["id"], "name": addon["name"], "code": addon["code"],
+            "price": addon["price"], "description": addon.get("description", ""), "status": status
+        })
+    return result
+
+
+@router.post("/checkout/create-order")
+async def create_checkout_order(
+    item_type: str, item_code: str = "", months: int = 1, plan_id: str = "",
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot checkout")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
+    gst_rate = settings.get("gst_rate", 18) if settings else 18
+    description = base_amount = receipt_prefix = ""
+    base_amount = 0
+
+    if item_type == "addon":
+        addon = await db.addons.find_one({"code": item_code, "deleted_at": None}, {"_id": 0})
+        if not addon:
+            raise HTTPException(status_code=404, detail="Add-on not found")
+        if item_code in operator.get("active_addons", []):
+            raise HTTPException(status_code=400, detail="Add-on already active")
+        if operator.get("saas_plan_id"):
+            sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+            if sp and item_code in sp.get("included_addons", []):
+                active = operator.get("active_addons", [])
+                active.append(item_code)
+                await db.operators.update_one({"id": operator["id"]}, {"$set": {"active_addons": active}})
+                return {"status": "activated_free", "message": f"{addon['name']} is included in your plan and activated!"}
+        base_amount = addon["price"]
+        description = f"Add-on: {addon['name']} (Monthly)"
+        receipt_prefix = "ADDON"
+
+    elif item_type == "subscription":
+        target_plan_id = plan_id or operator.get("saas_plan_id")
+        if not target_plan_id:
+            raise HTTPException(status_code=400, detail="No plan selected")
+        saas_plan = await db.saas_plans.find_one({"id": target_plan_id, "deleted_at": None}, {"_id": 0})
+        if not saas_plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        base_amount = saas_plan["monthly_price"] * months
+        description = f"{saas_plan['name']} x {months} month(s)"
+        receipt_prefix = "SUB"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item_type. Use 'addon' or 'subscription'")
+
+    if base_amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    gst_amount = round(base_amount * gst_rate / 100, 2)
+    total = round(base_amount + gst_amount, 2)
+
+    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if not razorpay_key or not razorpay_secret:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+
+    from services.razorpay_service import RazorpayService
+    rz = RazorpayService(razorpay_key, razorpay_secret)
+    order_id = generate_id()
+    order = rz.create_order(
+        amount=total, receipt=f"{receipt_prefix}-{order_id[:8]}",
+        notes={"type": item_type, "item_code": item_code, "plan_id": plan_id,
+               "months": str(months), "operator_id": operator["id"], "internal_order_id": order_id}
+    )
+
+    now = datetime.now(timezone.utc)
+    await db.checkout_orders.insert_one({
+        "id": order_id, "razorpay_order_id": order["id"],
+        "operator_id": operator["id"], "item_type": item_type,
+        "item_code": item_code, "plan_id": plan_id, "months": months,
+        "base_amount": base_amount, "gst_amount": gst_amount, "total_amount": total,
+        "description": description, "status": "created",
+        "created_at": now.isoformat(), "deleted_at": None
+    })
+
+    platform_name = settings.get("platform_name", "SaaS Billing Platform") if settings else "SaaS Billing Platform"
+    return {
+        "razorpay_order_id": order["id"], "razorpay_key": razorpay_key,
+        "amount": int(total * 100), "currency": "INR",
+        "name": platform_name, "description": description,
+        "base_amount": base_amount, "gst_amount": gst_amount, "total_amount": total,
+        "prefill": {"name": operator.get("owner_name", ""), "email": operator.get("email", ""), "contact": operator.get("phone", "")}
+    }
+
+
+@router.post("/checkout/verify")
+async def verify_checkout_payment(
+    razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot verify checkout")
+    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if not razorpay_key or not razorpay_secret:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+
+    from services.razorpay_service import RazorpayService
+    rz = RazorpayService(razorpay_key, razorpay_secret)
+    if not rz.verify_payment_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    order = await db.checkout_orders.find_one(
+        {"razorpay_order_id": razorpay_order_id, "operator_id": current_user["operator_id"]}, {"_id": 0}
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    now = datetime.now(timezone.utc)
+    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+
+    if order["item_type"] == "addon":
+        active = operator.get("active_addons", [])
+        if order["item_code"] not in active:
+            active.append(order["item_code"])
+            await db.operators.update_one(
+                {"id": operator["id"]},
+                {"$set": {"active_addons": active, "updated_at": now.isoformat()}}
+            )
+        result_msg = f"Add-on '{order['item_code']}' activated"
+
+    elif order["item_type"] == "subscription":
+        from dateutil.relativedelta import relativedelta
+        current_end = operator.get("subscription_ends_at")
+        start = now
+        if current_end:
+            start = datetime.fromisoformat(current_end)
+            if start < now:
+                start = now
+        new_end = start + relativedelta(months=order["months"])
+        update_fields = {
+            "subscription_ends_at": new_end.isoformat(), "status": "active",
+            "is_read_only": False, "updated_at": now.isoformat()
+        }
+        if order.get("plan_id"):
+            update_fields["saas_plan_id"] = order["plan_id"]
+        await db.operators.update_one({"id": operator["id"]}, {"$set": update_fields})
+        result_msg = f"Subscription extended by {order['months']} month(s)"
+    else:
+        result_msg = "Payment verified"
+
+    await db.checkout_orders.update_one(
+        {"razorpay_order_id": razorpay_order_id},
+        {"$set": {"status": "paid", "razorpay_payment_id": razorpay_payment_id, "paid_at": now.isoformat()}}
+    )
+
+    payment_record = {
+        "id": generate_id(), "operator_id": operator["id"],
+        "order_id": order["id"], "razorpay_order_id": razorpay_order_id,
+        "razorpay_payment_id": razorpay_payment_id,
+        "item_type": order["item_type"], "item_code": order.get("item_code", ""),
+        "base_amount": order["base_amount"], "gst_amount": order["gst_amount"],
+        "total_amount": order["total_amount"], "status": "completed",
+        "created_at": now.isoformat(), "deleted_at": None
+    }
+    await db.saas_payments.insert_one(payment_record)
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "payment", "checkout", None, {"type": order["item_type"], "amount": order["total_amount"]},
+        operator_id=operator["id"]
+    )
+    return {"status": "success", "message": result_msg}
+
+
+@router.get("/subscription")
+async def get_operator_subscription(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin does not have a subscription")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    saas_plan = None
+    if operator.get("saas_plan_id"):
+        saas_plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+    available_plans = await db.saas_plans.find({"deleted_at": None, "trial_enabled": False}, {"_id": 0}).to_list(50)
+    return {
+        "operator_id": operator["id"], "company_name": operator.get("company_name", ""),
+        "status": operator.get("status", "unknown"),
+        "saas_plan_id": operator.get("saas_plan_id"),
+        "saas_plan_name": operator.get("saas_plan_name") or (saas_plan["name"] if saas_plan else None),
+        "saas_plan_price": saas_plan.get("monthly_price") if saas_plan else None,
+        "subscription_ends_at": operator.get("subscription_ends_at"),
+        "trial_ends_at": operator.get("trial_ends_at"),
+        "is_read_only": operator.get("is_read_only", False),
+        "available_plans": [{"id": p["id"], "name": p["name"], "monthly_price": p["monthly_price"]} for p in available_plans]
+    }
+
+
+@router.get("/payment-history")
+async def get_operator_payment_history(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin does not have payment history")
+    payments = await db.saas_payments.find(
+        {"operator_id": current_user["operator_id"], "status": "completed", "deleted_at": None}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return payments
+
+
+@router.post("/renew-subscription")
+async def renew_operator_subscription(
+    plan_id: Optional[str] = None, months: int = 1,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot renew")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    target_plan_id = plan_id or operator.get("saas_plan_id")
+    if not target_plan_id:
+        raise HTTPException(status_code=400, detail="No plan selected.")
+    saas_plan = await db.saas_plans.find_one({"id": target_plan_id, "deleted_at": None}, {"_id": 0})
+    if not saas_plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    amount = saas_plan["monthly_price"] * months
+    gst_amount = 0
+    if saas_plan.get("gst_applicable"):
+        settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
+        gst_rate = settings.get("gst_rate", 18) if settings else 18
+        gst_amount = round(amount * gst_rate / 100, 2)
+    total_amount = amount + gst_amount
+    renewal_id = generate_id()
+    payment_link = None
+    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if razorpay_key and razorpay_secret and total_amount > 0:
+        try:
+            from services.razorpay_service import RazorpayService
+            rz = RazorpayService(razorpay_key, razorpay_secret)
+            result = rz.create_payment_link(
+                amount=total_amount,
+                description=f"SaaS Subscription: {saas_plan['name']} x {months} month(s)",
+                customer_name=operator.get("owner_name", "Operator"),
+                customer_email=operator.get("email", ""),
+                customer_phone=operator.get("phone", ""),
+                invoice_number=f"SAAS-{renewal_id[:8]}"
+            )
+            if result:
+                payment_link = result.get("short_url")
+        except Exception as e:
+            logger.warning(f"Razorpay link creation failed: {e}")
+    now = datetime.now(timezone.utc)
+    renewal = {
+        "id": renewal_id, "operator_id": operator["id"],
+        "plan_id": target_plan_id, "plan_name": saas_plan["name"],
+        "months": months, "base_amount": amount, "gst_amount": gst_amount,
+        "total_amount": total_amount, "payment_link": payment_link,
+        "status": "pending", "created_at": now.isoformat(), "deleted_at": None
+    }
+    await db.saas_payments.insert_one(renewal)
+    renewal.pop("_id", None)
+    return renewal
+
+
+# ─── Dashboard ──────────────────────────────────────────────────────────────
+
+@router.get("/dashboard")
+async def get_operator_dashboard(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Use admin dashboard")
+    operator_id = current_user["operator_id"]
+    total_subscribers = await db.subscribers.count_documents({"operator_id": operator_id, "deleted_at": None})
+    active_subscribers = await db.subscribers.count_documents({"operator_id": operator_id, "status": "active", "deleted_at": None})
+    total_invoices = await db.invoices.count_documents({"operator_id": operator_id, "deleted_at": None})
+    pending_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "pending", "deleted_at": None})
+    overdue_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "overdue", "deleted_at": None})
+    paid_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "paid", "deleted_at": None})
+    paid_invoice_list = await db.invoices.find(
+        {"operator_id": operator_id, "status": "paid", "deleted_at": None}, {"_id": 0, "final_amount": 1}
+    ).to_list(1000)
+    total_revenue = sum(inv.get("final_amount", 0) for inv in paid_invoice_list)
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    return {
+        "total_subscribers": total_subscribers, "active_subscribers": active_subscribers,
+        "total_invoices": total_invoices, "pending_invoices": pending_invoices,
+        "overdue_invoices": overdue_invoices, "paid_invoices": paid_invoices,
+        "total_revenue": total_revenue,
+        "is_read_only": operator.get("is_read_only", False) if operator else False,
+        "subscription_ends_at": operator.get("subscription_ends_at") if operator else None,
+        "trial_ends_at": operator.get("trial_ends_at") if operator else None,
+        "status": operator.get("status") if operator else "unknown"
+    }
+
+
+# ─── Service Plans ──────────────────────────────────────────────────────────
+
+@router.post("/plans", response_model=OperatorPlanResponse)
+async def create_operator_plan(data: OperatorPlanCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot create operator plans")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    now = datetime.now(timezone.utc)
+    plan = {
+        "id": generate_id(), "name": data.name, "price": data.price, "validity": data.validity,
+        "tax_percentage": data.tax_percentage, "tax_type": data.tax_type,
+        "description": data.description, "status": "active",
+        "operator_id": current_user["operator_id"],
+        "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    }
+    await db.operator_plans.insert_one(plan)
+    return OperatorPlanResponse(**{**plan, "created_at": now})
+
+
+@router.get("/plans", response_model=List[OperatorPlanResponse])
+async def get_operator_plans(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator plans")
+    plans = await db.operator_plans.find(
+        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    ).to_list(100)
+    return [OperatorPlanResponse(**{**p, "created_at": datetime.fromisoformat(p["created_at"])}) for p in plans]
+
+
+@router.put("/plans/{plan_id}", response_model=OperatorPlanResponse)
+async def update_operator_plan(plan_id: str, data: OperatorPlanCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot update operator plans")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    existing = await db.operator_plans.find_one(
+        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    update_data = data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.operator_plans.update_one({"id": plan_id}, {"$set": update_data})
+    updated = await db.operator_plans.find_one({"id": plan_id}, {"_id": 0})
+    return OperatorPlanResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_operator_plan(plan_id: str, current_user: dict = Depends(require_operator_no_staff)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.operator_plans.update_one(
+        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"message": "Plan deleted"}
+
+
+# ─── Subscribers ────────────────────────────────────────────────────────────
+
+@router.post("/subscribers", response_model=SubscriberResponse)
+async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot create subscribers")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if operator:
+        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
+        if plan:
+            current_count = await db.subscribers.count_documents({"operator_id": current_user["operator_id"], "deleted_at": None})
+            if current_count >= plan["max_subscribers"]:
+                raise HTTPException(status_code=403, detail=f"Subscriber limit ({plan['max_subscribers']}) reached")
+    op_plan = await db.operator_plans.find_one(
+        {"id": data.plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not op_plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    now = datetime.now(timezone.utc)
+    subscriber = {
+        "id": generate_id(), "name": data.name, "whatsapp_number": data.whatsapp_number,
+        "email": data.email, "address": data.address, "plan_id": data.plan_id,
+        "plan_name": op_plan["name"], "billing_date": data.billing_date, "discount": data.discount,
+        "status": "active", "operator_id": current_user["operator_id"],
+        "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    }
+    await db.subscribers.insert_one(subscriber)
+    return SubscriberResponse(**{**subscriber, "created_at": now})
+
+
+@router.get("/subscribers", response_model=List[SubscriberResponse])
+async def get_subscribers(
+    status: Optional[str] = None, plan_id: Optional[str] = None,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator subscribers")
+    query = {"operator_id": current_user["operator_id"], "deleted_at": None}
+    if status:
+        query["status"] = status
+    if plan_id:
+        query["plan_id"] = plan_id
+    subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
+    return [SubscriberResponse(**{**s, "created_at": datetime.fromisoformat(s["created_at"])}) for s in subscribers]
+
+
+@router.get("/subscribers/{subscriber_id}", response_model=SubscriberResponse)
+async def get_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator)):
+    subscriber = await db.subscribers.find_one(
+        {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return SubscriberResponse(**{**subscriber, "created_at": datetime.fromisoformat(subscriber["created_at"])})
+
+
+@router.put("/subscribers/{subscriber_id}", response_model=SubscriberResponse)
+async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_user: dict = Depends(require_operator)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    existing = await db.subscribers.find_one(
+        {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    op_plan = await db.operator_plans.find_one({"id": data.plan_id, "deleted_at": None}, {"_id": 0})
+    update_data = data.model_dump()
+    update_data["plan_name"] = op_plan["name"] if op_plan else None
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.subscribers.update_one({"id": subscriber_id}, {"$set": update_data})
+    updated = await db.subscribers.find_one({"id": subscriber_id}, {"_id": 0})
+    return SubscriberResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
+
+
+@router.delete("/subscribers/{subscriber_id}")
+async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator_no_staff)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.subscribers.update_one(
+        {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return {"message": "Subscriber deleted"}
+
+
+# ─── Invoices ─────────────────────────────────────────────────────────────────
+
+@router.post("/invoices", response_model=InvoiceResponse)
+async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot create invoices")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    subscriber = await db.subscribers.find_one(
+        {"id": data.subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    plan = await db.operator_plans.find_one({"id": data.plan_id, "deleted_at": None}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    tax_amount = 0
+    if operator.get("charge_gst") and plan.get("tax_percentage", 0) > 0:
+        if plan.get("tax_type") == "exclusive":
+            tax_amount = (data.base_amount - data.discount) * (plan["tax_percentage"] / 100)
+        elif plan.get("tax_type") == "inclusive":
+            tax_amount = (data.base_amount - data.discount) - ((data.base_amount - data.discount) / (1 + plan["tax_percentage"] / 100))
+    final_amount = data.base_amount - data.discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+    now = datetime.now(timezone.utc)
+    invoice = {
+        "id": generate_id(),
+        "invoice_number": generate_invoice_number(current_user["operator_id"]),
+        "subscriber_id": data.subscriber_id, "subscriber_name": subscriber["name"],
+        "plan_id": data.plan_id, "plan_name": plan["name"],
+        "base_amount": data.base_amount, "discount": data.discount,
+        "tax_amount": round(tax_amount, 2), "final_amount": round(final_amount, 2),
+        "service_start_date": data.service_start_date.isoformat(),
+        "service_end_date": data.service_end_date.isoformat(),
+        "due_date": data.due_date.isoformat(), "status": "pending", "payment_id": None,
+        "operator_id": current_user["operator_id"],
+        "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    }
+    await db.invoices.insert_one(invoice)
+    return InvoiceResponse(**{
+        **invoice, "created_at": now,
+        "service_start_date": data.service_start_date,
+        "service_end_date": data.service_end_date,
+        "due_date": data.due_date
+    })
+
+
+@router.get("/invoices", response_model=List[InvoiceResponse])
+async def get_invoices(
+    status: Optional[str] = None, subscriber_id: Optional[str] = None,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator invoices")
+    query = {"operator_id": current_user["operator_id"], "deleted_at": None}
+    if status:
+        query["status"] = status
+    if subscriber_id:
+        query["subscriber_id"] = subscriber_id
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [
+        InvoiceResponse(**{
+            **inv, "created_at": datetime.fromisoformat(inv["created_at"]),
+            "service_start_date": datetime.fromisoformat(inv["service_start_date"]),
+            "service_end_date": datetime.fromisoformat(inv["service_end_date"]),
+            "due_date": datetime.fromisoformat(inv["due_date"])
+        })
+        for inv in invoices
+    ]
+
+
+@router.put("/invoices/{invoice_id}/status")
+async def update_invoice_status(
+    invoice_id: str, status: str = Query(...), current_user: dict = Depends(require_operator)
+):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    if status not in ["pending", "paid", "overdue", "cancelled"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    result = await db.invoices.update_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"message": f"Invoice marked as {status}"}
+
+
+@router.post("/invoices/{invoice_id}/payment-link", response_model=PaymentLinkResponse)
+async def create_payment_link(invoice_id: str, current_user: dict = Depends(require_operator)):
+    from services.razorpay_service import RazorpayService
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
+    if not gateway or not gateway.get("is_active"):
+        raise HTTPException(status_code=400, detail="Payment gateway not configured")
+    subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
+    try:
+        razorpay_service = RazorpayService(gateway["api_key"], gateway["api_secret"])
+        payment_link = razorpay_service.create_payment_link(
+            amount=invoice["final_amount"],
+            description=f"Invoice {invoice['invoice_number']}",
+            customer_name=subscriber["name"] if subscriber else "",
+            customer_email=subscriber.get("email", "") if subscriber else "",
+            customer_phone=subscriber.get("whatsapp_number", "") if subscriber else "",
+            invoice_number=invoice["invoice_number"]
+        )
+        qr_code = razorpay_service.generate_qr_code(payment_link["short_url"])
+        await db.invoices.update_one(
+            {"id": invoice_id},
+            {"$set": {"payment_link": payment_link["short_url"], "payment_link_id": payment_link["id"],
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return PaymentLinkResponse(
+            payment_link=payment_link["short_url"], payment_link_id=payment_link["id"],
+            qr_code=qr_code, amount=invoice["final_amount"]
+        )
+    except Exception as e:
+        logger.error(f"Payment link creation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create payment link: {e}")
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str, current_user: dict = Depends(require_operator)):
+    from services.pdf_service import InvoicePDFService
+    from services.razorpay_service import RazorpayService
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
+    plan = await db.operator_plans.find_one({"id": invoice["plan_id"], "deleted_at": None}, {"_id": 0})
+    qr_code = None
+    if invoice.get("payment_link"):
+        gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
+        if gateway:
+            try:
+                razorpay_service = RazorpayService(gateway["api_key"], gateway["api_secret"])
+                qr_code = razorpay_service.generate_qr_code(invoice["payment_link"])
+            except Exception:
+                pass
+    pdf_service = InvoicePDFService()
+    pdf_bytes = pdf_service.generate_invoice_pdf(
+        invoice_data=invoice, operator_data=operator or {},
+        subscriber_data=subscriber or {}, plan_data=plan or {}, qr_code_base64=qr_code
+    )
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Invoice_{invoice['invoice_number']}.pdf"}
+    )
+
+
+# ─── Staff ────────────────────────────────────────────────────────────────────
+
+@router.post("/staff", response_model=StaffResponse)
+async def create_staff(data: StaffCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot create staff")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if operator:
+        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
+        if plan:
+            current_count = await db.users.count_documents(
+                {"operator_id": current_user["operator_id"], "role": "staff", "deleted_at": None}
+            )
+            if current_count >= plan["max_staff"]:
+                raise HTTPException(status_code=403, detail=f"Staff limit ({plan['max_staff']}) reached")
+    existing = await db.users.find_one({"email": data.email, "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    now = datetime.now(timezone.utc)
+    user_id = generate_id()
+    user = {
+        "id": user_id, "email": data.email, "name": data.name, "phone": data.phone,
+        "password": hash_password(data.password), "role": "staff",
+        "permissions": data.permissions, "operator_id": current_user["operator_id"],
+        "status": "active", "created_at": now.isoformat(),
+        "updated_at": now.isoformat(), "deleted_at": None
+    }
+    await db.users.insert_one(user)
+    return StaffResponse(
+        id=user_id, name=data.name, email=data.email, phone=data.phone,
+        role="staff", permissions=data.permissions,
+        operator_id=current_user["operator_id"], status="active", created_at=now
+    )
+
+
+@router.get("/staff", response_model=List[StaffResponse])
+async def get_staff(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator staff")
+    staff = await db.users.find(
+        {"operator_id": current_user["operator_id"], "role": "staff", "deleted_at": None},
+        {"_id": 0, "password": 0}
+    ).to_list(100)
+    return [StaffResponse(**{**s, "permissions": s.get("permissions", []),
+                             "created_at": datetime.fromisoformat(s["created_at"])}) for s in staff]
+
+
+@router.delete("/staff/{staff_id}")
+async def delete_staff(staff_id: str, current_user: dict = Depends(require_operator_no_staff)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.users.update_one(
+        {"id": staff_id, "operator_id": current_user["operator_id"], "role": "staff", "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    return {"message": "Staff deleted"}
+
+
+# ─── Payment Gateway ────────────────────────────────────────────────────────
+
+@router.post("/payment-gateway")
+async def configure_payment_gateway(data: PaymentGatewayConfig, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot configure operator payment gateway")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if operator:
+        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
+        if plan and not plan.get("payment_gateway_setup"):
+            raise HTTPException(status_code=403, detail="Payment gateway setup add-on is not enabled")
+    now = datetime.now(timezone.utc)
+    gateway_config = {
+        "id": generate_id(), "operator_id": current_user["operator_id"],
+        "gateway_type": data.gateway_type, "api_key": data.api_key,
+        "api_secret": data.api_secret, "webhook_secret": data.webhook_secret,
+        "is_active": True, "created_at": now.isoformat(), "updated_at": now.isoformat()
+    }
+    await db.payment_gateways.update_one(
+        {"operator_id": current_user["operator_id"]}, {"$set": gateway_config}, upsert=True
+    )
+    return {"message": "Payment gateway configured successfully"}
+
+
+@router.get("/payment-gateway")
+async def get_payment_gateway(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator payment gateway")
+    gateway = await db.payment_gateways.find_one(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0, "api_secret": 0}
+    )
+    if not gateway:
+        return {"configured": False}
+    return {
+        "configured": True, "gateway_type": gateway["gateway_type"],
+        "api_key": gateway["api_key"][:8] + "****", "is_active": gateway.get("is_active", False)
+    }
+
+
+# ─── Reports ─────────────────────────────────────────────────────────────────
+
+@router.get("/reports/revenue")
+async def get_revenue_report(
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
+    query = {"operator_id": current_user["operator_id"], "status": "paid", "deleted_at": None}
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        query.setdefault("created_at", {})["$lte"] = end_date
+    invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
+    return {
+        "total_invoices": len(invoices),
+        "total_revenue": round(sum(inv.get("final_amount", 0) for inv in invoices), 2),
+        "total_base_amount": round(sum(inv.get("base_amount", 0) for inv in invoices), 2),
+        "total_tax": round(sum(inv.get("tax_amount", 0) for inv in invoices), 2),
+        "total_discount": round(sum(inv.get("discount", 0) for inv in invoices), 2),
+    }
+
+
+@router.get("/reports/gst-summary")
+async def get_gst_summary(
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
+    query = {"operator_id": current_user["operator_id"], "deleted_at": None}
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        query.setdefault("created_at", {})["$lte"] = end_date
+    invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
+    total_taxable = sum(inv.get("base_amount", 0) - inv.get("discount", 0) for inv in invoices)
+    total_gst = sum(inv.get("tax_amount", 0) for inv in invoices)
+    return {
+        "total_taxable_amount": round(total_taxable, 2), "total_gst_collected": round(total_gst, 2),
+        "cgst": round(total_gst / 2, 2), "sgst": round(total_gst / 2, 2)
+    }
+
+
+@router.get("/reports/pending-overdue")
+async def get_pending_overdue_report(current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
+    pending = await db.invoices.find(
+        {"operator_id": current_user["operator_id"], "status": "pending", "deleted_at": None}, {"_id": 0}
+    ).to_list(1000)
+    overdue = await db.invoices.find(
+        {"operator_id": current_user["operator_id"], "status": "overdue", "deleted_at": None}, {"_id": 0}
+    ).to_list(1000)
+    return {
+        "pending_count": len(pending), "pending_amount": round(sum(inv.get("final_amount", 0) for inv in pending), 2),
+        "overdue_count": len(overdue), "overdue_amount": round(sum(inv.get("final_amount", 0) for inv in overdue), 2)
+    }
+
+
+# ─── Audit Logs ────────────────────────────────────────────────────────────
+
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+async def get_operator_audit_logs(
+    skip: int = 0, limit: int = 50, current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Use admin audit logs endpoint")
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    if operator:
+        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
+        if plan and not plan.get("audit_logs"):
+            raise HTTPException(status_code=403, detail="Audit logs add-on is not enabled")
+    logs = await db.audit_logs.find(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0}
+    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return [AuditLogResponse(**{**l, "created_at": datetime.fromisoformat(l["created_at"])}) for l in logs]
+
+
+# ─── WhatsApp Config & Notifications ───────────────────────────────────────────
+
+@router.post("/whatsapp-config")
+async def configure_whatsapp(data: WhatsAppConfig, current_user: dict = Depends(require_operator)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    now = datetime.now(timezone.utc)
+    config = {
+        "id": generate_id(), "operator_id": current_user["operator_id"],
+        "phone_number_id": data.phone_number_id, "access_token": data.access_token,
+        "is_active": True, "created_at": now.isoformat(), "updated_at": now.isoformat()
+    }
+    await db.whatsapp_configs.update_one(
+        {"operator_id": current_user["operator_id"]}, {"$set": config}, upsert=True
+    )
+    return {"message": "WhatsApp configured successfully"}
+
+
+@router.get("/whatsapp-config")
+async def get_whatsapp_config(current_user: dict = Depends(require_operator)):
+    config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0, "access_token": 0}
+    )
+    if config:
+        return {"configured": True, "phone_number_id": config.get("phone_number_id", "")[:10] + "***"}
+    return {"configured": False}
+
+
+@router.post("/send-notification")
+async def send_whatsapp_notification(data: SendNotificationRequest, current_user: dict = Depends(require_operator)):
+    from services.whatsapp_service import WhatsAppService
+    wa_config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
+    )
+    if not wa_config:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+    invoice = await db.invoices.find_one(
+        {"id": data.invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    try:
+        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+        if data.notification_type == "reminder":
+            due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
+            days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
+            result = await wa_service.send_payment_reminder(
+                recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                invoice_number=invoice["invoice_number"],
+                amount_due=f"₹{invoice['final_amount']:,.2f}", days_overdue=str(days_overdue),
+                payment_link=invoice.get("payment_link")
+            )
+        else:
+            result = await wa_service.send_invoice_notification(
+                recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                invoice_number=invoice["invoice_number"],
+                amount=f"₹{invoice['final_amount']:,.2f}",
+                due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
+                payment_link=invoice.get("payment_link")
+            )
+        return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
+    except Exception as e:
+        logger.error(f"WhatsApp notification failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send notification: {e}")
+
+
+@router.post("/bulk-notification")
+async def send_bulk_notification(data: BulkNotificationRequest, current_user: dict = Depends(require_operator)):
+    from services.whatsapp_service import WhatsAppService
+    wa_config = await db.whatsapp_configs.find_one(
+        {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
+    )
+    if not wa_config:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+    results = {"sent": 0, "failed": 0, "errors": []}
+    wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+    for subscriber_id in data.subscriber_ids:
+        try:
+            subscriber = await db.subscribers.find_one(
+                {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+            )
+            if not subscriber:
+                continue
+            invoice = await db.invoices.find_one(
+                {"subscriber_id": subscriber_id, "status": {"$in": ["pending", "overdue"]}, "deleted_at": None},
+                {"_id": 0}
+            )
+            if invoice:
+                await wa_service.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                    invoice_number=invoice["invoice_number"],
+                    amount=f"₹{invoice['final_amount']:,.2f}",
+                    due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
+                    payment_link=invoice.get("payment_link")
+                )
+                results["sent"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append({"subscriber_id": subscriber_id, "error": str(e)})
+    return results
