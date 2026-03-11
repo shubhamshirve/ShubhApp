@@ -1,9 +1,11 @@
 """Operator router: profile, plans, subscribers, invoices, staff, reports, subscription, checkout, etc."""
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import Response
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import os
+import csv
+import io
 import logging
 
 from database import db
@@ -21,6 +23,7 @@ from audit import log_audit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
+
 
 
 # ─── Profile ─────────────────────────────────────────────────────────────────
@@ -517,6 +520,113 @@ async def delete_operator_plan(plan_id: str, current_user: dict = Depends(requir
     return {"message": "Plan deleted"}
 
 
+# ─── Bulk Upload: Plans ────────────────────────────────────────────────────────
+
+@router.get("/plans/sample-csv")
+async def get_plans_sample_csv(current_user: dict = Depends(require_operator)):
+    """Download a sample CSV template for bulk plan upload."""
+    rows = [
+        ["name", "price", "validity", "tax_percentage", "tax_type", "description"],
+        ["Monthly Basic",      "500",  "monthly",     "18", "exclusive", "Basic monthly broadband plan"],
+        ["Quarterly Standard", "1400", "quarterly",   "18", "exclusive", "Standard quarterly plan"],
+        ["Half Yearly Gold",   "2700", "half_yearly",  "0", "none",      "Half yearly plan with no tax"],
+        ["Annual Premium",     "5000", "yearly",      "18", "inclusive", "Annual premium plan GST inclusive"],
+    ]
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(rows)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plans_sample.csv"}
+    )
+
+
+@router.post("/plans/bulk-upload")
+async def bulk_upload_plans(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_operator)
+):
+    """Bulk upload service plans from a CSV or XLSX file."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot upload operator plans")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    rows = []
+    VALID_VALIDITY = ["monthly", "quarterly", "half_yearly", "yearly"]
+    VALID_TAX_TYPE = ["inclusive", "exclusive", "none"]
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content))
+            ws = wb.active
+            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+        else:
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+            for row in reader:
+                rows.append({k.strip().lower(): v.strip() for k, v in row.items()})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
+
+    now = datetime.now(timezone.utc)
+    created, skipped, errors = [], [], []
+
+    for idx, row in enumerate(rows, start=2):
+        name = row.get("name", "").strip()
+        if not name:
+            errors.append({"row": idx, "reason": "name is required"})
+            continue
+
+        try:
+            price = float(row.get("price", 0) or 0)
+        except ValueError:
+            errors.append({"row": idx, "name": name, "reason": "Invalid price"})
+            continue
+
+        validity = row.get("validity", "monthly").strip().lower()
+        if validity not in VALID_VALIDITY:
+            errors.append({"row": idx, "name": name, "reason": f"Invalid validity '{validity}'. Use: {VALID_VALIDITY}"})
+            continue
+
+        tax_type = row.get("tax_type", "none").strip().lower()
+        if tax_type not in VALID_TAX_TYPE:
+            tax_type = "none"
+
+        try:
+            tax_percentage = float(row.get("tax_percentage", 0) or 0)
+        except ValueError:
+            tax_percentage = 0
+
+        # Check for duplicate name
+        dup = await db.operator_plans.find_one(
+            {"name": name, "operator_id": current_user["operator_id"], "deleted_at": None}
+        )
+        if dup:
+            skipped.append({"row": idx, "name": name, "reason": "Plan name already exists"})
+            continue
+
+        plan = {
+            "id": generate_id(), "name": name, "price": price, "validity": validity,
+            "tax_percentage": tax_percentage, "tax_type": tax_type,
+            "description": row.get("description", "") or None,
+            "status": "active", "operator_id": current_user["operator_id"],
+            "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+        }
+        await db.operator_plans.insert_one(plan)
+        created.append(name)
+
+    return {
+        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
+        "created": len(created), "skipped": len(skipped), "errors": errors[:20]
+    }
+
+
 # ─── Subscribers ────────────────────────────────────────────────────────────
 
 @router.post("/subscribers", response_model=SubscriberResponse)
@@ -604,6 +714,129 @@ async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(req
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     return {"message": "Subscriber deleted"}
+
+
+# ─── Bulk Upload: Subscribers ─────────────────────────────────────────────────
+
+@router.get("/subscribers/sample-csv")
+async def get_subscribers_sample_csv(current_user: dict = Depends(require_operator)):
+    """Download a sample CSV template for bulk subscriber upload."""
+    rows = [
+        ["name", "whatsapp_number", "email", "address", "plan_name", "billing_date", "discount"],
+        ["Rajesh Kumar",   "9876543210", "rajesh@example.com",   "123 MG Road, Mumbai",    "Monthly Basic", "1",  "0"],
+        ["Priya Sharma",   "9123456789", "priya@example.com",    "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0"],
+        ["Amit Patel",     "9988776655", "amit@example.com",     "789 FC Road, Pune",       "Monthly Basic", "10", "50"],
+        ["Sunita Verma",   "9871234567", "",                     "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0"],
+    ]
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(rows)
+    csv_content = output.getvalue()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=subscribers_sample.csv"}
+    )
+
+
+@router.post("/subscribers/bulk-upload")
+async def bulk_upload_subscribers(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_operator)
+):
+    """Bulk upload subscribers from a CSV or XLSX file."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot upload subscribers")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    rows = []
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content))
+            ws = wb.active
+            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+        else:
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+            for row in reader:
+                rows.append({k.strip().lower(): v.strip() for k, v in row.items()})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
+
+    # Fetch operator plans for name→id mapping
+    op_plans = await db.operator_plans.find(
+        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    ).to_list(500)
+    plan_map = {p["name"].strip().lower(): p for p in op_plans}
+
+    # Fetch SaaS plan limits
+    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+    max_subscribers = None
+    if operator and operator.get("saas_plan_id"):
+        sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+        if sp:
+            max_subscribers = sp.get("max_subscribers")
+
+    now = datetime.now(timezone.utc)
+    created, skipped, errors = [], [], []
+
+    for idx, row in enumerate(rows, start=2):
+        name = row.get("name", "").strip()
+        whatsapp = row.get("whatsapp_number", "").strip()
+        plan_name = row.get("plan_name", "").strip().lower()
+
+        if not name or not whatsapp:
+            errors.append({"row": idx, "reason": "name and whatsapp_number are required"})
+            continue
+
+        plan = plan_map.get(plan_name)
+        if not plan:
+            errors.append({"row": idx, "name": name, "reason": f"Plan '{row.get('plan_name','')}' not found"})
+            continue
+
+        # Check limit
+        if max_subscribers is not None:
+            current_count = await db.subscribers.count_documents(
+                {"operator_id": current_user["operator_id"], "deleted_at": None}
+            ) + len(created)
+            if current_count >= max_subscribers:
+                errors.append({"row": idx, "name": name, "reason": "Subscriber limit reached"})
+                break
+
+        # Check duplicate WhatsApp
+        dup = await db.subscribers.find_one(
+            {"whatsapp_number": whatsapp, "operator_id": current_user["operator_id"], "deleted_at": None}
+        )
+        if dup:
+            skipped.append({"row": idx, "name": name, "reason": f"WhatsApp {whatsapp} already exists"})
+            continue
+
+        billing_date = int(row.get("billing_date", 1) or 1)
+        billing_date = max(1, min(28, billing_date))
+        discount = float(row.get("discount", 0) or 0)
+
+        subscriber = {
+            "id": generate_id(), "name": name, "whatsapp_number": whatsapp,
+            "email": row.get("email", "") or None,
+            "address": row.get("address", "") or None,
+            "plan_id": plan["id"], "plan_name": plan["name"],
+            "billing_date": billing_date, "discount": discount,
+            "status": "active", "operator_id": current_user["operator_id"],
+            "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+        }
+        await db.subscribers.insert_one(subscriber)
+        created.append(name)
+
+    return {
+        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
+        "created": len(created), "skipped": len(skipped), "errors": errors[:20]
+    }
 
 
 # ─── Invoices ─────────────────────────────────────────────────────────────────

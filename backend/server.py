@@ -30,6 +30,7 @@ from routers.auth import router as auth_router
 from routers.admin import router as admin_router
 from routers.operator import router as operator_router
 from routers.webhooks import router as webhooks_router
+from routers.backup import router as backup_router, _do_backup
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -45,6 +46,7 @@ app.include_router(auth_router,      prefix="/api")
 app.include_router(admin_router,     prefix="/api")
 app.include_router(operator_router,  prefix="/api")
 app.include_router(webhooks_router,  prefix="/api")
+app.include_router(backup_router,    prefix="/api")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -110,6 +112,23 @@ async def seed_data():
 
 # ── Shutdown ────────────────────────────────────────────────────────────────
 
+@app.on_event("startup")
+async def startup_event():
+    """Start the daily auto-backup scheduler."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    scheduler = AsyncIOScheduler()
+    # Run daily at 02:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(_do_backup("auto")),
+        "cron", hour=2, minute=0, id="daily_backup"
+    )
+    scheduler.start()
+    app.state.scheduler = scheduler
+    logger.info("Daily auto-backup scheduler started (02:00 UTC)")
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    if hasattr(app.state, "scheduler"):
+        app.state.scheduler.shutdown()
     await close_db()

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, IndianRupee } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 const OperatorPlans = () => {
   const { authAxios, user } = useAuth();
@@ -31,6 +31,11 @@ const OperatorPlans = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: "",
     price: 0,
@@ -120,13 +125,38 @@ const OperatorPlans = () => {
   };
 
   const getValidityLabel = (validity) => {
-    const labels = {
-      monthly: "Monthly",
-      quarterly: "Quarterly",
-      half_yearly: "Half Yearly",
-      yearly: "Yearly"
-    };
+    const labels = { monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half Yearly", yearly: "Yearly" };
     return labels[validity] || validity;
+  };
+
+  // ── Bulk Upload ───────────────────────────────────────────────────────────
+  const handleDownloadSample = async () => {
+    try {
+      const res = await authAxios.get("/operator/plans/sample-csv", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a"); a.href = url; a.download = "plans_sample.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Failed to download sample"); }
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkFile) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", bulkFile);
+      const res = await authAxios.post("/operator/plans/bulk-upload", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setBulkResult(res.data);
+      fetchPlans();
+      if (res.data.created > 0) toast.success(`${res.data.created} plan(s) created`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Upload failed");
+    } finally {
+      setBulkUploading(false);
+    }
   };
 
   if (loading) {
@@ -147,14 +177,24 @@ const OperatorPlans = () => {
         {/* Header */}
         <div className="flex justify-between items-center">
           <p className="text-slate-500">Define service plans for your subscribers</p>
-          <Button 
-            onClick={() => { resetForm(); setShowDialog(true); }}
-            disabled={isReadOnly}
-            data-testid="create-plan-btn"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Plan
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setShowBulkDialog(true); setBulkFile(null); setBulkResult(null); }}
+              disabled={isReadOnly || isStaff}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Bulk Upload
+            </Button>
+            <Button
+              onClick={() => { resetForm(); setShowDialog(true); }}
+              disabled={isReadOnly}
+              data-testid="create-plan-btn"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Plan
+            </Button>
+          </div>
         </div>
 
         {/* Plans Grid */}
@@ -163,10 +203,14 @@ const OperatorPlans = () => {
             <Package className="w-12 h-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium text-slate-900 mb-2">No plans yet</h3>
             <p className="text-slate-500 mb-4">Create your first service plan to start adding subscribers</p>
-            <Button onClick={() => setShowDialog(true)} disabled={isReadOnly}>
-              <Plus className="w-4 h-4 mr-2" />
-              Create Your First Plan
-            </Button>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" onClick={() => setShowBulkDialog(true)} disabled={isReadOnly}>
+                <Upload className="w-4 h-4 mr-2" /> Bulk Upload
+              </Button>
+              <Button onClick={() => setShowDialog(true)} disabled={isReadOnly}>
+                <Plus className="w-4 h-4 mr-2" /> Create Your First Plan
+              </Button>
+            </div>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -185,11 +229,9 @@ const OperatorPlans = () => {
                     </span>
                     <span className="text-slate-500">/{getValidityLabel(plan.validity).toLowerCase()}</span>
                   </div>
-
                   {plan.description && (
                     <p className="text-sm text-slate-500">{plan.description}</p>
                   )}
-
                   <div className="space-y-2 text-sm border-t pt-3">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Validity</span>
@@ -206,22 +248,13 @@ const OperatorPlans = () => {
                       <span className="badge-active">{plan.status}</span>
                     </div>
                   </div>
-
                   <div className="flex gap-2 pt-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={() => openEditDialog(plan)}
-                      disabled={isReadOnly}
-                    >
-                      <Pencil className="w-3 h-3 mr-1" />
-                      Edit
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(plan)} disabled={isReadOnly}>
+                      <Pencil className="w-3 h-3 mr-1" /> Edit
                     </Button>
                     {!isStaff && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
+                      <Button
+                        variant="outline" size="sm"
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         onClick={() => handleDelete(plan.id)}
                         disabled={isReadOnly}
@@ -257,7 +290,6 @@ const OperatorPlans = () => {
                   data-testid="plan-name-input"
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Price (₹) *</Label>
@@ -265,21 +297,14 @@ const OperatorPlans = () => {
                     type="number"
                     value={formData.price}
                     onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) }))}
-                    min="0"
-                    required
+                    min="0" required
                     data-testid="plan-price-input"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Validity *</Label>
-                  <Select 
-                    value={formData.validity} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, validity: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={formData.validity} onValueChange={(v) => setFormData(p => ({ ...p, validity: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="monthly">Monthly</SelectItem>
                       <SelectItem value="quarterly">Quarterly</SelectItem>
@@ -289,28 +314,17 @@ const OperatorPlans = () => {
                   </Select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Tax Percentage (%)</Label>
-                  <Input
-                    type="number"
-                    value={formData.tax_percentage}
-                    onChange={(e) => setFormData(prev => ({ ...prev, tax_percentage: parseFloat(e.target.value) || 0 }))}
-                    min="0"
-                    max="100"
-                  />
+                  <Label>Tax %</Label>
+                  <Input type="number" value={formData.tax_percentage}
+                    onChange={(e) => setFormData(p => ({ ...p, tax_percentage: parseFloat(e.target.value) || 0 }))}
+                    min="0" max="100" />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Tax Type</Label>
-                  <Select 
-                    value={formData.tax_type} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, tax_type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={formData.tax_type} onValueChange={(v) => setFormData(p => ({ ...p, tax_type: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
                       <SelectItem value="inclusive">Inclusive</SelectItem>
@@ -319,26 +333,95 @@ const OperatorPlans = () => {
                   </Select>
                 </div>
               </div>
-
               <div className="space-y-2">
                 <Label>Description</Label>
                 <Textarea
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Plan description (optional)"
-                  rows={3}
+                  onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Plan description (optional)" rows={3}
                 />
               </div>
-
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" data-testid="save-plan-btn">
-                  {editingPlan ? "Update Plan" : "Create Plan"}
-                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+                <Button type="submit" data-testid="save-plan-btn">{editingPlan ? "Update Plan" : "Create Plan"}</Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Upload Dialog */}
+        <Dialog open={showBulkDialog} onOpenChange={(o) => { setShowBulkDialog(o); if (!o) { setBulkFile(null); setBulkResult(null); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                Bulk Upload Plans
+              </DialogTitle>
+              <DialogDescription>Upload a CSV or XLSX file to create multiple plans at once.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Sample Download */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-800">Download Sample File</p>
+                  <p className="text-xs text-blue-600 mt-0.5">Required columns: name, price, validity, tax_percentage, tax_type, description</p>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0 border-blue-200 text-blue-700" onClick={handleDownloadSample}>
+                  <Download className="w-3.5 h-3.5 mr-1" /> Sample CSV
+                </Button>
+              </div>
+
+              {/* File Picker */}
+              <div
+                className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center cursor-pointer hover:border-slate-400 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => { setBulkFile(e.target.files[0]); setBulkResult(null); }}
+                />
+                <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                {bulkFile ? (
+                  <p className="text-sm font-medium text-slate-700">{bulkFile.name}</p>
+                ) : (
+                  <p className="text-sm text-slate-500">Click to select CSV or XLSX file</p>
+                )}
+              </div>
+
+              {/* Result */}
+              {bulkResult && (
+                <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+                  <div className="flex gap-4 text-sm">
+                    <span className="flex items-center gap-1 text-emerald-700">
+                      <CheckCircle className="w-4 h-4" /> {bulkResult.created} created
+                    </span>
+                    <span className="flex items-center gap-1 text-amber-600">
+                      <AlertCircle className="w-4 h-4" /> {bulkResult.skipped} skipped
+                    </span>
+                    <span className="flex items-center gap-1 text-red-600">
+                      <XCircle className="w-4 h-4" /> {bulkResult.errors?.length || 0} errors
+                    </span>
+                  </div>
+                  {bulkResult.errors?.length > 0 && (
+                    <div className="text-xs text-red-600 space-y-0.5 max-h-24 overflow-y-auto">
+                      {bulkResult.errors.map((e, i) => (
+                        <div key={i}>Row {e.row}: {e.reason}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowBulkDialog(false)}>Close</Button>
+                <Button className="flex-1" onClick={handleBulkUpload} disabled={!bulkFile || bulkUploading}>
+                  {bulkUploading ? "Uploading..." : "Upload File"}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

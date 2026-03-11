@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent } from "../../components/ui/card";
@@ -34,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
@@ -46,6 +46,11 @@ const OperatorSubscribers = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [editingSubscriber, setEditingSubscriber] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: "",
     whatsapp_number: "",
@@ -152,6 +157,36 @@ const OperatorSubscribers = () => {
     sub.whatsapp_number.includes(searchTerm)
   );
 
+  // ── Bulk Upload ───────────────────────────────────────────────────────────
+  const handleDownloadSample = async () => {
+    try {
+      const res = await authAxios.get("/operator/subscribers/sample-csv", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a"); a.href = url; a.download = "subscribers_sample.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Failed to download sample"); }
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkFile) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", bulkFile);
+      const res = await authAxios.post("/operator/subscribers/bulk-upload", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setBulkResult(res.data);
+      fetchSubscribers();
+      if (res.data.created > 0) toast.success(`${res.data.created} subscriber(s) created`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Upload failed");
+    } finally {
+      setBulkUploading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       active: "badge-active",
@@ -187,14 +222,24 @@ const OperatorSubscribers = () => {
               data-testid="search-subscribers"
             />
           </div>
-          <Button 
-            onClick={() => { resetForm(); setShowDialog(true); }}
-            disabled={isReadOnly}
-            data-testid="add-subscriber-btn"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Subscriber
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setShowBulkDialog(true); setBulkFile(null); setBulkResult(null); }}
+              disabled={isReadOnly || isStaff}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Bulk Upload
+            </Button>
+            <Button 
+              onClick={() => { resetForm(); setShowDialog(true); }}
+              disabled={isReadOnly}
+              data-testid="add-subscriber-btn"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Subscriber
+            </Button>
+          </div>
         </div>
 
         {/* Subscribers Table */}
@@ -403,6 +448,74 @@ const OperatorSubscribers = () => {
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Upload Dialog */}
+        <Dialog open={showBulkDialog} onOpenChange={(o) => { setShowBulkDialog(o); if (!o) { setBulkFile(null); setBulkResult(null); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                Bulk Upload Subscribers
+              </DialogTitle>
+              <DialogDescription>Upload a CSV or XLSX file to add multiple subscribers at once.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Sample Download */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-800">Download Sample File</p>
+                  <p className="text-xs text-blue-600 mt-0.5">Columns: name, whatsapp_number, email, address, plan_name, billing_date, discount</p>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0 border-blue-200 text-blue-700" onClick={handleDownloadSample}>
+                  <Download className="w-3.5 h-3.5 mr-1" /> Sample CSV
+                </Button>
+              </div>
+
+              {/* File Picker */}
+              <div
+                className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center cursor-pointer hover:border-slate-400 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => { setBulkFile(e.target.files[0]); setBulkResult(null); }}
+                />
+                <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                {bulkFile ? (
+                  <p className="text-sm font-medium text-slate-700">{bulkFile.name}</p>
+                ) : (
+                  <p className="text-sm text-slate-500">Click to select CSV or XLSX file</p>
+                )}
+              </div>
+
+              {/* Result */}
+              {bulkResult && (
+                <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+                  <div className="flex gap-4 text-sm">
+                    <span className="flex items-center gap-1 text-emerald-700"><CheckCircle className="w-4 h-4" /> {bulkResult.created} created</span>
+                    <span className="flex items-center gap-1 text-amber-600"><AlertCircle className="w-4 h-4" /> {bulkResult.skipped} skipped</span>
+                    <span className="flex items-center gap-1 text-red-600"><XCircle className="w-4 h-4" /> {bulkResult.errors?.length || 0} errors</span>
+                  </div>
+                  {bulkResult.errors?.length > 0 && (
+                    <div className="text-xs text-red-600 space-y-0.5 max-h-24 overflow-y-auto">
+                      {bulkResult.errors.map((e, i) => <div key={i}>Row {e.row}{e.name ? ` (${e.name})` : ""}: {e.reason}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowBulkDialog(false)}>Close</Button>
+                <Button className="flex-1" onClick={handleBulkUpload} disabled={!bulkFile || bulkUploading}>
+                  {bulkUploading ? "Uploading..." : "Upload File"}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
