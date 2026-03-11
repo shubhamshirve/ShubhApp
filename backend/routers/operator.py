@@ -250,6 +250,10 @@ async def validate_coupon(
     max_r = doc.get("max_redemptions", 0)
     if max_r > 0 and doc.get("used_count", 0) >= max_r:
         raise HTTPException(status_code=400, detail="Discount code redemption limit reached")
+    # Per-operator: each operator can only use a coupon once in their lifetime
+    operator_id = current_user.get("operator_id", "")
+    if operator_id and operator_id in doc.get("redeemed_by", []):
+        raise HTTPException(status_code=400, detail="You have already used this discount code")
     # Calculate discount
     if doc["discount_type"] == "percentage":
         discount_amount = round(amount * doc["discount_value"] / 100, 2)
@@ -359,6 +363,10 @@ async def create_checkout_order(
             max_r = coupon_doc.get("max_redemptions", 0)
             if max_r > 0 and coupon_doc.get("used_count", 0) >= max_r:
                 valid = False
+            if valid:
+                # Per-operator: each operator can only use a coupon once in their lifetime
+                if operator["id"] in coupon_doc.get("redeemed_by", []):
+                    valid = False
             if valid:
                 if coupon_doc["discount_type"] == "percentage":
                     discount_amount = round(base_amount * coupon_doc["discount_value"] / 100, 2)
@@ -500,11 +508,14 @@ async def verify_checkout_payment(
         {"$set": {"status": "paid", "razorpay_payment_id": razorpay_payment_id, "paid_at": now.isoformat()}}
     )
 
-    # Increment coupon used_count if a coupon was applied
+    # Increment coupon used_count and record operator if a coupon was applied
     if order.get("coupon_code"):
         await db.discount_codes.update_one(
             {"code": order["coupon_code"]},
-            {"$inc": {"used_count": 1}}
+            {
+                "$inc": {"used_count": 1},
+                "$addToSet": {"redeemed_by": operator["id"]}
+            }
         )
 
     payment_record = {
