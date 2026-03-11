@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 class BackendTester:
-    def __init__(self, base_url="https://code-scanner-60.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://syntax-inspector-1.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.admin_token = None
         self.operator_token = None

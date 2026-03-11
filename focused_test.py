@@ -6,7 +6,7 @@ import requests
 import json
 import time
 
-BASE_URL = "https://code-scanner-60.preview.emergentagent.com/api"
+BASE_URL = "https://syntax-inspector-1.preview.emergentagent.com/api"
 
 def test_individual_fixes():
     print("=== MANUAL VERIFICATION OF BUG FIXES ===")
