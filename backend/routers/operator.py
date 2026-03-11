@@ -282,7 +282,7 @@ async def create_checkout_order(
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
-    settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
+    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
     gst_rate = settings.get("gst_rate", 18) if settings else 18
     description = base_amount = receipt_prefix = ""
     base_amount = 0
@@ -593,7 +593,7 @@ async def renew_operator_subscription(
     amount = saas_plan["monthly_price"] * months
     gst_amount = 0
     if saas_plan.get("gst_applicable"):
-        settings = await db.settings.find_one({"type": "platform"}, {"_id": 0})
+        settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
         gst_rate = settings.get("gst_rate", 18) if settings else 18
         gst_amount = round(amount * gst_rate / 100, 2)
     import math
