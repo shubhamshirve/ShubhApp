@@ -69,6 +69,13 @@ Build a scalable multi-tenant SaaS recurring billing web application for India-f
 - [x] Subscription page: Payment History tab with full table (type, description, base, GST, total, date) + running total
 - [x] Backend: `/api/operator/payment-history` endpoint
 
+#### Phase 11: Local Deployment Setup (Mar 11)
+- [x] `/app/backend/requirements_local.txt` — 31 public PyPI packages (no emergentintegrations)
+- [x] `/app/frontend/requirements_local.txt` — reference list of npm packages
+- [x] `/app/setup.bat` — Windows setup: venv, pip install, npm/yarn install, .env creation
+- [x] `/app/RunApp.bat` — Windows launcher: starts backend + frontend, opens browser
+- [x] PHP directory already removed (was empty)
+
 ### Prioritized Backlog
 
 #### P1 (High Priority)
