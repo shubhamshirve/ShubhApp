@@ -365,7 +365,11 @@ async def assign_addon_to_operator(
     existing_addons = operator.get("active_addons", [])
     if addon_code not in existing_addons:
         existing_addons.append(addon_code)
-    update_fields = {"active_addons": existing_addons, "updated_at": now.isoformat()}
+    # Set addon expiry = operator's current subscription_ends_at
+    addon_expiry = operator.get("addon_expiry", {})
+    expiry_date = operator.get("subscription_ends_at") or now.isoformat()
+    addon_expiry[addon_code] = expiry_date
+    update_fields = {"active_addons": existing_addons, "addon_expiry": addon_expiry, "updated_at": now.isoformat()}
     # When staff_management addon is assigned, set max_staff override to 5
     if addon_code == "staff_management":
         update_fields["max_staff"] = 5

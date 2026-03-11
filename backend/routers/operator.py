@@ -195,13 +195,15 @@ async def get_announcements(current_user: dict = Depends(require_operator)):
 
 @router.get("/addons/store")
 async def get_addon_store(current_user: dict = Depends(require_operator)):
-    if current_user["role"] == "admin":
+    # Block pure admin (not impersonating)
+    if current_user["role"] == "admin" and not current_user.get("impersonated_by"):
         raise HTTPException(status_code=400, detail="Admin does not purchase addons")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
     all_addons = await db.addons.find({"deleted_at": None}, {"_id": 0}).to_list(100)
     active = operator.get("active_addons", [])
+    addon_expiry = operator.get("addon_expiry", {})
     plan_addons = []
     if operator.get("saas_plan_id"):
         plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
@@ -210,13 +212,17 @@ async def get_addon_store(current_user: dict = Depends(require_operator)):
     result = []
     for addon in all_addons:
         status = "available"
+        expires_at = None
         if addon["code"] in active:
             status = "purchased"
+            expires_at = addon_expiry.get(addon["code"])
         elif addon["code"] in plan_addons:
             status = "included_in_plan"
+            expires_at = operator.get("subscription_ends_at")
         result.append({
             "id": addon["id"], "name": addon["name"], "code": addon["code"],
-            "price": addon["price"], "description": addon.get("description", ""), "status": status
+            "price": addon["price"], "description": addon.get("description", ""),
+            "status": status, "expires_at": expires_at
         })
     return result
 
@@ -361,12 +367,16 @@ async def verify_checkout_payment(
 
     if order["item_type"] == "addon":
         active = operator.get("active_addons", [])
+        addon_expiry = operator.get("addon_expiry", {})
         if order["item_code"] not in active:
             active.append(order["item_code"])
-            await db.operators.update_one(
-                {"id": operator["id"]},
-                {"$set": {"active_addons": active, "updated_at": now.isoformat()}}
-            )
+        # Expiry = current subscription end date
+        expiry_date = operator.get("subscription_ends_at") or now.isoformat()
+        addon_expiry[order["item_code"]] = expiry_date
+        await db.operators.update_one(
+            {"id": operator["id"]},
+            {"$set": {"active_addons": active, "addon_expiry": addon_expiry, "updated_at": now.isoformat()}}
+        )
         result_msg = f"Add-on '{order['item_code']}' activated"
 
     elif order["item_type"] == "subscription":
@@ -378,12 +388,17 @@ async def verify_checkout_payment(
             if start < now:
                 start = now
         new_end = start + relativedelta(months=order["months"])
+        new_end_iso = new_end.isoformat()
         update_fields = {
-            "subscription_ends_at": new_end.isoformat(), "status": "active",
+            "subscription_ends_at": new_end_iso, "status": "active",
             "is_read_only": False, "updated_at": now.isoformat()
         }
         if order.get("plan_id"):
             update_fields["saas_plan_id"] = order["plan_id"]
+        # Extend all existing active addons expiry to new subscription end date
+        addon_expiry = operator.get("addon_expiry", {})
+        for code in operator.get("active_addons", []):
+            addon_expiry[code] = new_end_iso
         # Activate any addons bundled with this subscription order
         if order.get("addon_codes"):
             active = operator.get("active_addons", [])
@@ -393,7 +408,9 @@ async def verify_checkout_payment(
                     # If staff_management addon, set max_staff = 5
                     if code == "staff_management":
                         update_fields["max_staff"] = 5
+                addon_expiry[code] = new_end_iso
             update_fields["active_addons"] = active
+        update_fields["addon_expiry"] = addon_expiry
         await db.operators.update_one({"id": operator["id"]}, {"$set": update_fields})
         result_msg = f"Subscription extended by {order['months']} month(s)"
     else:

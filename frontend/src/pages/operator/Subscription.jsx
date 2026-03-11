@@ -527,6 +527,21 @@ const OperatorSubscription = () => {
                         {addon.description || "Enhance your platform capabilities"}
                       </p>
 
+                      {/* Expiry date for owned addons */}
+                      {isOwned && addon.expires_at && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>
+                            Expires:{" "}
+                            <span className="font-medium text-slate-700">
+                              {new Date(addon.expires_at).toLocaleDateString("en-IN", {
+                                day: "numeric", month: "short", year: "numeric"
+                              })}
+                            </span>
+                          </span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                         <div>
                           {addon.status === "included_in_plan" ? (
@@ -687,9 +702,11 @@ const OperatorSubscription = () => {
             </div>
 
             {/* Add-ons bundling section */}
-            {purchasableAddons.length > 0 && (
-              <div className="space-y-2">
-                <Label>Bundle Add-ons (optional)</Label>
+            <div className="space-y-2">
+              <Label>Bundle Add-ons (optional)</Label>
+              {purchasableAddons.length === 0 ? (
+                <p className="text-sm text-slate-400 italic px-1">All available add-ons are already active on your account.</p>
+              ) : (
                 <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
                   {purchasableAddons.map((addon) => (
                     <label
@@ -707,8 +724,8 @@ const OperatorSubscription = () => {
                     </label>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {selectedPlanDetails && (
               <div className="p-4 bg-slate-50 rounded-lg space-y-1">
