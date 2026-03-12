@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -31,11 +32,12 @@ import {
 import { toast } from "sonner";
 import {
   Settings, CreditCard, Trash2, Plus, Info,
-  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff, Download, Lock, CheckCircle2
+  Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff, Download, Lock, CheckCircle2, ExternalLink
 } from "lucide-react";
 
 const AdminSettings = () => {
   const { authAxios } = useAuth();
+  const navigate = useNavigate();
   const [settings, setSettings] = useState(null);
   const [gateways, setGateways] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -573,9 +575,13 @@ const AdminSettings = () => {
                     </div>
                   ))}
 
-                  <div className="pt-3">
+                  <div className="pt-3 flex items-center gap-3">
                     <Button onClick={handleSaveTemplateSettings} disabled={templateSettingsLoading} data-testid="save-template-settings-btn">
                       {templateSettingsLoading ? "Saving..." : "Save Template Settings"}
+                    </Button>
+                    <Button variant="outline" onClick={() => navigate("/admin/whatsapp-templates")} data-testid="manage-templates-btn">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Manage Templates
                     </Button>
                   </div>
                 </div>

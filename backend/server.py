@@ -20,10 +20,12 @@ Modules:
     cron_service.py
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
+import traceback
 
 from database import db, close_db
 from routers.auth import router as auth_router
@@ -58,7 +60,95 @@ app.add_middleware(
 )
 
 
+# ── Error Logging Middleware ─────────────────────────────────────────────────
+@app.middleware("http")
+async def error_logging_middleware(request: Request, call_next):
+    """Capture and log all 4xx/5xx errors to error_logs collection."""
+    try:
+        response = await call_next(request)
+        # Log server errors (5xx) from middleware
+        if response.status_code >= 500:
+            from error_logger import log_error
+            await log_error(
+                error_type="server_error",
+                message=f"Server error {response.status_code} on {request.method} {request.url.path}",
+                module="middleware",
+                endpoint=request.url.path,
+                request_method=request.method,
+                request_path=str(request.url.path),
+                status_code=response.status_code,
+                ip_address=request.client.host if request.client else "",
+            )
+        return response
+    except Exception as exc:
+        from error_logger import log_error
+        await log_error(
+            error_type="unhandled_exception",
+            message=str(exc),
+            module="middleware",
+            endpoint=request.url.path,
+            request_method=request.method,
+            request_path=str(request.url.path),
+            status_code=500,
+            stack_trace=traceback.format_exc(),
+            ip_address=request.client.host if request.client else "",
+        )
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 # ── Misc endpoints ──────────────────────────────────────────────────────────
+
+# Log explicit HTTPExceptions (4xx client errors) for visibility
+from fastapi.exceptions import RequestValidationError
+from fastapi import HTTPException as FastAPIHTTPException
+
+
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+    """Log 4xx and 5xx HTTPExceptions to error_logs."""
+    # Skip 401 unauthorized (auth failures are normal) and OPTIONS preflight
+    if exc.status_code >= 400 and exc.status_code != 401 and request.method != "OPTIONS":
+        try:
+            from error_logger import log_error
+            severity = "client_error" if exc.status_code < 500 else "server_error"
+            await log_error(
+                error_type=severity,
+                message=str(exc.detail),
+                module="http_exception",
+                endpoint=request.url.path,
+                request_method=request.method,
+                request_path=str(request.url.path),
+                status_code=exc.status_code,
+                ip_address=request.client.host if request.client else "",
+            )
+        except Exception:
+            pass
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log validation errors."""
+    try:
+        from error_logger import log_error
+        await log_error(
+            error_type="validation_error",
+            message=str(exc.errors()),
+            module="request_validation",
+            endpoint=request.url.path,
+            request_method=request.method,
+            request_path=str(request.url.path),
+            status_code=422,
+            ip_address=request.client.host if request.client else "",
+        )
+    except Exception:
+        pass
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
 
 @app.get("/api/health")
 async def health_check():

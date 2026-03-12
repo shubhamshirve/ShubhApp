@@ -33,9 +33,9 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/operators", label: "Operators", icon: Building2 },
     { href: "/admin/saas-plans", label: "SaaS Plans", icon: Package },
     { href: "/admin/discount-codes", label: "Discount Codes", icon: Tag },
-    { href: "/admin/whatsapp-templates", label: "WA Templates", icon: MessageSquare },
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/settings", label: "Settings", icon: Settings },
+    { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },
   ];
 

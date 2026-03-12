@@ -254,8 +254,17 @@ class WhatsAppService:
             )
             
             if response.status_code != 200:
-                logger.error(f"WhatsApp API error: {response.text}")
-                raise Exception(f"WhatsApp API error: {response.status_code}")
+                error_body = response.text
+                logger.error(f"WhatsApp API error: {error_body}")
+                # Try to extract meaningful error message
+                try:
+                    error_json = response.json()
+                    error_msg = error_json.get("error", {}).get("error_data", {}).get("details", "") or error_json.get("error", {}).get("message", "")
+                    if error_msg:
+                        raise Exception(f"WhatsApp API error ({response.status_code}): {error_msg}")
+                except (ValueError, KeyError):
+                    pass
+                raise Exception(f"WhatsApp API error: {response.status_code} - {error_body}")
             
             return response.json()
     

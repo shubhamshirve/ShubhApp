@@ -498,7 +498,6 @@ async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, curr
 @router.post("/whatsapp-test")
 async def send_whatsapp_test_message(data: WhatsAppTestMessage, current_user: dict = Depends(require_admin)):
     """Send a test WhatsApp message using the pre-approved 'hello_world' template."""
-    # Get platform WhatsApp config
     wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
     if not wa_config or not wa_config.get("access_token"):
         raise HTTPException(status_code=400, detail="WhatsApp is not configured. Please save your WhatsApp config first.")
@@ -512,14 +511,34 @@ async def send_whatsapp_test_message(data: WhatsAppTestMessage, current_user: di
         result = await wa_service.send_template_message(
             recipient_phone=data.phone_number.strip(),
             template_name="hello_world",
-            language_code="en",
+            language_code="en_US",
         )
         message_id = None
         if result and "messages" in result and len(result["messages"]) > 0:
             message_id = result["messages"][0].get("id")
         return {"success": True, "message": "Test message sent successfully!", "message_id": message_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send test message: {str(e)}")
+        error_str = str(e)
+        # Log to error_logs
+        from error_logger import log_error
+        await log_error(
+            error_type="whatsapp_error",
+            message=f"WhatsApp test message failed: {error_str}",
+            module="admin_whatsapp",
+            endpoint="/admin/whatsapp-test",
+            user_id=current_user["id"],
+            user_name=current_user.get("name", ""),
+            user_role="admin",
+            request_method="POST",
+            request_path="/api/admin/whatsapp-test",
+            status_code=400,
+            extra_data={"phone_number": data.phone_number},
+        )
+        if "not in allowed list" in error_str:
+            raise HTTPException(status_code=400, detail="Recipient phone number not in allowed list. In test mode, add the number to your WhatsApp Business allowed recipients first.")
+        elif "does not exist" in error_str and "template" in error_str.lower():
+            raise HTTPException(status_code=400, detail="The hello_world template is not available on your WhatsApp Business account. Please check your template configuration in Meta Business Suite.")
+        raise HTTPException(status_code=500, detail=f"Failed to send test message: {error_str}")
 
 
 # ─── Payment Gateways ────────────────────────────────────────────────────────
@@ -1007,3 +1026,88 @@ async def toggle_whatsapp_template(template_id: str, current_user: dict = Depend
     new_state = not template.get("is_active", True)
     await db.whatsapp_templates.update_one({"id": template_id}, {"$set": {"is_active": new_state}})
     return {"message": f"Template {'activated' if new_state else 'deactivated'}", "is_active": new_state}
+
+
+# ─── Error Logs ───────────────────────────────────────────────────────────────
+
+@router.get("/error-logs")
+async def get_error_logs(
+    page: int = 1,
+    per_page: int = 50,
+    error_type: str = None,
+    module: str = None,
+    status_code: int = None,
+    search: str = None,
+    date_from: str = None,
+    date_to: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get paginated error logs with filters."""
+    query = {}
+
+    if error_type:
+        query["error_type"] = error_type
+    if module:
+        query["module"] = {"$regex": module, "$options": "i"}
+    if status_code:
+        query["status_code"] = status_code
+    if search:
+        query["$or"] = [
+            {"message": {"$regex": search, "$options": "i"}},
+            {"endpoint": {"$regex": search, "$options": "i"}},
+            {"user_name": {"$regex": search, "$options": "i"}},
+            {"request_path": {"$regex": search, "$options": "i"}},
+        ]
+    if date_from or date_to:
+        date_filter = {}
+        if date_from:
+            date_filter["$gte"] = date_from
+        if date_to:
+            date_filter["$lte"] = date_to + "T23:59:59"
+        query["created_at"] = date_filter
+
+    total = await db.error_logs.count_documents(query)
+    skip = (page - 1) * per_page
+
+    logs = await db.error_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+    }
+
+
+@router.get("/error-logs/stats")
+async def get_error_logs_stats(current_user: dict = Depends(require_admin)):
+    """Get error log statistics."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%dT00:00:00")
+
+    total_all = await db.error_logs.count_documents({})
+    total_today = await db.error_logs.count_documents({"created_at": {"$gte": today_str}})
+    total_server = await db.error_logs.count_documents({"error_type": "server_error"})
+    total_client = await db.error_logs.count_documents({"error_type": "client_error"})
+    total_validation = await db.error_logs.count_documents({"error_type": "validation_error"})
+    total_unhandled = await db.error_logs.count_documents({"error_type": "unhandled_exception"})
+
+    return {
+        "total": total_all,
+        "today": total_today,
+        "by_type": {
+            "server_error": total_server,
+            "client_error": total_client,
+            "validation_error": total_validation,
+            "unhandled_exception": total_unhandled,
+        }
+    }
+
+
+@router.delete("/error-logs")
+async def clear_error_logs(current_user: dict = Depends(require_admin)):
+    """Clear all error logs."""
+    result = await db.error_logs.delete_many({})
+    return {"message": f"Cleared {result.deleted_count} error logs"}

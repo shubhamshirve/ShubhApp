@@ -26,6 +26,7 @@ import AdminBackup from "./pages/admin/Backup";
 import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
 import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
+import AdminErrorLogs from "./pages/admin/ErrorLogs";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -196,6 +197,11 @@ function App() {
           <Route path="/admin/whatsapp-templates" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminWhatsAppTemplates />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/error-logs" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminErrorLogs />
             </ProtectedRoute>
           } />
 
