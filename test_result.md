@@ -1817,7 +1817,7 @@ frontend:
     - agent: "main"
       message: |
         Please test the frontend UI of this Multi-Tenant SaaS Billing Platform.
-        App URL: https://checkout-error-trace.preview.emergentagent.com
+        App URL: https://addon-logic-system.preview.emergentagent.com
 
         CREDENTIALS:
         - Admin: admin@saas.com / admin123
@@ -1945,7 +1945,7 @@ frontend:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Verify Recent Subscriptions table on Admin Reports → SaaS Revenue tab
-        **URL:** https://checkout-error-trace.preview.emergentagent.com/admin/reports
+        **URL:** https://addon-logic-system.preview.emergentagent.com/admin/reports
         **LOGIN:** admin@saas.com / admin123
         
         **COMPREHENSIVE UI TESTS - ALL REQUIREMENTS VERIFIED:**
@@ -2106,7 +2106,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test WhatsApp Templates page in admin panel with comprehensive CRUD and filter functionality
-      **TEST URL:** https://checkout-error-trace.preview.emergentagent.com/admin/whatsapp-templates
+      **TEST URL:** https://addon-logic-system.preview.emergentagent.com/admin/whatsapp-templates
       **TEST CREDENTIALS:** admin@saas.com / admin123
       
       **COMPREHENSIVE TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
@@ -2374,7 +2374,7 @@ agent_communication:
       - **Security:** Proper password verification, secure hashing, input validation ✅
 
       **TESTING METHODOLOGY:**
-      - Used production backend URL: https://checkout-error-trace.preview.emergentagent.com/api
+      - Used production backend URL: https://addon-logic-system.preview.emergentagent.com/api
       - Seeded admin user via POST /api/seed (admin@saas.com/admin123)
       - Bearer token authentication for all protected endpoints
       - Verified exact HTTP status codes and error messages
@@ -2402,7 +2402,7 @@ agent_communication:
       
       **TEST DATE:** March 11, 2026
       **TEST REQUEST:** Test Security tab and Download button in admin Settings panel
-      **TEST URL:** https://checkout-error-trace.preview.emergentagent.com (credentials: admin@saas.com/admin123)
+      **TEST URL:** https://addon-logic-system.preview.emergentagent.com (credentials: admin@saas.com/admin123)
       
       **COMPREHENSIVE UI TESTING RESULTS:**
       
@@ -2725,7 +2725,7 @@ agent_communication:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Test audit logs with comprehensive filters and auto invoice cron endpoint
-        **TEST URL:** https://checkout-error-trace.preview.emergentagent.com/api
+        **TEST URL:** https://addon-logic-system.preview.emergentagent.com/api
         
         **COMPREHENSIVE TESTING RESULTS - 9/9 TESTS PASSED (100% SUCCESS RATE):**
         
@@ -2785,7 +2785,7 @@ agent_communication:
         - ✅ No 500 errors encountered ✓
         
         **TESTING METHODOLOGY:**
-        - Used production backend URL: https://checkout-error-trace.preview.emergentagent.com/api
+        - Used production backend URL: https://addon-logic-system.preview.emergentagent.com/api
         - Bearer token authentication for all protected endpoints
         - Verified exact HTTP status codes and response structures
         - Tested both individual and combined filter parameters
@@ -2869,7 +2869,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test backend registration change to assign lowest plan for 3-day trial
-      **TEST URL:** https://checkout-error-trace.preview.emergentagent.com/api
+      **TEST URL:** https://addon-logic-system.preview.emergentagent.com/api
       
       **COMPREHENSIVE TESTING RESULTS - 4/4 TESTS PASSED (100% SUCCESS RATE):**
       
