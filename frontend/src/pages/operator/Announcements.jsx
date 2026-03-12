@@ -61,9 +61,11 @@ const OperatorAnnouncements = () => {
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.message.trim()) {
-      toast.error("Title and message are required");
-      return;
+    if (!form.title.trim() || form.title.trim().length < 3) {
+      toast.error("Title must be at least 3 characters"); return;
+    }
+    if (!form.message.trim() || form.message.trim().length < 5) {
+      toast.error("Message must be at least 5 characters"); return;
     }
     setSending(true);
     try {

@@ -111,9 +111,17 @@ export default function WhatsAppTemplates() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.template_name.trim() || !form.display_name.trim()) {
-      toast.error("Template name and display name are required");
-      return;
+    if (!form.display_name.trim() || form.display_name.trim().length < 2) {
+      toast.error("Display name must be at least 2 characters"); return;
+    }
+    if (!form.template_name.trim() || form.template_name.trim().length < 2) {
+      toast.error("Template name (API) must be at least 2 characters"); return;
+    }
+    if (!/^[a-z0-9_]+$/.test(form.template_name.trim())) {
+      toast.error("Template name (API) must be lowercase letters, numbers and underscores only"); return;
+    }
+    if (!form.language_code.trim()) {
+      toast.error("Language code is required (e.g. en, hi)"); return;
     }
     setSaving(true);
     try {

@@ -101,6 +101,20 @@ const OperatorSubscribers = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    const name = formData.name.trim();
+    const phone = formData.whatsapp_number.trim();
+    const email = formData.email.trim();
+    if (!name || name.length < 2) { toast.error("Name must be at least 2 characters"); return; }
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length < 10 || phoneDigits.length > 13) {
+      toast.error("WhatsApp number must be 10 digits"); return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Please enter a valid email address"); return;
+    }
+    if (!formData.plan_id) { toast.error("Please select a plan"); return; }
+    if (formData.discount < 0) { toast.error("Discount cannot be negative"); return; }
     try {
       if (editingSubscriber) {
         await authAxios.put(`/operator/subscribers/${editingSubscriber.id}`, formData);
@@ -113,7 +127,10 @@ const OperatorSubscribers = () => {
       resetForm();
       fetchSubscribers();
     } catch (error) {
-      const detail = error.response?.data?.detail || "Failed to save subscriber";
+      const detailRaw = error.response?.data?.detail;
+      const detail = typeof detailRaw === "string" ? detailRaw
+        : Array.isArray(detailRaw) ? detailRaw.map(e => e.msg || String(e)).join("; ")
+        : "Failed to save subscriber";
       if (!editingSubscriber && (detail.toLowerCase().includes("upgrade") || detail.toLowerCase().includes("limit"))) {
         setShowDialog(false);
         setLimitError(detail);

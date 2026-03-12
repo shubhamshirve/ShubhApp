@@ -72,6 +72,15 @@ const OperatorPlans = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!formData.name.trim() || formData.name.trim().length < 2) {
+      toast.error("Plan name must be at least 2 characters"); return;
+    }
+    if (formData.price < 0) { toast.error("Price cannot be negative"); return; }
+    if (formData.tax_percentage < 0 || formData.tax_percentage > 100) {
+      toast.error("Tax percentage must be between 0 and 100"); return;
+    }
+    if (!formData.validity) { toast.error("Please select a validity period"); return; }
     try {
       if (editingPlan) {
         await authAxios.put(`/operator/plans/${editingPlan.id}`, formData);

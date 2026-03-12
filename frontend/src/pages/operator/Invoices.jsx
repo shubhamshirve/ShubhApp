@@ -125,6 +125,18 @@ const OperatorInvoices = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!formData.subscriber_id) { toast.error("Please select a subscriber"); return; }
+    if (!formData.plan_id) { toast.error("Please select a plan"); return; }
+    if (formData.base_amount <= 0) { toast.error("Base amount must be greater than 0"); return; }
+    if (formData.discount < 0) { toast.error("Discount cannot be negative"); return; }
+    if (formData.discount > formData.base_amount) { toast.error("Discount cannot exceed base amount"); return; }
+    if (!formData.service_start_date) { toast.error("Please select a service start date"); return; }
+    if (!formData.service_end_date) { toast.error("Please select a service end date"); return; }
+    if (formData.service_end_date <= formData.service_start_date) {
+      toast.error("Service end date must be after start date"); return;
+    }
+    if (!formData.due_date) { toast.error("Please select a due date"); return; }
     try {
       await authAxios.post("/operator/invoices", {
         ...formData,

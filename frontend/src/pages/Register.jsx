@@ -32,19 +32,32 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
 
+    // Validations
+    if (!formData.company_name.trim() || formData.company_name.trim().length < 2) {
+      toast.error("Company name must be at least 2 characters"); return;
+    }
+    if (!formData.owner_name.trim() || formData.owner_name.trim().length < 2) {
+      toast.error("Owner name must be at least 2 characters"); return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email address"); return;
+    }
+    const phoneDigits = formData.phone.replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits"); return;
+    }
     if (formData.password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
+      toast.error("Password must be at least 6 characters"); return;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match"); return;
+    }
+    if (formData.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(formData.gst_number.toUpperCase())) {
+      toast.error("Please enter a valid GST number (e.g. 22AAAAA0000A1Z5)"); return;
     }
 
     setLoading(true);
-
     try {
       await register({
         company_name: formData.company_name,
@@ -55,7 +68,7 @@ const Register = () => {
         gst_number: formData.gst_number || null,
         charge_gst: formData.charge_gst
       });
-      toast.success("Registration successful! You have a 3-day free trial.");
+      toast.success("Registration successful! Your 3-day trial has started.");
       navigate("/operator");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Registration failed");
@@ -73,7 +86,7 @@ const Register = () => {
             <span className="text-white font-bold text-xl">SB</span>
           </div>
           <h1 className="text-2xl font-heading font-bold text-slate-900">Register as Operator</h1>
-          <p className="text-slate-500 mt-1">Start your 3-day free trial today</p>
+          <p className="text-slate-500 mt-1">Start with a 3-day trial on our Starter plan</p>
         </div>
 
         <Card className="border-slate-200 shadow-sm">
@@ -243,12 +256,11 @@ const Register = () => {
 
             {/* Trial info */}
             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <p className="text-sm font-medium text-blue-800 mb-1">Free Trial Includes:</p>
+              <p className="text-sm font-medium text-blue-800 mb-1">3-Day Trial Includes:</p>
               <ul className="text-xs text-blue-600 space-y-1">
-                <li>• 3 days free access</li>
-                <li>• Up to 10 subscribers</li>
-                <li>• 1 staff member</li>
-                <li>• Basic features</li>
+                <li>• Full access to Starter plan features</li>
+                <li>• No credit card required</li>
+                <li>• Upgrade anytime to continue after trial</li>
               </ul>
             </div>
           </CardContent>

@@ -63,6 +63,15 @@ const AdminSaaSPlans = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!formData.name.trim() || formData.name.trim().length < 2) {
+      toast.error("Plan name must be at least 2 characters"); return;
+    }
+    if (formData.monthly_price < 0) { toast.error("Monthly price cannot be negative"); return; }
+    if (formData.max_subscribers < 0) { toast.error("Max subscribers cannot be negative"); return; }
+    if (formData.max_staff !== undefined && formData.max_staff < 0) {
+      toast.error("Max staff cannot be negative"); return;
+    }
     try {
       if (editingPlan) {
         await authAxios.put(`/admin/saas-plans/${editingPlan.id}`, formData);
@@ -142,6 +151,14 @@ const AdminSaaSPlans = () => {
 
   const handleAddonSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!addonForm.name.trim() || addonForm.name.trim().length < 2) {
+      toast.error("Add-on name must be at least 2 characters"); return;
+    }
+    if (!addonForm.code.trim() || !/^[a-z0-9_]+$/.test(addonForm.code.trim())) {
+      toast.error("Add-on code must be lowercase letters, numbers, and underscores only"); return;
+    }
+    if (addonForm.price < 0) { toast.error("Price cannot be negative"); return; }
     try {
       if (editingAddon) {
         await authAxios.put(`/admin/addons/${editingAddon.id}`, addonForm);

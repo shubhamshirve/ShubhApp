@@ -18,12 +18,13 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email.trim()) { toast.error("Email is required"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Please enter a valid email address"); return; }
+    if (!password || password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
     setLoading(true);
-
     try {
       const user = await login(email, password);
       toast.success("Login successful!");
-      
       if (user.role === "admin") {
         navigate("/admin");
       } else {

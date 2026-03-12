@@ -44,17 +44,24 @@ export default function AdminDiscountCodes() {
   useEffect(() => { fetchCodes(); }, []);
 
   const handleCreate = async () => {
-    if (!form.code || !form.discount_value) {
-      toast.error("Code and discount value are required");
-      return;
+    // Validation
+    const code = (form.code || "").trim().toUpperCase();
+    if (!code || code.length < 2) { toast.error("Code must be at least 2 characters"); return; }
+    if (!/^[A-Z0-9_-]+$/.test(code)) { toast.error("Code can only contain letters, numbers, hyphens and underscores"); return; }
+    const discountVal = parseFloat(form.discount_value);
+    if (!form.discount_value || isNaN(discountVal) || discountVal <= 0) {
+      toast.error("Discount value must be greater than 0"); return;
+    }
+    if (form.discount_type === "percentage" && discountVal > 100) {
+      toast.error("Percentage discount cannot exceed 100%"); return;
     }
     setSaving(true);
     try {
       await authAxios.post("/admin/discount-codes", {
-        code: form.code,
+        code: code,
         description: form.description || null,
         discount_type: form.discount_type,
-        discount_value: parseFloat(form.discount_value),
+        discount_value: discountVal,
         expiry_date: form.expiry_date || null,
         max_redemptions: parseInt(form.max_redemptions) || 0,
         is_active: form.is_active,

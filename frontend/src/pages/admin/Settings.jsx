@@ -136,6 +136,12 @@ const AdminSettings = () => {
 
   const handleAddGateway = async (e) => {
     e.preventDefault();
+    if (!gatewayForm.api_key?.trim() || !gatewayForm.api_secret?.trim()) {
+      toast.error("API Key and API Secret are required"); return;
+    }
+    if (gatewayForm.api_key.trim().length < 10) {
+      toast.error("Please enter a valid API Key"); return;
+    }
     try {
       await authAxios.post("/admin/payment-gateways", gatewayForm);
       toast.success("Gateway configured");

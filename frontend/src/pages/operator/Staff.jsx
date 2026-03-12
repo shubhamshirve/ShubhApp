@@ -75,6 +75,20 @@ const OperatorStaff = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!formData.name.trim() || formData.name.trim().length < 2) {
+      toast.error("Name must be at least 2 characters"); return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email address"); return;
+    }
+    const phoneDigits = (formData.phone || "").replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits"); return;
+    }
+    if (!formData.password || formData.password.length < 6) {
+      toast.error("Password must be at least 6 characters"); return;
+    }
     try {
       await authAxios.post("/operator/staff", formData);
       toast.success("Staff member added successfully");

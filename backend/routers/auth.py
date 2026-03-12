@@ -13,16 +13,24 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/register", response_model=TokenResponse)
 async def register_operator(data: OperatorCreate):
-    """Register a new operator with trial period."""
+    """Register a new operator with 3-day trial on the lowest available plan."""
     existing = await db.users.find_one({"email": data.email, "deleted_at": None})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    trial_plan = await db.saas_plans.find_one({"trial_enabled": True, "deleted_at": None}, {"_id": 0})
+    # Find the lowest-priced plan (not deleted) for the trial
+    lowest_plan = await db.saas_plans.find_one(
+        {"deleted_at": None},
+        {"_id": 0},
+        sort=[("monthly_price", 1)]
+    )
 
     now = datetime.now(timezone.utc)
     operator_id = generate_id()
     user_id = generate_id()
+
+    # Set subscription to expire in 3 days
+    trial_end = (now + timedelta(days=3)).isoformat()
 
     operator = {
         "id": operator_id,
@@ -37,10 +45,10 @@ async def register_operator(data: OperatorCreate):
         "bank_ifsc": data.bank_ifsc,
         "bank_name": data.bank_name,
         "status": "trial",
-        "saas_plan_id": trial_plan["id"] if trial_plan else None,
-        "saas_plan_name": trial_plan["name"] if trial_plan else None,
-        "trial_ends_at": (now + timedelta(days=trial_plan["trial_days"] if trial_plan else 3)).isoformat(),
-        "subscription_ends_at": None,
+        "saas_plan_id": lowest_plan["id"] if lowest_plan else None,
+        "saas_plan_name": lowest_plan["name"] if lowest_plan else None,
+        "trial_ends_at": trial_end,
+        "subscription_ends_at": trial_end,
         "is_read_only": False,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),

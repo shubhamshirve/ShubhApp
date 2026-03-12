@@ -126,31 +126,35 @@ const AdminOperators = () => {
   };
 
   const handleCreateOperator = async () => {
-    if (!createForm.company_name || !createForm.owner_name || !createForm.email || 
-        !createForm.phone || !createForm.password || !createForm.saas_plan_id) {
-      toast.error("Please fill all required fields");
-      return;
+    // Validation
+    if (!createForm.company_name.trim() || createForm.company_name.trim().length < 2) {
+      toast.error("Company name must be at least 2 characters"); return;
     }
-    
+    if (!createForm.owner_name.trim() || createForm.owner_name.trim().length < 2) {
+      toast.error("Owner name must be at least 2 characters"); return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email)) {
+      toast.error("Please enter a valid email address"); return;
+    }
+    const phoneDigits = (createForm.phone || "").replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits"); return;
+    }
+    if (!createForm.password || createForm.password.length < 6) {
+      toast.error("Password must be at least 6 characters"); return;
+    }
+    if (!createForm.saas_plan_id) { toast.error("Please select a SaaS plan"); return; }
+    if (createForm.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(createForm.gst_number.toUpperCase())) {
+      toast.error("Please enter a valid GST number (e.g. 22AAAAA0000A1Z5)"); return;
+    }
     try {
       await authAxios.post("/admin/operators/create", createForm);
       toast.success("Operator created successfully");
       setShowCreateOperator(false);
       setCreateForm({
-        company_name: "",
-        owner_name: "",
-        email: "",
-        phone: "",
-        password: "",
-        gst_number: "",
-        charge_gst: false,
-        bank_account_name: "",
-        bank_account_number: "",
-        bank_ifsc: "",
-        bank_name: "",
-        saas_plan_id: "",
-        status: "active",
-        subscription_months: 1
+        company_name: "", owner_name: "", email: "", phone: "", password: "",
+        gst_number: "", charge_gst: false, bank_account_name: "", bank_account_number: "",
+        bank_ifsc: "", bank_name: "", saas_plan_id: "", status: "active", subscription_months: 1
       });
       fetchOperators();
     } catch (error) {

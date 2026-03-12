@@ -1,465 +1,266 @@
 #!/usr/bin/env python3
 """
-Backend Testing Script for Multi-Tenant SaaS Billing Platform
-Tests the new features requested in the review.
+Backend API Testing Suite for Multi-Tenant SaaS Billing Platform
+Test: Registration assigns lowest plan for 3-day trial
 """
+
 import requests
 import json
-import sys
-import os
-from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+from typing import Optional
 
-# Configuration
+# Test Configuration
 BACKEND_URL = "https://checkout-error-trace.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 
-class BackendTester:
+class TestRunner:
     def __init__(self):
         self.admin_token = None
-        self.operator_token = None
-        self.operator_id = None
-        self.created_gateway_id = None
-        self.created_template_id = None
+        self.test_results = []
         
-    def make_request(self, method: str, endpoint: str, token: Optional[str] = None, 
-                    data: Optional[Dict] = None, params: Optional[Dict] = None) -> Dict[str, Any]:
-        """Make HTTP request with proper headers"""
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        
-        url = f"{BACKEND_URL}{endpoint}"
-        
-        try:
-            if method.upper() == "GET":
-                response = requests.get(url, headers=headers, params=params)
-            elif method.upper() == "POST":
-                response = requests.post(url, headers=headers, json=data, params=params)
-            elif method.upper() == "PUT":
-                response = requests.put(url, headers=headers, json=data)
-            elif method.upper() == "PATCH":
-                response = requests.patch(url, headers=headers, json=data)
-            elif method.upper() == "DELETE":
-                response = requests.delete(url, headers=headers)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-                
-            return {
-                "status_code": response.status_code,
-                "data": response.json() if response.content else {},
-                "success": 200 <= response.status_code < 300
-            }
-        except requests.exceptions.RequestException as e:
-            return {
-                "status_code": 0,
-                "data": {"error": str(e)},
-                "success": False
-            }
-        except json.JSONDecodeError:
-            return {
-                "status_code": response.status_code,
-                "data": {"error": "Invalid JSON response"},
-                "success": False
-            }
-    
-    def test_seed(self):
-        """Test 1: Seed database"""
-        print("🌱 Testing seed endpoint...")
-        result = self.make_request("POST", "/seed")
-        if result["success"]:
-            print("✅ Seed endpoint working")
-            return True
-        else:
-            print(f"❌ Seed failed: {result['data']}")
-            return False
-    
-    def test_admin_login(self):
-        """Test 2: Admin login"""
-        print("🔑 Testing admin login...")
-        result = self.make_request("POST", "/auth/login", data={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        if result["success"]:
-            self.admin_token = result["data"]["access_token"]
-            print("✅ Admin login successful")
-            return True
-        else:
-            print(f"❌ Admin login failed: {result['data']}")
-            return False
-    
-    def test_platform_gateway_creation(self):
-        """Test 3: Create platform payment gateway"""
-        print("💳 Testing platform gateway creation...")
-        gateway_data = {
-            "gateway_type": "razorpay",
-            "api_key": "rzp_test_sFaXdx3kATIGiw",
-            "api_secret": "dOvQqMbfE2sPkYulgTeU2SpW",
-            "is_active": True,
-            "for_operator_id": None  # This makes it a platform gateway
-        }
-        result = self.make_request("POST", "/admin/payment-gateways", self.admin_token, gateway_data)
-        if result["success"]:
-            self.created_gateway_id = result["data"].get("id")
-            print("✅ Platform gateway created successfully")
-            return True
-        else:
-            print(f"❌ Platform gateway creation failed: {result['data']}")
-            return False
-    
-    def test_gateway_platform_flag(self):
-        """Test 4: Verify platform gateway has is_platform_gateway=True"""
-        print("🔍 Testing platform gateway flag...")
-        result = self.make_request("GET", "/admin/payment-gateways", self.admin_token)
-        if result["success"]:
-            gateways = result["data"]
-            platform_gateway = None
-            for gw in gateways:
-                if gw.get("is_platform_gateway") == True and gw.get("gateway_type") == "razorpay":
-                    platform_gateway = gw
-                    break
-            
-            if platform_gateway:
-                print("✅ Platform gateway found with is_platform_gateway=True")
-                return True
-            else:
-                print("❌ Platform gateway not found or missing is_platform_gateway=True flag")
-                return False
-        else:
-            print(f"❌ Failed to get gateways: {result['data']}")
-            return False
-    
-    def test_create_operator(self):
-        """Test 5: Create or get operator for testing"""
-        print("👤 Getting operator for testing...")
-        
-        # First try to get an existing operator
-        result = self.make_request("GET", "/admin/operators", self.admin_token)
-        if result["success"] and result["data"]:
-            # Use the first operator
-            operator = result["data"][0]
-            self.operator_id = operator["id"]
-            print(f"✅ Using existing operator: {operator.get('company_name', 'Unknown')}")
-            return True
-        
-        # If no operators, create one manually
-        print("📝 Creating new operator...")
-        # Get a paid SaaS plan first
-        plans_result = self.make_request("GET", "/admin/saas-plans", self.admin_token)
-        if not plans_result["success"]:
-            print(f"❌ Failed to get SaaS plans: {plans_result['data']}")
-            return False
-        
-        paid_plan = None
-        for plan in plans_result["data"]:
-            if plan.get("monthly_price", 0) > 0:
-                paid_plan = plan
-                break
-        
-        if not paid_plan:
-            print("❌ No paid SaaS plan found")
-            return False
-        
-        operator_data = {
-            "company_name": "Test Broadband Co",
-            "owner_name": "Test Owner",
-            "email": "testop@broadband.com",
-            "phone": "9876543210",
-            "password": "testpass123",
-            "saas_plan_id": paid_plan["id"],
-            "subscription_months": 1,
-            "status": "active"
-        }
-        
-        create_result = self.make_request("POST", "/admin/operators/create", self.admin_token, operator_data)
-        if create_result["success"]:
-            self.operator_id = create_result["data"]["id"]
-            print(f"✅ Created operator: {create_result['data']['company_name']}")
-            return True
-        else:
-            print(f"❌ Operator creation failed: {create_result['data']}")
-            return False
-    
-    def test_operator_impersonation(self):
-        """Test 6: Impersonate operator to get operator token"""
-        print("🎭 Testing operator impersonation...")
-        result = self.make_request("POST", f"/admin/operators/{self.operator_id}/impersonate", self.admin_token)
-        if result["success"]:
-            self.operator_token = result["data"]["access_token"]
-            print("✅ Operator impersonation successful")
-            return True
-        else:
-            print(f"❌ Operator impersonation failed: {result['data']}")
-            return False
-    
-    def test_checkout_with_platform_gateway(self):
-        """Test 7: Test checkout using platform DB gateway instead of env vars"""
-        print("💰 Testing checkout with platform gateway...")
-        
-        # First get a paid plan
-        plans_result = self.make_request("GET", "/admin/saas-plans", self.admin_token)
-        if not plans_result["success"]:
-            print(f"❌ Failed to get SaaS plans: {plans_result['data']}")
-            return False
-        
-        paid_plan = None
-        for plan in plans_result["data"]:
-            if plan.get("monthly_price", 0) > 0:
-                paid_plan = plan
-                break
-        
-        if not paid_plan:
-            print("❌ No paid SaaS plan found for checkout")
-            return False
-        
-        # Try checkout
-        checkout_params = {
-            "item_type": "subscription",
-            "plan_id": paid_plan["id"],
-            "months": 1
-        }
-        result = self.make_request("POST", "/operator/checkout/create-order", self.operator_token, params=checkout_params)
-        
-        if result["success"]:
-            if result["data"].get("razorpay_order_id"):
-                print("✅ Checkout successful - using platform DB gateway keys")
-                return True
-            else:
-                print("❌ Checkout success but no razorpay_order_id returned")
-                return False
-        else:
-            print(f"❌ Checkout failed: {result['data']}")
-            return False
-    
-    def test_mutual_exclusion_payment_gateway(self):
-        """Test 8: Test mutual exclusion of payment_gateway vs custom_payment_gateway"""
-        print("🔄 Testing payment gateway mutual exclusion...")
-        
-        # Step 1: Assign payment_gateway addon
-        result = self.make_request("POST", f"/admin/operators/{self.operator_id}/addons/payment_gateway", self.admin_token)
-        if not result["success"]:
-            print(f"❌ Failed to assign payment_gateway addon: {result['data']}")
-            return False
-        print(f"📝 payment_gateway addon assignment response: {result['data']}")
-        
-        # Step 2: Check operator has payment_gateway but NOT custom_payment_gateway
-        op_result = self.make_request("GET", f"/admin/operators/{self.operator_id}", self.admin_token)
-        if not op_result["success"]:
-            print(f"❌ Failed to get operator: {op_result['data']}")
-            return False
-        
-        active_addons = op_result["data"].get("active_addons") or []
-        print(f"📋 Active addons after payment_gateway assignment: {active_addons}")
-        if "payment_gateway" in active_addons and "custom_payment_gateway" not in active_addons:
-            print("✅ Step 1 passed: payment_gateway assigned, custom_payment_gateway not present")
-        else:
-            print(f"❌ Step 1 failed: active_addons = {active_addons}")
-            return False
-        
-        # Step 3: Assign custom_payment_gateway addon  
-        result = self.make_request("POST", f"/admin/operators/{self.operator_id}/addons/custom_payment_gateway", self.admin_token)
-        if not result["success"]:
-            print(f"❌ Failed to assign custom_payment_gateway addon: {result['data']}")
-            return False
-        print(f"📝 custom_payment_gateway addon assignment response: {result['data']}")
-        
-        # Step 4: Check operator has custom_payment_gateway but NOT payment_gateway
-        op_result = self.make_request("GET", f"/admin/operators/{self.operator_id}", self.admin_token)
-        if not op_result["success"]:
-            print(f"❌ Failed to get operator: {op_result['data']}")
-            return False
-        
-        active_addons = op_result["data"].get("active_addons") or []
-        print(f"📋 Active addons after custom_payment_gateway assignment: {active_addons}")
-        if "custom_payment_gateway" in active_addons and "payment_gateway" not in active_addons:
-            print("✅ Mutual exclusion working: custom_payment_gateway assigned, payment_gateway removed")
-            return True
-        else:
-            print(f"❌ Mutual exclusion failed: active_addons = {active_addons}")
-            return False
-    
-    def test_whatsapp_templates_crud(self):
-        """Test 9: Test WhatsApp Templates CRUD operations"""
-        print("📱 Testing WhatsApp Templates CRUD...")
-        
-        # Step 1: Create a template
-        template_data = {
-            "template_name": "invoice_notification",
-            "display_name": "Invoice Notification", 
-            "template_type": "invoice_notification",
-            "language_code": "en",
-            "description": "Used for sending invoice to customers",
-            "body_variables": ["customer_name", "invoice_number", "amount", "due_date"],
-            "has_payment_button": True,
-            "is_active": True
-        }
-        
-        create_result = self.make_request("POST", "/admin/whatsapp-templates", self.admin_token, template_data)
-        if not create_result["success"]:
-            print(f"❌ Template creation failed: {create_result['data']}")
-            return False
-        
-        self.created_template_id = create_result["data"]["id"]
-        print("✅ Template created successfully")
-        
-        # Step 2: List all templates
-        list_result = self.make_request("GET", "/admin/whatsapp-templates", self.admin_token)
-        if not list_result["success"]:
-            print(f"❌ Template listing failed: {list_result['data']}")
-            return False
-        
-        templates = list_result["data"]
-        found_template = None
-        for template in templates:
-            if template["id"] == self.created_template_id:
-                found_template = template
-                break
-        
-        if not found_template:
-            print("❌ Created template not found in list")
-            return False
-        print("✅ Template found in list")
-        
-        # Step 3: Get single template
-        get_result = self.make_request("GET", f"/admin/whatsapp-templates/{self.created_template_id}", self.admin_token)
-        if not get_result["success"]:
-            print(f"❌ Template get failed: {get_result['data']}")
-            return False
-        print("✅ Single template retrieved successfully")
-        
-        # Step 4: Update template
-        update_data = {"description": "Updated description"}
-        update_result = self.make_request("PUT", f"/admin/whatsapp-templates/{self.created_template_id}", self.admin_token, update_data)
-        if not update_result["success"]:
-            print(f"❌ Template update failed: {update_result['data']}")
-            return False
-        
-        if update_result["data"]["description"] == "Updated description":
-            print("✅ Template updated successfully")
-        else:
-            print("❌ Template update didn't apply changes")
-            return False
-        
-        # Step 5: Toggle template status
-        toggle_result = self.make_request("PATCH", f"/admin/whatsapp-templates/{self.created_template_id}/toggle", self.admin_token)
-        if not toggle_result["success"]:
-            print(f"❌ Template toggle failed: {toggle_result['data']}")
-            return False
-        print("✅ Template status toggled successfully")
-        
-        # Step 6: Try to create duplicate template (should fail)
-        duplicate_result = self.make_request("POST", "/admin/whatsapp-templates", self.admin_token, template_data)
-        if duplicate_result["status_code"] == 400:
-            print("✅ Duplicate template creation correctly rejected with 400")
-        else:
-            print(f"❌ Duplicate template should have failed with 400, got {duplicate_result['status_code']}")
-            return False
-        
-        # Step 7: Delete template
-        delete_result = self.make_request("DELETE", f"/admin/whatsapp-templates/{self.created_template_id}", self.admin_token)
-        if not delete_result["success"]:
-            print(f"❌ Template deletion failed: {delete_result['data']}")
-            return False
-        print("✅ Template deleted successfully")
-        
-        return True
-    
-    def test_configure_payment_gateway_addon_required(self):
-        """Test 10: Test that configure_payment_gateway requires custom_payment_gateway addon"""
-        print("🔧 Testing payment gateway configuration addon requirement...")
-        
-        # First, remove custom_payment_gateway addon if present and ensure operator only has payment_gateway
-        result = self.make_request("POST", f"/admin/operators/{self.operator_id}/addons/payment_gateway", self.admin_token)
-        if not result["success"]:
-            print(f"❌ Failed to assign payment_gateway addon: {result['data']}")
-            return False
-        
-        # Try to configure payment gateway (should fail without custom_payment_gateway addon)
-        gateway_config = {
-            "gateway_type": "razorpay",
-            "api_key": "test_key",
-            "api_secret": "test_secret"
-        }
-        
-        config_result = self.make_request("POST", "/operator/payment-gateway", self.operator_token, gateway_config)
-        if config_result["status_code"] == 403:
-            print("✅ Payment gateway config correctly rejected without custom_payment_gateway addon (403)")
-        else:
-            print(f"❌ Expected 403, got {config_result['status_code']}: {config_result['data']}")
-            return False
-        
-        # Now assign custom_payment_gateway addon
-        addon_result = self.make_request("POST", f"/admin/operators/{self.operator_id}/addons/custom_payment_gateway", self.admin_token)
-        if not addon_result["success"]:
-            print(f"❌ Failed to assign custom_payment_gateway addon: {addon_result['data']}")
-            return False
-        
-        # Try to configure payment gateway again (should succeed now)
-        config_result2 = self.make_request("POST", "/operator/payment-gateway", self.operator_token, gateway_config)
-        if config_result2["success"]:
-            print("✅ Payment gateway config successful with custom_payment_gateway addon")
-            return True
-        else:
-            print(f"❌ Payment gateway config failed even with custom_payment_gateway addon: {config_result2['data']}")
-            return False
-
-def main():
-    """Main test runner"""
-    print("🚀 Starting Backend Testing for Multi-Tenant SaaS Billing Platform")
-    print("=" * 70)
-    
-    tester = BackendTester()
-    
-    tests = [
-        ("Seed Database", tester.test_seed),
-        ("Admin Login", tester.test_admin_login),
-        ("Create Platform Payment Gateway", tester.test_platform_gateway_creation),
-        ("Verify Platform Gateway Flag", tester.test_gateway_platform_flag),
-        ("Get/Create Operator", tester.test_create_operator), 
-        ("Operator Impersonation", tester.test_operator_impersonation),
-        ("Checkout with Platform Gateway", tester.test_checkout_with_platform_gateway),
-        ("Payment Gateway Mutual Exclusion", tester.test_mutual_exclusion_payment_gateway),
-        ("WhatsApp Templates CRUD", tester.test_whatsapp_templates_crud),
-        ("Payment Gateway Config Addon Requirement", tester.test_configure_payment_gateway_addon_required)
-    ]
-    
-    results = []
-    for test_name, test_func in tests:
-        print(f"\n🧪 {test_name}")
-        print("-" * 50)
-        try:
-            success = test_func()
-            results.append((test_name, success))
-        except Exception as e:
-            print(f"❌ {test_name} crashed: {str(e)}")
-            results.append((test_name, False))
-    
-    # Summary
-    print("\n" + "=" * 70)
-    print("📊 TEST SUMMARY")
-    print("=" * 70)
-    
-    passed = 0
-    failed = 0
-    
-    for test_name, success in results:
+    def log_test(self, test_name: str, success: bool, details: str = ""):
+        """Log test results."""
         status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status} - {test_name}")
-        if success:
-            passed += 1
+        self.test_results.append(f"{status} - {test_name}: {details}")
+        print(f"{status} - {test_name}: {details}")
+        
+    def get_admin_token(self) -> bool:
+        """Get admin authentication token."""
+        try:
+            response = requests.post(f"{BACKEND_URL}/auth/login", 
+                json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+            if response.status_code == 200:
+                data = response.json()
+                self.admin_token = data.get("access_token")
+                self.log_test("Admin Login", True, f"Token obtained: {self.admin_token[:20]}...")
+                return True
+            else:
+                self.log_test("Admin Login", False, f"Status {response.status_code}: {response.text}")
+                return False
+        except Exception as e:
+            self.log_test("Admin Login", False, f"Exception: {str(e)}")
+            return False
+            
+    def get_admin_headers(self) -> dict:
+        """Get headers with admin authentication."""
+        return {"Authorization": f"Bearer {self.admin_token}"} if self.admin_token else {}
+        
+    def test_get_saas_plans(self) -> Optional[dict]:
+        """Test GET /api/admin/saas-plans and find lowest priced plan."""
+        try:
+            headers = self.get_admin_headers()
+            response = requests.get(f"{BACKEND_URL}/admin/saas-plans", headers=headers)
+            
+            if response.status_code == 200:
+                plans = response.json()
+                if not plans:
+                    self.log_test("Get SaaS Plans", False, "No plans found in system")
+                    return None
+                    
+                # Find the plan with lowest monthly_price
+                lowest_plan = min(plans, key=lambda x: x['monthly_price'])
+                
+                self.log_test("Get SaaS Plans", True, 
+                    f"Found {len(plans)} plans. Lowest priced plan: '{lowest_plan['name']}' (${lowest_plan['monthly_price']})")
+                return lowest_plan
+            else:
+                self.log_test("Get SaaS Plans", False, f"Status {response.status_code}: {response.text}")
+                return None
+        except Exception as e:
+            self.log_test("Get SaaS Plans", False, f"Exception: {str(e)}")
+            return None
+            
+    def test_operator_registration(self, lowest_plan: dict) -> Optional[dict]:
+        """Test POST /api/auth/register with new operator registration."""
+        try:
+            # Generate unique email with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            registration_data = {
+                "company_name": "Trial Test Company",
+                "owner_name": "Trial User", 
+                "email": f"trialtest123_{timestamp}@test.com",
+                "phone": "9876543210",
+                "password": "test123"
+            }
+            
+            response = requests.post(f"{BACKEND_URL}/auth/register", json=registration_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                user_data = data.get("user", {})
+                
+                # Test the registration response - need to fetch operator details
+                operator_token = data.get("access_token")
+                if operator_token:
+                    # Use operator token to get profile and verify subscription details
+                    operator_headers = {"Authorization": f"Bearer {operator_token}"}
+                    profile_response = requests.get(f"{BACKEND_URL}/auth/me", headers=operator_headers)
+                    
+                    if profile_response.status_code == 200:
+                        profile_data = profile_response.json()
+                        operator_id = profile_data.get("operator_id")
+                        
+                        # Get operator details to verify subscription
+                        admin_headers = self.get_admin_headers()
+                        op_response = requests.get(f"{BACKEND_URL}/admin/operators/{operator_id}", 
+                                                 headers=admin_headers)
+                        
+                        if op_response.status_code == 200:
+                            operator_data = op_response.json()
+                            
+                            # Verify registration meets all requirements
+                            checks = []
+                            
+                            # Check status is "trial"
+                            status_check = operator_data.get("status") == "trial"
+                            checks.append(("status = 'trial'", status_check, operator_data.get("status")))
+                            
+                            # Check subscription_ends_at is not null and approximately 3 days from now
+                            sub_ends = operator_data.get("subscription_ends_at")
+                            sub_ends_check = sub_ends is not None
+                            checks.append(("subscription_ends_at NOT null", sub_ends_check, sub_ends))
+                            
+                            # Check trial_ends_at is not null and approximately 3 days from now
+                            trial_ends = operator_data.get("trial_ends_at")
+                            trial_ends_check = trial_ends is not None
+                            checks.append(("trial_ends_at NOT null", trial_ends_check, trial_ends))
+                            
+                            # Check saas_plan_id matches lowest priced plan
+                            plan_id_check = operator_data.get("saas_plan_id") == lowest_plan["id"]
+                            checks.append(("saas_plan_id matches lowest plan", plan_id_check, 
+                                         f"Got: {operator_data.get('saas_plan_id')}, Expected: {lowest_plan['id']}"))
+                            
+                            # Check saas_plan_name matches lowest plan name
+                            plan_name_check = operator_data.get("saas_plan_name") == lowest_plan["name"]
+                            checks.append(("saas_plan_name matches lowest plan", plan_name_check,
+                                         f"Got: {operator_data.get('saas_plan_name')}, Expected: {lowest_plan['name']}"))
+                            
+                            # Verify dates are approximately 3 days from now if not null
+                            now = datetime.now()
+                            expected_trial_end = now + timedelta(days=3)
+                            
+                            date_verification = "N/A"
+                            if sub_ends and trial_ends:
+                                try:
+                                    # Parse ISO format dates (they include timezone info)
+                                    sub_end_dt = datetime.fromisoformat(sub_ends.replace('Z', '+00:00'))
+                                    trial_end_dt = datetime.fromisoformat(trial_ends.replace('Z', '+00:00'))
+                                    
+                                    # Check if dates are within reasonable range (2-4 days from now)
+                                    sub_diff = abs((sub_end_dt.replace(tzinfo=None) - expected_trial_end).days)
+                                    trial_diff = abs((trial_end_dt.replace(tzinfo=None) - expected_trial_end).days)
+                                    
+                                    date_check = sub_diff <= 1 and trial_diff <= 1
+                                    date_verification = f"Sub ends in ~{sub_diff} days, Trial ends in ~{trial_diff} days"
+                                    checks.append(("dates approximately 3 days from now", date_check, date_verification))
+                                except Exception as e:
+                                    checks.append(("dates approximately 3 days from now", False, f"Date parse error: {str(e)}"))
+                            
+                            # Compile results
+                            all_passed = all(check[1] for check in checks)
+                            
+                            details = f"Registration successful. Email: {registration_data['email']}. "
+                            details += f"Checks: " + ", ".join([f"{check[0]}: {'✓' if check[1] else '✗'} ({check[2]})" for check in checks])
+                            
+                            self.log_test("Operator Registration", all_passed, details)
+                            
+                            # Return registration data for duplicate test
+                            return {"email": registration_data["email"], "success": all_passed, "operator_data": operator_data}
+                        else:
+                            self.log_test("Operator Registration", False, 
+                                f"Failed to get operator details: {op_response.status_code}")
+                            return None
+                    else:
+                        self.log_test("Operator Registration", False, 
+                            f"Failed to get operator profile: {profile_response.status_code}")
+                        return None
+                else:
+                    self.log_test("Operator Registration", False, "No access token in registration response")
+                    return None
+            else:
+                self.log_test("Operator Registration", False, 
+                    f"Status {response.status_code}: {response.text}")
+                return None
+                
+        except Exception as e:
+            self.log_test("Operator Registration", False, f"Exception: {str(e)}")
+            return None
+            
+    def test_duplicate_email_rejection(self, registration_result: dict):
+        """Test that duplicate email registration is rejected."""
+        if not registration_result or not registration_result.get("success"):
+            self.log_test("Duplicate Email Test", False, "Cannot test - initial registration failed")
+            return
+            
+        try:
+            # Try to register again with the same email
+            duplicate_data = {
+                "company_name": "Duplicate Test Company",
+                "owner_name": "Duplicate User", 
+                "email": registration_result["email"],  # Same email as before
+                "phone": "9876543210",
+                "password": "test123"
+            }
+            
+            response = requests.post(f"{BACKEND_URL}/auth/register", json=duplicate_data)
+            
+            # Should get 400 error with "Email already registered" message
+            if response.status_code == 400:
+                error_msg = response.json().get("detail", "")
+                if "already registered" in error_msg.lower():
+                    self.log_test("Duplicate Email Rejection", True, 
+                        f"Correctly rejected with: '{error_msg}'")
+                else:
+                    self.log_test("Duplicate Email Rejection", False, 
+                        f"Got 400 but wrong message: '{error_msg}'")
+            else:
+                self.log_test("Duplicate Email Rejection", False, 
+                    f"Expected 400, got {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            self.log_test("Duplicate Email Rejection", False, f"Exception: {str(e)}")
+            
+    def run_all_tests(self):
+        """Run the complete test suite."""
+        print("🎯 STARTING REGISTRATION TESTS FOR MULTI-TENANT SAAS BILLING PLATFORM")
+        print("=" * 80)
+        
+        # Step 1: Get admin token
+        if not self.get_admin_token():
+            print("❌ Cannot continue without admin token")
+            return
+            
+        # Step 2: Get SaaS plans and find lowest priced one
+        lowest_plan = self.test_get_saas_plans()
+        if not lowest_plan:
+            print("❌ Cannot continue without SaaS plans")
+            return
+            
+        # Step 3: Test operator registration
+        registration_result = self.test_operator_registration(lowest_plan)
+        
+        # Step 4: Test duplicate email rejection
+        self.test_duplicate_email_rejection(registration_result)
+        
+        # Summary
+        print("\n" + "=" * 80)
+        print("📋 TEST SUMMARY:")
+        print("=" * 80)
+        
+        total_tests = len(self.test_results)
+        passed_tests = len([r for r in self.test_results if "✅ PASS" in r])
+        
+        for result in self.test_results:
+            print(result)
+            
+        print(f"\n🎯 OVERALL RESULT: {passed_tests}/{total_tests} tests passed")
+        
+        if passed_tests == total_tests:
+            print("🎉 ALL TESTS PASSED - Registration feature working correctly!")
         else:
-            failed += 1
-    
-    total = len(results)
-    print(f"\n📈 RESULTS: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
-    
-    if failed == 0:
-        print("🎉 All tests passed!")
-        return 0
-    else:
-        print(f"⚠️  {failed} tests failed")
-        return 1
+            print("⚠️  Some tests failed - Review details above")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    runner = TestRunner()
+    runner.run_all_tests()

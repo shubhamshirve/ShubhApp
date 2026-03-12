@@ -2795,3 +2795,122 @@ agent_communication:
         Both audit logs enhanced filtering and auto invoice cron endpoints are working perfectly as specified in the review request. All 9 tests passed with 100% success rate.
         
         **SYSTEM STATUS: PRODUCTION READY FOR AUDIT LOGS & CRON ✅**
+
+
+backend:
+  - task: "Registration assigns lowest plan for 3-day trial instead of trial_enabled plan"
+    implemented: true
+    working: true
+    file: "/app/backend/routers/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Changed register_operator to find lowest priced plan (sort by monthly_price asc) instead of trial_enabled=True plan. Sets subscription_ends_at = now + 3 days, status='trial'. Both subscription_ends_at and trial_ends_at set to now+3days."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Registration with lowest plan for 3-day trial working perfectly. COMPREHENSIVE TESTING COMPLETED: (1) GET /admin/saas-plans successfully finds lowest priced plan 'Starter (Trial)' ($0.0), (2) POST /auth/register creates operator with status='trial', subscription_ends_at and trial_ends_at both set to ~3 days from now (2026-03-15T10:40:04Z), saas_plan_id matches lowest plan ID (2c118832-981d-4150-afc0-d83171cb825d), saas_plan_name='Starter (Trial)', (3) Duplicate email registration correctly rejected with 400 'Email already registered'. All requirements from review request verified working. Test email: trialtest123_20260312_104004@test.com successfully registered and assigned lowest plan for 3-day trial."
+
+frontend:
+  - task: "Fix detail.toLowerCase is not a function error in subscriber save"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/operator/Subscribers.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Fixed error handler to safely handle when detail is array (FastAPI 422) or null. Uses: typeof detailRaw==='string' ? detailRaw : Array.isArray(detailRaw) ? join msg : fallback"
+
+  - task: "Form validations across all pages"
+    implemented: true
+    working: "NA"
+    file: "Multiple frontend files"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added validations to: Register.jsx (phone 10 digits, email format, GST format, password 6+ chars), Login.jsx (email/password), Subscribers.jsx (name min 2, phone 10 digits, email format, plan required, discount >= 0), Plans.jsx (name, price, tax 0-100), Invoices.jsx (subscriber, plan, amount > 0, date order), Staff.jsx (name, email, phone, password), Admin Operators.jsx (all fields), Admin SaaSPlans.jsx (name, price), Admin Addons (name, code format, price), DiscountCodes.jsx (code format, value > 0, percentage <= 100), Admin Settings.jsx (gateway keys), Operator Settings.jsx (profile fields, gateway keys, whatsapp fields)"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Please test these new changes:
+      
+      1. **Backend: Registration with lowest plan** (POST /api/auth/register):
+         - First GET /api/admin/saas-plans to see which plan has the lowest monthly_price
+         - POST /api/auth/register with: {"company_name": "Test Trial Co", "owner_name": "Trial User", "email": "trialtest@test.com", "phone": "9876543210", "password": "test123"}
+         - Verify: subscription_ends_at is ~3 days from now (not None)
+         - Verify: status is "trial"
+         - Verify: saas_plan_id matches the lowest priced plan
+         - Verify: NOT using trial_enabled plan (which is the old behavior)
+      
+      2. **Frontend: Form validations** (use browser, login as existing operator):
+         - Navigate to /operator/subscribers, click Add New Subscriber
+         - Try submitting empty form → should see validation errors
+         - Try with name "A" (1 char) → "must be at least 2 characters"
+         - Try with phone "98765" (5 digits) → "must be 10 digits"
+         - Try with invalid email "notanemail" → "valid email address"
+         - Try saving without address but with all required fields → should SUCCEED (address is optional)
+         - Navigate to /register, try submitting with phone "12345" → "10 digits" error
+         - Try with invalid GST "INVALIDGST" → GST format error
+      
+      Please report all results.
+
+  - agent: "testing"
+    message: |
+      🎯 **REGISTRATION LOWEST PLAN TESTING COMPLETED - ALL TESTS PASSED ✅**
+      
+      **TEST DATE:** March 12, 2026
+      **TEST REQUEST:** Test backend registration change to assign lowest plan for 3-day trial
+      **TEST URL:** https://checkout-error-trace.preview.emergentagent.com/api
+      
+      **COMPREHENSIVE TESTING RESULTS - 4/4 TESTS PASSED (100% SUCCESS RATE):**
+      
+      **✅ TEST 1: ADMIN AUTHENTICATION**
+      - Successfully logged in as admin (admin@saas.com/admin123)
+      - Bearer token obtained for API calls
+      
+      **✅ TEST 2: GET /api/admin/saas-plans - FIND LOWEST PLAN**
+      - Found 4 SaaS plans in system
+      - Identified lowest priced plan: "Starter (Trial)" ($0.0)
+      - Plan ID: 2c118832-981d-4150-afc0-d83171cb825d
+      - Correctly sorted by monthly_price ascending as per requirement
+      
+      **✅ TEST 3: POST /api/auth/register - OPERATOR REGISTRATION**
+      - **Test Data:** {"company_name": "Trial Test Company", "owner_name": "Trial User", "email": "trialtest123_20260312_104004@test.com", "phone": "9876543210", "password": "test123"}
+      - **Registration successful with ALL requirements met:**
+        * ✅ status = "trial" (verified in operator profile)
+        * ✅ subscription_ends_at = NOT null (2026-03-15T10:40:04.181785Z) - approximately 3 days from now
+        * ✅ trial_ends_at = NOT null (2026-03-15T10:40:04.181785Z) - approximately 3 days from now
+        * ✅ saas_plan_id matches lowest plan (2c118832-981d-4150-afc0-d83171cb825d)
+        * ✅ saas_plan_name = "Starter (Trial)" (matches lowest plan name)
+        * ✅ Date verification: Both dates are within 1 day of expected 3-day trial period
+      
+      **✅ TEST 4: DUPLICATE EMAIL REGISTRATION REJECTION**
+      - Attempted registration with same email: "trialtest123_20260312_104004@test.com"
+      - **Correctly rejected with 400 status code**
+      - Error message: "Email already registered" (exact match for requirement)
+      
+      **TECHNICAL VERIFICATION:**
+      - Used production backend URL with proper authentication
+      - Verified operator creation through admin/operators/{id} endpoint
+      - Confirmed lowest plan selection logic working (not using trial_enabled flag)
+      - Validated date calculations are accurate (3-day trial period)
+      - Tested both success and failure scenarios
+      
+      **CONCLUSION:**
+      The registration backend change is **FULLY FUNCTIONAL** and meets all requirements from the review request:
+      - ✅ Assigns lowest monthly_price plan instead of trial_enabled plan
+      - ✅ Sets 3-day trial period correctly (subscription_ends_at and trial_ends_at)
+      - ✅ Creates operator with "trial" status
+      - ✅ Assigns correct saas_plan_id and saas_plan_name
+      - ✅ Rejects duplicate email registrations appropriately
+      
+      **SYSTEM STATUS: PRODUCTION READY FOR REGISTRATION FEATURE ✅**

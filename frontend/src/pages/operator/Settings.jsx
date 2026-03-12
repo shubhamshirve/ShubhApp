@@ -161,6 +161,20 @@ const OperatorSettings = () => {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+    // Validation
+    if (!profileForm.company_name?.trim() || profileForm.company_name.trim().length < 2) {
+      toast.error("Company name must be at least 2 characters"); return;
+    }
+    if (!profileForm.owner_name?.trim() || profileForm.owner_name.trim().length < 2) {
+      toast.error("Owner name must be at least 2 characters"); return;
+    }
+    const phoneDigits = (profileForm.phone || "").replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits"); return;
+    }
+    if (profileForm.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(profileForm.gst_number)) {
+      toast.error("Please enter a valid GST number (e.g. 22AAAAA0000A1Z5)"); return;
+    }
     setSaving(true);
     try {
       await authAxios.put("/operator/profile", profileForm);
@@ -174,6 +188,12 @@ const OperatorSettings = () => {
 
   const handleGatewaySubmit = async (e) => {
     e.preventDefault();
+    if (!gatewayForm.api_key?.trim() || !gatewayForm.api_secret?.trim()) {
+      toast.error("API Key and API Secret are required"); return;
+    }
+    if (gatewayForm.api_key.trim().length < 10) {
+      toast.error("Please enter a valid API Key"); return;
+    }
     setSaving(true);
     try {
       await authAxios.post("/operator/payment-gateway", gatewayForm);
@@ -188,6 +208,9 @@ const OperatorSettings = () => {
 
   const handleWhatsAppSubmit = async (e) => {
     e.preventDefault();
+    if (!whatsappForm.phone_number_id?.trim() || !whatsappForm.access_token?.trim()) {
+      toast.error("Phone Number ID and Access Token are required"); return;
+    }
     setSaving(true);
     try {
       await authAxios.post("/operator/whatsapp-config", whatsappForm);
