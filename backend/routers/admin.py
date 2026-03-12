@@ -12,6 +12,7 @@ from models import (
     UserResponse, TokenResponse,
     WhatsAppConfig,
     DiscountCodeCreate, DiscountCodeResponse,
+    WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -363,11 +364,16 @@ async def assign_addon_to_operator(
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
     now = datetime.now(timezone.utc)
-    existing_addons = operator.get("active_addons", [])
+    existing_addons = operator.get("active_addons") or []
+    # Mutual exclusion: payment_gateway and custom_payment_gateway cannot coexist
+    if addon_code == "payment_gateway" and "custom_payment_gateway" in existing_addons:
+        existing_addons.remove("custom_payment_gateway")
+    elif addon_code == "custom_payment_gateway" and "payment_gateway" in existing_addons:
+        existing_addons.remove("payment_gateway")
     if addon_code not in existing_addons:
         existing_addons.append(addon_code)
     # Set addon expiry = operator's current subscription_ends_at
-    addon_expiry = operator.get("addon_expiry", {})
+    addon_expiry = operator.get("addon_expiry") or {}
     expiry_date = operator.get("subscription_ends_at") or now.isoformat()
     addon_expiry[addon_code] = expiry_date
     update_fields = {"active_addons": existing_addons, "addon_expiry": addon_expiry, "updated_at": now.isoformat()}
@@ -831,3 +837,99 @@ async def delete_discount_code(code_id: str, current_user: dict = Depends(requir
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Discount code not found")
     return {"message": "Discount code deleted"}
+
+
+# ─── WhatsApp Templates Management ─────────────────────────────────────────
+
+@router.post("/whatsapp-templates")
+async def create_whatsapp_template(data: WhatsAppTemplateCreate, current_user: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
+    # Check for duplicate template_name
+    existing = await db.whatsapp_templates.find_one({"template_name": data.template_name, "deleted_at": None})
+    if existing:
+        raise HTTPException(status_code=400, detail="A template with this name already exists")
+    template = {
+        "id": generate_id(),
+        "template_name": data.template_name,
+        "display_name": data.display_name,
+        "template_type": data.template_type,
+        "language_code": data.language_code,
+        "description": data.description or "",
+        "body_variables": data.body_variables or [],
+        "has_payment_button": data.has_payment_button,
+        "is_active": data.is_active,
+        "created_by": current_user["id"],
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.whatsapp_templates.insert_one(template)
+    template.pop("_id", None)
+    return template
+
+
+@router.get("/whatsapp-templates")
+async def list_whatsapp_templates(
+    template_type: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    current_user: dict = Depends(require_admin)
+):
+    query = {"deleted_at": None}
+    if template_type:
+        query["template_type"] = template_type
+    if is_active is not None:
+        query["is_active"] = is_active
+    templates = await db.whatsapp_templates.find(query, {"_id": 0}).to_list(200)
+    return templates
+
+
+@router.get("/whatsapp-templates/{template_id}")
+async def get_whatsapp_template(template_id: str, current_user: dict = Depends(require_admin)):
+    template = await db.whatsapp_templates.find_one({"id": template_id, "deleted_at": None}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template
+
+
+@router.put("/whatsapp-templates/{template_id}")
+async def update_whatsapp_template(
+    template_id: str, data: WhatsAppTemplateUpdate, current_user: dict = Depends(require_admin)
+):
+    template = await db.whatsapp_templates.find_one({"id": template_id, "deleted_at": None}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # Check for duplicate template_name if changing it
+    if "template_name" in update_data and update_data["template_name"] != template["template_name"]:
+        existing = await db.whatsapp_templates.find_one(
+            {"template_name": update_data["template_name"], "deleted_at": None, "id": {"$ne": template_id}}
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="A template with this name already exists")
+    await db.whatsapp_templates.update_one({"id": template_id}, {"$set": update_data})
+    updated = await db.whatsapp_templates.find_one({"id": template_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/whatsapp-templates/{template_id}")
+async def delete_whatsapp_template(template_id: str, current_user: dict = Depends(require_admin)):
+    result = await db.whatsapp_templates.update_one(
+        {"id": template_id, "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "Template deleted successfully"}
+
+
+@router.patch("/whatsapp-templates/{template_id}/toggle")
+async def toggle_whatsapp_template(template_id: str, current_user: dict = Depends(require_admin)):
+    template = await db.whatsapp_templates.find_one({"id": template_id, "deleted_at": None}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    new_state = not template.get("is_active", True)
+    await db.whatsapp_templates.update_one({"id": template_id}, {"$set": {"is_active": new_state}})
+    return {"message": f"Template {'activated' if new_state else 'deactivated'}", "is_active": new_state}

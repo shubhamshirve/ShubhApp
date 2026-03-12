@@ -255,6 +255,8 @@ const OperatorSettings = () => {
   }
 
   const isReadOnly = dashboardStats?.is_read_only;
+  const hasCustomPaymentGateway = !!features?.custom_payment_gateway;
+  const showPaymentGatewayTab = isImpersonated || hasCustomPaymentGateway;
 
   return (
     <OperatorLayout title="Settings" isReadOnly={isReadOnly}>
@@ -265,7 +267,7 @@ const OperatorSettings = () => {
               <Building2 className="w-4 h-4 mr-2" />
               Business Profile
             </TabsTrigger>
-            {isImpersonated && (
+            {showPaymentGatewayTab && (
               <TabsTrigger value="payment" data-testid="tab-payment">
                 <CreditCard className="w-4 h-4 mr-2" />
                 Payment Gateway
@@ -418,6 +420,13 @@ const OperatorSettings = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Info about custom payment gateway */}
+                {hasCustomPaymentGateway && !isImpersonated && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                    <strong>Custom Payment Gateway</strong> add-on is active. Configure your own Razorpay API keys below.
+                    Subscriber payment links will use your account directly.
+                  </div>
+                )}
                 {gatewayConfig?.configured && (
                   <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <div className="flex items-center gap-2 text-emerald-700">

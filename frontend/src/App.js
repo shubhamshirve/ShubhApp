@@ -25,6 +25,7 @@ import OperatorAnnouncements from "./pages/operator/Announcements";
 import AdminBackup from "./pages/admin/Backup";
 import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
+import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -190,6 +191,11 @@ function App() {
           <Route path="/admin/discount-codes" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminDiscountCodes />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/whatsapp-templates" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminWhatsAppTemplates />
             </ProtectedRoute>
           } />
 

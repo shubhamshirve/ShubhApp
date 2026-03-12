@@ -87,6 +87,8 @@ class OperatorResponse(BaseModel):
     is_read_only: bool = False
     max_staff: Optional[int] = None
     subscriber_count: Optional[int] = 0
+    active_addons: Optional[List[str]] = None
+    addon_expiry: Optional[Dict[str, str]] = None
     created_at: datetime
 
 
@@ -405,3 +407,26 @@ class DiscountCodeResponse(BaseModel):
     is_active: bool = True
     created_at: datetime
     description: Optional[str] = None
+
+
+# ============== WHATSAPP TEMPLATE MODELS ==============
+
+class WhatsAppTemplateCreate(BaseModel):
+    template_name: str          # API name used in send_template_message calls
+    display_name: str           # Human readable name shown in UI
+    template_type: str          # invoice_notification, payment_reminder, payment_confirmation, announcement, custom
+    language_code: str = "en"
+    description: Optional[str] = None
+    body_variables: Optional[List[str]] = []  # list of variable descriptions e.g. ["customer_name", "invoice_no"]
+    has_payment_button: bool = False
+    is_active: bool = True
+
+
+class WhatsAppTemplateUpdate(BaseModel):
+    display_name: Optional[str] = None
+    template_name: Optional[str] = None
+    language_code: Optional[str] = None
+    description: Optional[str] = None
+    body_variables: Optional[List[str]] = None
+    has_payment_button: Optional[bool] = None
+    is_active: Optional[bool] = None

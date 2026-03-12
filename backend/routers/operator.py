@@ -388,10 +388,16 @@ async def create_checkout_order(
     rounded_total = math.floor(exact_total + 0.5)          # standard half-up rounding → int
     rounding_diff = round(rounded_total - exact_total, 2)  # +ve = rounded up, -ve = rounded down
 
-    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
-    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    # Use platform payment gateway from DB, fallback to env vars
+    platform_gw = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
+    if platform_gw:
+        razorpay_key = platform_gw["api_key"]
+        razorpay_secret = platform_gw["api_secret"]
+    else:
+        razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+        razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
     if not razorpay_key or not razorpay_secret:
-        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+        raise HTTPException(status_code=500, detail="Platform payment gateway not configured. Please contact admin.")
 
     from services.razorpay_service import RazorpayService
     rz = RazorpayService(razorpay_key, razorpay_secret)
@@ -440,10 +446,15 @@ async def verify_checkout_payment(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot verify checkout")
-    razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
-    razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    platform_gw = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
+    if platform_gw:
+        razorpay_key = platform_gw["api_key"]
+        razorpay_secret = platform_gw["api_secret"]
+    else:
+        razorpay_key = os.environ.get("RAZORPAY_KEY_ID")
+        razorpay_secret = os.environ.get("RAZORPAY_KEY_SECRET")
     if not razorpay_key or not razorpay_secret:
-        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+        raise HTTPException(status_code=500, detail="Platform payment gateway not configured. Please contact admin.")
 
     from services.razorpay_service import RazorpayService
     rz = RazorpayService(razorpay_key, razorpay_secret)
@@ -462,16 +473,24 @@ async def verify_checkout_payment(
     if order["item_type"] == "addon":
         active = operator.get("active_addons", [])
         addon_expiry = operator.get("addon_expiry", {})
-        if order["item_code"] not in active:
-            active.append(order["item_code"])
+        new_code = order["item_code"]
+        # Mutual exclusion: payment_gateway and custom_payment_gateway cannot coexist
+        if new_code == "payment_gateway" and "custom_payment_gateway" in active:
+            active.remove("custom_payment_gateway")
+            addon_expiry.pop("custom_payment_gateway", None)
+        elif new_code == "custom_payment_gateway" and "payment_gateway" in active:
+            active.remove("payment_gateway")
+            addon_expiry.pop("payment_gateway", None)
+        if new_code not in active:
+            active.append(new_code)
         # Expiry = current subscription end date
         expiry_date = operator.get("subscription_ends_at") or now.isoformat()
-        addon_expiry[order["item_code"]] = expiry_date
+        addon_expiry[new_code] = expiry_date
         await db.operators.update_one(
             {"id": operator["id"]},
             {"$set": {"active_addons": active, "addon_expiry": addon_expiry, "updated_at": now.isoformat()}}
         )
-        result_msg = f"Add-on '{order['item_code']}' activated"
+        result_msg = f"Add-on '{new_code}' activated"
 
     elif order["item_type"] == "subscription":
         from dateutil.relativedelta import relativedelta
@@ -491,12 +510,19 @@ async def verify_checkout_payment(
             update_fields["saas_plan_id"] = order["plan_id"]
         # Extend all existing active addons expiry to new subscription end date
         addon_expiry = operator.get("addon_expiry", {})
-        for code in operator.get("active_addons", []):
+        active = operator.get("active_addons", [])
+        for code in active:
             addon_expiry[code] = new_end_iso
         # Activate any addons bundled with this subscription order
         if order.get("addon_codes"):
-            active = operator.get("active_addons", [])
             for code in order["addon_codes"]:
+                # Mutual exclusion check for payment gateway addons
+                if code == "payment_gateway" and "custom_payment_gateway" in active:
+                    active.remove("custom_payment_gateway")
+                    addon_expiry.pop("custom_payment_gateway", None)
+                elif code == "custom_payment_gateway" and "payment_gateway" in active:
+                    active.remove("payment_gateway")
+                    addon_expiry.pop("payment_gateway", None)
                 if code not in active:
                     active.append(code)
                     # If staff_management addon, set max_staff = 5
@@ -1242,9 +1268,26 @@ async def create_payment_link(invoice_id: str, current_user: dict = Depends(requ
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
-    if not gateway or not gateway.get("is_active"):
-        raise HTTPException(status_code=400, detail="Payment gateway not configured")
+
+    # Determine which payment gateway to use:
+    # - custom_payment_gateway addon → operator's own keys
+    # - payment_gateway addon → platform keys
+    has_custom_pg = await _has_addon(current_user["operator_id"], "custom_payment_gateway")
+    has_platform_pg = await _has_addon(current_user["operator_id"], "payment_gateway")
+
+    if has_custom_pg:
+        # Use operator's own gateway keys
+        gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
+        if not gateway or not gateway.get("is_active"):
+            raise HTTPException(status_code=400, detail="Custom payment gateway not configured. Please set up your gateway keys in Settings.")
+    elif has_platform_pg:
+        # Use platform gateway keys
+        gateway = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
+        if not gateway:
+            raise HTTPException(status_code=400, detail="Platform payment gateway not configured. Please contact admin.")
+    else:
+        raise HTTPException(status_code=403, detail="Payment gateway add-on is not enabled. Please activate 'Payment Gateway' or 'Custom Payment Gateway' add-on.")
+
     subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
     try:
         razorpay_service = RazorpayService(gateway["api_key"], gateway["api_secret"])
@@ -1385,8 +1428,8 @@ async def configure_payment_gateway(data: PaymentGatewayConfig, current_user: di
         raise HTTPException(status_code=400, detail="Admin cannot configure operator payment gateway")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    if not await _has_addon(current_user["operator_id"], "payment_gateway"):
-        raise HTTPException(status_code=403, detail="Payment Gateway add-on is not enabled for your plan.")
+    if not await _has_addon(current_user["operator_id"], "custom_payment_gateway"):
+        raise HTTPException(status_code=403, detail="Custom Payment Gateway add-on is not enabled for your plan.")
     now = datetime.now(timezone.utc)
     gateway_config = {
         "id": generate_id(), "operator_id": current_user["operator_id"],
