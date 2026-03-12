@@ -181,8 +181,7 @@ async def seed_data():
         {"code": "payment_gateway",        "name": "Payment Gateway",          "price": 100, "description": "Collect online payments from subscribers"},
         {"code": "custom_payment_gateway", "name": "Custom Payment Gateway",   "price": 100, "description": "Use your own Razorpay/Cashfree credentials"},
         {"code": "announcement",           "name": "Announcements",            "price": 100, "description": "Send bulk announcements (max 3/day)"},
-        {"code": "payment_reminder",       "name": "Payment Reminders",        "price": 100, "description": "Auto WhatsApp reminders & invoice delivery"},
-        {"code": "whatsapp_notifications", "name": "WhatsApp Notifications",   "price": 100, "description": "Send WhatsApp notifications to subscribers"},
+        {"code": "whatsapp_notifications", "name": "WhatsApp Notifications",   "price": 100, "description": "Send WhatsApp invoices, reminders and notifications to subscribers"},
         {"code": "staff_management",       "name": "Staff Management",         "price": 100, "description": "Allow up to 5 staff members for your account"},
     ]
     for addon_data in required_addons:
@@ -203,25 +202,45 @@ async def seed_data():
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
             {"id": generate_id(), "name": "Basic", "monthly_price": 1100,
              "max_subscribers": 500, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
-             "gst_applicable": True, "included_addons": ["payment_gateway", "payment_reminder"],
+             "gst_applicable": True, "included_addons": ["payment_gateway", "whatsapp_notifications"],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
             {"id": generate_id(), "name": "Professional", "monthly_price": 2000,
              "max_subscribers": 1000, "max_staff": 10, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True,
-             "included_addons": ["payment_gateway", "payment_reminder", "audit_log", "announcement"],
+             "included_addons": ["payment_gateway", "whatsapp_notifications", "audit_log", "announcement"],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
             {"id": generate_id(), "name": "Enterprise", "monthly_price": 5800,
              "max_subscribers": 3000, "max_staff": 20, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True,
-             "included_addons": ["payment_gateway", "custom_payment_gateway", "payment_reminder",
-                                  "audit_log", "announcement", "whatsapp_notifications"],
+             "included_addons": ["payment_gateway", "custom_payment_gateway", "whatsapp_notifications",
+                                  "audit_log", "announcement", "staff_management"],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
         ]
         await db.saas_plans.insert_many(plans)
         seeded.append("saas_plans")
 
+    # Migrate: replace payment_reminder with whatsapp_notifications in all existing data
+    # Update SaaS plans
+    await db.saas_plans.update_many(
+        {"included_addons": "payment_reminder"},
+        {"$addToSet": {"included_addons": "whatsapp_notifications"}}
+    )
+    await db.saas_plans.update_many(
+        {"included_addons": "payment_reminder"},
+        {"$pull": {"included_addons": "payment_reminder"}}
+    )
+    # Update operators
+    await db.operators.update_many(
+        {"active_addons": "payment_reminder"},
+        {"$addToSet": {"active_addons": "whatsapp_notifications"}}
+    )
+    await db.operators.update_many(
+        {"active_addons": "payment_reminder"},
+        {"$pull": {"active_addons": "payment_reminder"}}
+    )
+
     if not seeded:
-        return {"message": "Data already seeded"}
+        return {"message": "Data already seeded (migration applied)"}
 
     return {
         "message": "Data seeded successfully",

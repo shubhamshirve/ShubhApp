@@ -1,7 +1,14 @@
 """All Pydantic models for the application."""
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+
+
+def _empty_to_none(v):
+    """Convert empty strings to None for optional fields."""
+    if isinstance(v, str) and v.strip() == "":
+        return None
+    return v
 
 
 # ============== USER MODELS ==============
@@ -56,6 +63,11 @@ class OperatorCreate(BaseModel):
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
 
+    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
+
 
 class OperatorUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -68,6 +80,11 @@ class OperatorUpdate(BaseModel):
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
     status: Optional[str] = None
+
+    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class OperatorResponse(BaseModel):
@@ -107,6 +124,11 @@ class AdminOperatorCreate(BaseModel):
     saas_plan_id: str
     status: str = "active"  # active, trial, suspended
     subscription_months: int = 1
+
+    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class ExtendSubscriptionRequest(BaseModel):
@@ -167,6 +189,11 @@ class SubscriberCreate(BaseModel):
     plan_id: str
     billing_date: int  # Day of month (1-28)
     discount: float = 0
+
+    @field_validator("email", "address", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class SubscriberResponse(BaseModel):
@@ -262,6 +289,11 @@ class StaffCreate(BaseModel):
     password: str
     phone: Optional[str] = None
     permissions: List[str] = []
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class StaffResponse(BaseModel):

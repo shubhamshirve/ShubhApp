@@ -33,7 +33,7 @@ import {
 const OperatorSettings = () => {
   const { authAxios, user, features } = useAuth();
   const isImpersonated = !!user?.impersonated_by;
-  const hasPaymentReminder = !!features?.payment_reminder;
+  const hasPaymentReminder = !!features?.whatsapp_notifications;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
@@ -277,7 +277,7 @@ const OperatorSettings = () => {
             {hasPaymentReminder && (
               <TabsTrigger value="reminders" data-testid="tab-reminders">
                 <CalendarClock className="w-4 h-4 mr-2" />
-                Reminders
+                WhatsApp Reminders
               </TabsTrigger>
             )}
           </TabsList>

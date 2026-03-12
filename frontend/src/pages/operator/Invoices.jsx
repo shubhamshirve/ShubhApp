@@ -385,7 +385,7 @@ const OperatorInvoices = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {invoice.status !== "paid" && !invoice.payment_link && (
+                            {invoice.status !== "paid" && !invoice.payment_link && (features?.payment_gateway || features?.custom_payment_gateway) && (
                               <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
                                 <Link2 className="w-4 h-4 mr-2 text-blue-600" />
                                 Generate Payment Link
@@ -404,7 +404,7 @@ const OperatorInvoices = () => {
                               <Download className="w-4 h-4 mr-2 text-slate-600" />
                               Download PDF
                             </DropdownMenuItem>
-                            {features?.payment_reminder && (
+                            {features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
                                 <Send className="w-4 h-4 mr-2 text-emerald-600" />
                                 Send via WhatsApp API
@@ -414,7 +414,7 @@ const OperatorInvoices = () => {
                               <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
                               Send via WhatsApp Web
                             </DropdownMenuItem>
-                            {invoice.status === "overdue" && (
+                            {invoice.status === "overdue" && features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
                                 <Bell className="w-4 h-4 mr-2 text-amber-600" />
                                 Send Reminder

@@ -372,7 +372,7 @@ class CronJobService:
     async def process_scheduled_reminders(self) -> Dict[str, Any]:
         """
         Process all operator reminder schedules.
-        For each operator with payment_reminder addon + WhatsApp configured + reminders enabled:
+        For each operator with whatsapp_notifications addon + WhatsApp configured + reminders enabled:
           - Check pending/overdue invoices
           - Send reminders based on schedule (before due, on due, after due)
           - Track reminders sent per invoice
@@ -404,13 +404,13 @@ class CronJobService:
 
                 # Check addon is active
                 has_addon = False
-                if "payment_reminder" in operator.get("active_addons", []):
+                if "whatsapp_notifications" in operator.get("active_addons", []):
                     has_addon = True
                 else:
                     plan = await self.db.saas_plans.find_one(
                         {"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0}
                     )
-                    if plan and "payment_reminder" in plan.get("included_addons", []):
+                    if plan and "whatsapp_notifications" in plan.get("included_addons", []):
                         has_addon = True
                 if not has_addon:
                     continue

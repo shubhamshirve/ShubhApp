@@ -77,13 +77,13 @@ async def get_operator_features(current_user: dict = Depends(require_operator)):
     if current_user["role"] == "admin":
         return {code: True for code in [
             "audit_log", "payment_gateway", "custom_payment_gateway",
-            "announcement", "payment_reminder", "whatsapp_notifications",
+            "announcement", "whatsapp_notifications",
             "staff_management"
         ]}
     operator_id = current_user["operator_id"]
     addon_codes = [
         "audit_log", "payment_gateway", "custom_payment_gateway",
-        "announcement", "payment_reminder", "whatsapp_notifications",
+        "announcement", "whatsapp_notifications",
         "staff_management"
     ]
     result = {code: await _has_addon(operator_id, code) for code in addon_codes}
@@ -1196,9 +1196,9 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
     }
     await db.invoices.insert_one(invoice)
 
-    # Auto-send WhatsApp if payment_reminder addon is active (uses platform WhatsApp config)
+    # Auto-send WhatsApp if whatsapp_notifications addon is active (uses platform WhatsApp config)
     auto_wa_sent = False
-    if await _has_addon(current_user["operator_id"], "payment_reminder"):
+    if await _has_addon(current_user["operator_id"], "whatsapp_notifications"):
         try:
             wa_config = await _get_platform_whatsapp_config()
             if wa_config:
@@ -1228,7 +1228,7 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
     # Return extra meta for frontend to decide WhatsApp Web button visibility
     result = response.model_dump()
     result["auto_wa_sent"] = auto_wa_sent
-    result["has_payment_reminder_addon"] = await _has_addon(current_user["operator_id"], "payment_reminder")
+    result["has_whatsapp_addon"] = await _has_addon(current_user["operator_id"], "whatsapp_notifications")
     return result
 
 
@@ -1643,8 +1643,8 @@ VALID_AFTER_DAYS = [1, 3, 5, 7, 14, 30]
 async def get_reminder_settings(current_user: dict = Depends(require_operator)):
     """Get operator's payment reminder automation settings."""
     operator_id = current_user["operator_id"]
-    if not await _has_addon(operator_id, "payment_reminder"):
-        raise HTTPException(status_code=403, detail="Payment reminder add-on is not enabled")
+    if not await _has_addon(operator_id, "whatsapp_notifications"):
+        raise HTTPException(status_code=403, detail="WhatsApp notifications add-on is not enabled")
 
     doc = await db.reminder_settings.find_one({"operator_id": operator_id}, {"_id": 0})
     if not doc:
@@ -1667,8 +1667,8 @@ async def update_reminder_settings(
 ):
     """Update operator's payment reminder automation settings."""
     operator_id = current_user["operator_id"]
-    if not await _has_addon(operator_id, "payment_reminder"):
-        raise HTTPException(status_code=403, detail="Payment reminder add-on is not enabled")
+    if not await _has_addon(operator_id, "whatsapp_notifications"):
+        raise HTTPException(status_code=403, detail="WhatsApp notifications add-on is not enabled")
     await check_operator_read_only(current_user)
 
     # Validate day values
