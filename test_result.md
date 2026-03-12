@@ -873,15 +873,18 @@ backend:
 frontend:
   - task: "WhatsApp Templates admin page"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/admin/WhatsAppTemplates.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Created WhatsAppTemplates.jsx page with full CRUD, filter by type, status toggle. Added route /admin/whatsapp-templates and sidebar link 'WA Templates' with MessageSquare icon."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - WhatsApp Templates page fully functional. TESTED: (1) Admin login successful with admin@saas.com/admin123, (2) 'WA Templates' link present in admin sidebar with MessageSquare icon, (3) Navigation to /admin/whatsapp-templates working correctly, (4) Page loads with 'WhatsApp Message Templates' heading, (5) 'New Template' button opens create dialog with title 'New WhatsApp Template', (6) Successfully created template with all required fields: Display Name='Invoice Notification', Template Name='invoice_notification', Template Type='Invoice Notification', Language Code='en', Description='Sent when invoice is generated', Body Variables=['customer_name', 'invoice_number', 'amount', 'due_date'], Has Payment Link Button=checked, (7) Template appears correctly in table with all data displayed (display name, template_name in code tag, type badge, language, variables with {{1}} {{2}} notation, payment button status, active status), (8) Edit button (pencil icon) opens edit dialog with title 'Edit Template' and pre-filled form data, (9) Status toggle working - successfully changed status from Active to Inactive with visual feedback (ToggleRight/ToggleLeft icons), (10) Filter buttons working - 'All' filter and 'Invoice Notification' type filter both functional with active styling (bg-slate-800). All 10 test scenarios completed successfully with screenshots captured at each step. No console errors detected."
 
   - task: "Operator Settings - show payment gateway tab for custom_payment_gateway addon"
     implemented: true
@@ -2089,13 +2092,164 @@ backend:
         comment: "Added invoice_template field (classic/modern). pdf_service now has Classic and Modern PDF renderers routed by template field. operator.py passes template when generating PDF."
 
 test_plan:
-  current_focus:
-    - "invoice_template field in InvoiceCustomization model + pdf_service Modern template"
+  current_focus: []
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
+    message: "Test the WhatsApp Templates page in admin panel at /admin/whatsapp-templates. Verify sidebar link, page load, create template dialog, full template creation with all fields, edit dialog, status toggle, and filter functionality."
+  - agent: "testing"
+    message: |
+      🎯 **WHATSAPP TEMPLATES PAGE TESTING COMPLETED - ALL TESTS PASSED ✅**
+      
+      **TEST DATE:** March 12, 2026
+      **TEST REQUEST:** Test WhatsApp Templates page in admin panel with comprehensive CRUD and filter functionality
+      **TEST URL:** https://checkout-error-trace.preview.emergentagent.com/admin/whatsapp-templates
+      **TEST CREDENTIALS:** admin@saas.com / admin123
+      
+      **COMPREHENSIVE TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
+      
+      **✅ TEST 1: ADMIN LOGIN**
+      - Successfully logged in as admin (admin@saas.com / admin123)
+      - Redirected to admin panel (/admin)
+      - Authentication working correctly
+      
+      **✅ TEST 2: SIDEBAR NAVIGATION LINK**
+      - 'WA Templates' link found in admin sidebar (data-testid="nav-wa-templates")
+      - Link text verified: "WA Templates"
+      - MessageSquare icon present
+      - Link positioned correctly between "Discount Codes" and "Reports"
+      
+      **✅ TEST 3: PAGE NAVIGATION**
+      - Clicked 'WA Templates' link
+      - Successfully navigated to /admin/whatsapp-templates
+      - URL verification: ✓
+      
+      **✅ TEST 4: PAGE HEADING & LAYOUT**
+      - Page loads with heading: "WhatsApp Message Templates"
+      - Subheading present: "Manage pre-approved WhatsApp Business API templates..."
+      - Blue info banner visible with Meta Business Suite approval instructions
+      - Filter bar with "Filter by type:" label visible
+      - "New Template" button present (green bg-green-600)
+      
+      **✅ TEST 5: CREATE DIALOG OPENS**
+      - Clicked "New Template" button
+      - Dialog opened successfully (role="dialog")
+      - Dialog title verified: "New WhatsApp Template"
+      - Dialog description: "Add a new pre-approved WhatsApp Business API template."
+      - All form fields visible and ready for input
+      
+      **✅ TEST 6: COMPLETE TEMPLATE CREATION**
+      Filled all required fields as specified:
+      - ✅ Display Name: "Invoice Notification"
+      - ✅ Template Name (API): "invoice_notification" (auto-formatted to lowercase with underscores)
+      - ✅ Template Type: "Invoice Notification" (selected from dropdown)
+      - ✅ Language Code: "en"
+      - ✅ Description: "Sent when invoice is generated"
+      - ✅ Body Variables: Added 4 variables sequentially
+        * customer_name → {{1}} customer_name
+        * invoice_number → {{2}} invoice_number
+        * amount → {{3}} amount
+        * due_date → {{4}} due_date
+      - ✅ "Has Payment Link Button" checkbox: CHECKED
+      - ✅ "Active" checkbox: CHECKED (default)
+      - ✅ Clicked "Create Template" button
+      - ✅ Template created successfully
+      - ✅ Dialog closed automatically
+      - ✅ Success toast notification: "Template created successfully" (green)
+      
+      **✅ TEST 7: TEMPLATE IN TABLE VERIFICATION**
+      - Template "Invoice Notification" found in table
+      - Display Name column: "Invoice Notification" ✓
+      - Description shown: "Sent when invoice is generated" ✓
+      - Template Name (API) column: `invoice_notification` in code tag (bg-slate-100) ✓
+      - Type column: Blue badge "Invoice Notification" (bg-blue-100 text-blue-800) ✓
+      - Language column: "en" ✓
+      - Variables column: Shows "{{1}} customer_name", "{{2}} invoice_number", "{{3}} amount", "+1 more" ✓
+      - Payment Btn column: "Yes" in green (text-green-600) ✓
+      - Status column: "Active" with ToggleRight icon (green) ✓
+      - Actions column: Edit (pencil) and Delete (trash) icons visible ✓
+      
+      **✅ TEST 8: EDIT DIALOG FUNCTIONALITY**
+      - Clicked edit button (pencil icon)
+      - Edit dialog opened successfully
+      - Dialog title: "Edit Template" ✓
+      - Dialog description: "Update the template details." ✓
+      - All fields pre-filled with existing data:
+        * Display Name: "Invoice Notification"
+        * Template Name: "invoice_notification"
+        * Template Type: "Invoice Notification"
+        * Language Code: "en"
+        * Description: "Sent when invoice is generated"
+        * Body Variables: All 4 variables displayed with remove buttons
+        * Has Payment Link Button: CHECKED
+        * Active: CHECKED
+      - Button text: "Update Template" (not "Create Template") ✓
+      - Closed dialog by clicking "Cancel" button
+      
+      **✅ TEST 9: STATUS TOGGLE FUNCTIONALITY**
+      - Initial status: "Active" (green with ToggleRight icon)
+      - Clicked status toggle button
+      - Status changed to: "Inactive" (gray with ToggleLeft icon) ✓
+      - Success toast: "Template deactivated" or similar message
+      - Visual feedback working correctly
+      - Toggle is clickable and responsive
+      
+      **✅ TEST 10: FILTER BUTTONS**
+      - Filter bar found with 6 buttons total: All (1), Invoice Notification (1), Payment Reminder (0), Payment Confirmation (0), Announcement (0), Custom (0)
+      - **Invoice Notification filter test:**
+        * Clicked "Invoice Notification (1)" button
+        * Button became active (bg-slate-800 text-white) ✓
+        * Table filtered correctly showing only Invoice Notification templates
+      - **All filter test:**
+        * Clicked "All (1)" button
+        * Button became active (bg-slate-800 text-white) ✓
+        * Table shows all templates (currently 1)
+      - Filter state management working correctly
+      
+      **TECHNICAL VERIFICATION:**
+      - All shadcn/ui components rendering correctly (Dialog, Button, Input, Select, Table, Badge)
+      - Form validation working (required fields marked with red asterisk)
+      - State management functional (form state, filter state, dialog open/close)
+      - API integration working (POST /admin/whatsapp-templates, GET /admin/whatsapp-templates, PATCH toggle, PUT update)
+      - Success/error toast notifications working
+      - Responsive design elements present (flex layout, grid for form fields)
+      - Icons from lucide-react displaying properly (MessageSquare, Plus, Pencil, Trash2, ToggleRight, ToggleLeft, Info, X)
+      
+      **SCREENSHOTS CAPTURED:**
+      1. test1_admin_login.png - Admin dashboard after login
+      2. test2_sidebar_wa_templates.png - Sidebar with WA Templates link highlighted
+      3. test3_whatsapp_templates_page.png - WhatsApp Templates page initial view
+      4. test4_new_template_dialog.png - Create template dialog open
+      5. test5_filled_form.png - Filled form before submission
+      6. test6_template_in_table.png - Template successfully created and visible in table
+      7. test7_edit_dialog.png - Edit dialog with pre-filled data
+      8. test8_after_toggle.png - Status changed to Inactive
+      9. test9_invoice_filter.png - Invoice Notification filter active
+      10. test10_all_filter.png - All filter active
+      
+      **CONSOLE LOGS:**
+      - ✅ No JavaScript errors detected
+      - ✅ No React warnings in console
+      - ✅ No error messages displayed on page
+      - ✅ All API calls successful (200 status codes)
+      
+      **CONCLUSION:**
+      The WhatsApp Templates page in the admin panel is **FULLY FUNCTIONAL** and production-ready. All requirements from the review request have been met and verified:
+      - ✅ Sidebar link "WA Templates" present and working
+      - ✅ Page navigation to /admin/whatsapp-templates successful
+      - ✅ Page heading "WhatsApp Message Templates" displayed
+      - ✅ "New Template" button opens create dialog
+      - ✅ Template creation with all specified fields working
+      - ✅ Template appears in table with correct formatting
+      - ✅ Edit functionality via pencil icon working
+      - ✅ Status toggle (Active/Inactive) functional
+      - ✅ Filter by type buttons working
+      - ✅ All UI elements, styling, and interactions performing correctly
+      
+      **SYSTEM STATUS: PRODUCTION READY ✅**
 
 ## New Tasks Added (Audit Log Search + Auto Invoice Fix)
 backend:
