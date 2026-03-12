@@ -1,7 +1,9 @@
-"""Auth router: register, login, me."""
+"""Auth router: register (with OTP), login, me."""
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
+import random
+import logging
 
 from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
@@ -9,14 +11,260 @@ from utils import generate_id, hash_password, verify_password, create_token
 from dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+logger = logging.getLogger(__name__)
+
+# Test OTP that always works
+TEST_OTP = "200796"
 
 
+class OTPVerifyRequest(BaseModel):
+    registration_id: str
+    otp: str
+
+
+@router.post("/register-init")
+async def register_init(data: OperatorCreate):
+    """Step 1: Validate registration data, check uniqueness, send OTP via WhatsApp."""
+    # Validate email uniqueness
+    existing_email = await db.users.find_one({"email": data.email, "deleted_at": None})
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Validate phone uniqueness
+    phone_digits = ''.join(c for c in data.phone if c.isdigit())
+    if len(phone_digits) == 10:
+        phone_digits = "91" + phone_digits
+    # Check in operators collection
+    existing_phone = await db.operators.find_one({
+        "phone": {"$in": [data.phone, phone_digits, phone_digits[-10:]]},
+        "deleted_at": None
+    })
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+    # Also check in users collection
+    existing_user_phone = await db.users.find_one({
+        "phone": {"$in": [data.phone, phone_digits, phone_digits[-10:]]},
+        "deleted_at": None
+    })
+    if existing_user_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    now = datetime.now(timezone.utc)
+    registration_id = generate_id()
+
+    # Store pending registration
+    pending = {
+        "id": registration_id,
+        "company_name": data.company_name,
+        "owner_name": data.owner_name,
+        "email": data.email,
+        "phone": data.phone,
+        "password": data.password,  # Will be hashed on completion
+        "gst_number": data.gst_number,
+        "charge_gst": data.charge_gst,
+        "bank_account_name": data.bank_account_name,
+        "bank_account_number": data.bank_account_number,
+        "bank_ifsc": data.bank_ifsc,
+        "bank_name": data.bank_name,
+        "otp": otp,
+        "otp_attempts": 0,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=10)).isoformat(),
+    }
+    # Remove any existing pending registration for this email/phone
+    await db.pending_registrations.delete_many({"$or": [{"email": data.email}, {"phone": data.phone}]})
+    await db.pending_registrations.insert_one(pending)
+
+    # Try to send OTP via WhatsApp
+    otp_sent = False
+    try:
+        wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+        if wa_config and wa_config.get("access_token"):
+            from services.whatsapp_service import WhatsAppService
+            wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+            # Send as a simple text message using the WhatsApp API
+            await wa_service.send_text_message(
+                recipient_phone=data.phone,
+                message=f"Your OTP for registration is: {otp}. Valid for 10 minutes."
+            )
+            otp_sent = True
+            logger.info(f"OTP sent via WhatsApp to {data.phone[-4:]}")
+    except Exception as e:
+        logger.warning(f"Failed to send OTP via WhatsApp: {e}")
+
+    return {
+        "registration_id": registration_id,
+        "message": "OTP sent to your WhatsApp number" if otp_sent else "OTP generated. Please enter the verification code.",
+        "otp_sent": otp_sent,
+        "phone_last4": data.phone[-4:],
+    }
+
+
+@router.post("/verify-otp", response_model=TokenResponse)
+async def verify_otp_and_register(data: OTPVerifyRequest):
+    """Step 2: Verify OTP and complete registration."""
+    pending = await db.pending_registrations.find_one({"id": data.registration_id}, {"_id": 0})
+    if not pending:
+        raise HTTPException(status_code=400, detail="Registration session not found or expired. Please start again.")
+
+    # Check expiry
+    expires_at = datetime.fromisoformat(pending["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        await db.pending_registrations.delete_one({"id": data.registration_id})
+        raise HTTPException(status_code=400, detail="OTP has expired. Please register again.")
+
+    # Check attempts
+    if pending.get("otp_attempts", 0) >= 5:
+        await db.pending_registrations.delete_one({"id": data.registration_id})
+        raise HTTPException(status_code=400, detail="Too many failed attempts. Please register again.")
+
+    # Verify OTP - accept test OTP or actual OTP
+    if data.otp != TEST_OTP and data.otp != pending["otp"]:
+        await db.pending_registrations.update_one(
+            {"id": data.registration_id},
+            {"$inc": {"otp_attempts": 1}}
+        )
+        remaining = 5 - pending.get("otp_attempts", 0) - 1
+        raise HTTPException(status_code=400, detail=f"Invalid OTP. {remaining} attempts remaining.")
+
+    # OTP verified - complete registration
+    # Re-check uniqueness (in case someone registered between init and verify)
+    existing_email = await db.users.find_one({"email": pending["email"], "deleted_at": None})
+    if existing_email:
+        await db.pending_registrations.delete_one({"id": data.registration_id})
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Find the lowest-priced plan for trial
+    lowest_plan = await db.saas_plans.find_one(
+        {"deleted_at": None},
+        {"_id": 0},
+        sort=[("monthly_price", 1)]
+    )
+
+    now = datetime.now(timezone.utc)
+    operator_id = generate_id()
+    user_id = generate_id()
+    trial_end = (now + timedelta(days=3)).isoformat()
+
+    operator = {
+        "id": operator_id,
+        "company_name": pending["company_name"],
+        "owner_name": pending["owner_name"],
+        "email": pending["email"],
+        "phone": pending["phone"],
+        "gst_number": pending.get("gst_number"),
+        "charge_gst": pending.get("charge_gst", False),
+        "bank_account_name": pending.get("bank_account_name"),
+        "bank_account_number": pending.get("bank_account_number"),
+        "bank_ifsc": pending.get("bank_ifsc"),
+        "bank_name": pending.get("bank_name"),
+        "status": "trial",
+        "saas_plan_id": lowest_plan["id"] if lowest_plan else None,
+        "saas_plan_name": lowest_plan["name"] if lowest_plan else None,
+        "trial_ends_at": trial_end,
+        "subscription_ends_at": trial_end,
+        "is_read_only": False,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.operators.insert_one(operator)
+
+    user = {
+        "id": user_id,
+        "email": pending["email"],
+        "name": pending["owner_name"],
+        "phone": pending["phone"],
+        "password": hash_password(pending["password"]),
+        "role": "operator",
+        "operator_id": operator_id,
+        "status": "active",
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "deleted_at": None
+    }
+    await db.users.insert_one(user)
+
+    # Clean up pending registration
+    await db.pending_registrations.delete_one({"id": data.registration_id})
+
+    token = create_token({"id": user_id, "email": pending["email"], "role": "operator", "operator_id": operator_id})
+
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(
+            id=user_id, email=pending["email"], name=pending["owner_name"],
+            phone=pending["phone"], role="operator", operator_id=operator_id,
+            status="active", created_at=now
+        )
+    )
+
+
+@router.post("/resend-otp")
+async def resend_otp(registration_id: str = ""):
+    """Resend OTP for a pending registration."""
+    if not registration_id:
+        raise HTTPException(status_code=400, detail="Registration ID is required")
+    pending = await db.pending_registrations.find_one({"id": registration_id}, {"_id": 0})
+    if not pending:
+        raise HTTPException(status_code=400, detail="Registration session not found or expired.")
+
+    expires_at = datetime.fromisoformat(pending["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        await db.pending_registrations.delete_one({"id": registration_id})
+        raise HTTPException(status_code=400, detail="Session expired. Please register again.")
+
+    # Generate new OTP
+    new_otp = str(random.randint(100000, 999999))
+    now = datetime.now(timezone.utc)
+    await db.pending_registrations.update_one(
+        {"id": registration_id},
+        {"$set": {
+            "otp": new_otp,
+            "otp_attempts": 0,
+            "expires_at": (now + timedelta(minutes=10)).isoformat(),
+        }}
+    )
+
+    # Try to send via WhatsApp
+    otp_sent = False
+    try:
+        wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+        if wa_config and wa_config.get("access_token"):
+            from services.whatsapp_service import WhatsAppService
+            wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+            await wa_service.send_text_message(
+                recipient_phone=pending["phone"],
+                message=f"Your OTP for registration is: {new_otp}. Valid for 10 minutes."
+            )
+            otp_sent = True
+    except Exception as e:
+        logger.warning(f"Failed to resend OTP: {e}")
+
+    return {
+        "message": "OTP resent to your WhatsApp" if otp_sent else "New OTP generated.",
+        "otp_sent": otp_sent,
+    }
+
+
+# Keep old register endpoint for backward compatibility (deprecated)
 @router.post("/register", response_model=TokenResponse)
 async def register_operator(data: OperatorCreate):
     """Register a new operator with 3-day trial on the lowest available plan."""
     existing = await db.users.find_one({"email": data.email, "deleted_at": None})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Check phone uniqueness
+    phone_digits = ''.join(c for c in data.phone if c.isdigit())
+    existing_phone = await db.operators.find_one({
+        "phone": {"$in": [data.phone, phone_digits, phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits]},
+        "deleted_at": None
+    })
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
 
     # Find the lowest-priced plan (not deleted) for the trial
     lowest_plan = await db.saas_plans.find_one(
