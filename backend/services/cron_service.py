@@ -415,12 +415,17 @@ class CronJobService:
                 if not has_addon:
                     continue
 
-                # Check WhatsApp config
-                wa_config = await self.db.whatsapp_configs.find_one(
-                    {"operator_id": operator_id, "is_active": True}, {"_id": 0}
+                # Check WhatsApp config - use platform global config
+                wa_config = await self.db.global_settings.find_one(
+                    {"type": "platform_whatsapp"}, {"_id": 0}
                 )
-                if not wa_config:
+                if not wa_config or not wa_config.get("access_token"):
                     continue
+
+                # Get template settings
+                template_settings = await self.db.global_settings.find_one(
+                    {"type": "whatsapp_template_settings"}, {"_id": 0}
+                ) or {}
 
                 results["operators_processed"] += 1
 
@@ -494,6 +499,7 @@ class CronJobService:
 
                         if days_diff <= 0:
                             # After due or on due — payment reminder
+                            reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
                             days_overdue = max(0, abs(days_diff))
                             await wa_service.send_payment_reminder(
                                 recipient_phone=subscriber["whatsapp_number"],
@@ -502,9 +508,11 @@ class CronJobService:
                                 amount_due=f"₹{invoice['final_amount']:,.2f}",
                                 days_overdue=str(days_overdue),
                                 payment_link=invoice.get("payment_link"),
+                                template_name_override=reminder_tpl,
                             )
                         else:
                             # Before due — invoice notification / upcoming reminder
+                            invoice_tpl = template_settings.get("invoice_template") or "invoice_notification"
                             await wa_service.send_invoice_notification(
                                 recipient_phone=subscriber["whatsapp_number"],
                                 customer_name=subscriber["name"],
@@ -512,6 +520,7 @@ class CronJobService:
                                 amount=f"₹{invoice['final_amount']:,.2f}",
                                 due_date=due_date.strftime("%d %b %Y"),
                                 payment_link=invoice.get("payment_link"),
+                                template_name_override=invoice_tpl,
                             )
 
                         # Record the reminder

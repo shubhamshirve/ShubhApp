@@ -10,7 +10,7 @@ from models import (
     GlobalSettingsUpdate, AdminPaymentGatewayConfig,
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
-    WhatsAppConfig,
+    WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
 )
@@ -446,6 +446,80 @@ async def update_platform_whatsapp_config(data: WhatsAppConfig, current_user: di
                     None, {"phone_number_id": data.phone_number_id},
                     ip_address=current_user.get("_ip_address"))
     return {"message": "WhatsApp configuration updated successfully"}
+
+
+# ─── WhatsApp Template Assignment Settings ────────────────────────────────────
+
+@router.get("/whatsapp-template-settings")
+async def get_whatsapp_template_settings(current_user: dict = Depends(require_admin)):
+    settings = await db.global_settings.find_one({"type": "whatsapp_template_settings"}, {"_id": 0})
+    if not settings:
+        return {
+            "invoice_template": "",
+            "reminder_template": "",
+            "payment_confirmation_template": "",
+            "announcement_template": ""
+        }
+    return {
+        "invoice_template": settings.get("invoice_template", ""),
+        "reminder_template": settings.get("reminder_template", ""),
+        "payment_confirmation_template": settings.get("payment_confirmation_template", ""),
+        "announcement_template": settings.get("announcement_template", ""),
+    }
+
+
+@router.put("/whatsapp-template-settings")
+async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, current_user: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
+    settings = {
+        "type": "whatsapp_template_settings",
+        "invoice_template": data.invoice_template or "",
+        "reminder_template": data.reminder_template or "",
+        "payment_confirmation_template": data.payment_confirmation_template or "",
+        "announcement_template": data.announcement_template or "",
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"]
+    }
+    await db.global_settings.update_one({"type": "whatsapp_template_settings"}, {"$set": settings}, upsert=True)
+    await log_audit(current_user["id"], current_user["name"], current_user["role"],
+                    "update", "whatsapp_template_settings",
+                    None, {"templates": {
+                        "invoice": data.invoice_template,
+                        "reminder": data.reminder_template,
+                        "payment_confirmation": data.payment_confirmation_template,
+                        "announcement": data.announcement_template,
+                    }},
+                    ip_address=current_user.get("_ip_address"))
+    return {"message": "Template settings updated successfully"}
+
+
+# ─── WhatsApp Test Message ────────────────────────────────────────────────────
+
+@router.post("/whatsapp-test")
+async def send_whatsapp_test_message(data: WhatsAppTestMessage, current_user: dict = Depends(require_admin)):
+    """Send a test WhatsApp message using the pre-approved 'hello_world' template."""
+    # Get platform WhatsApp config
+    wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+    if not wa_config or not wa_config.get("access_token"):
+        raise HTTPException(status_code=400, detail="WhatsApp is not configured. Please save your WhatsApp config first.")
+
+    if not data.phone_number or not data.phone_number.strip():
+        raise HTTPException(status_code=400, detail="Phone number is required.")
+
+    from services.whatsapp_service import WhatsAppService
+    try:
+        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+        result = await wa_service.send_template_message(
+            recipient_phone=data.phone_number.strip(),
+            template_name="hello_world",
+            language_code="en",
+        )
+        message_id = None
+        if result and "messages" in result and len(result["messages"]) > 0:
+            message_id = result["messages"][0].get("id")
+        return {"success": True, "message": "Test message sent successfully!", "message_id": message_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send test message: {str(e)}")
 
 
 # ─── Payment Gateways ────────────────────────────────────────────────────────

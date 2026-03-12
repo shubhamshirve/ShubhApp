@@ -118,7 +118,8 @@ class WhatsAppService:
         invoice_number: str,
         amount: str,
         due_date: str,
-        payment_link: str = None
+        payment_link: str = None,
+        template_name_override: str = None
     ) -> Dict[str, Any]:
         """
         Send invoice notification template
@@ -141,7 +142,7 @@ class WhatsAppService:
         
         return await self.send_template_message(
             recipient_phone=recipient_phone,
-            template_name="invoice_notification",
+            template_name=template_name_override or "invoice_notification",
             variables=variables,
             button_params=button_params
         )
@@ -153,7 +154,8 @@ class WhatsAppService:
         invoice_number: str,
         amount_due: str,
         days_overdue: str,
-        payment_link: str = None
+        payment_link: str = None,
+        template_name_override: str = None
     ) -> Dict[str, Any]:
         """
         Send payment reminder template
@@ -175,7 +177,7 @@ class WhatsAppService:
         
         return await self.send_template_message(
             recipient_phone=recipient_phone,
-            template_name="payment_reminder",
+            template_name=template_name_override or "payment_reminder",
             variables=variables,
             button_params=button_params
         )

@@ -355,6 +355,17 @@ class WhatsAppConfig(BaseModel):
     business_account_id: Optional[str] = None
 
 
+class WhatsAppTemplateSettings(BaseModel):
+    invoice_template: Optional[str] = None
+    reminder_template: Optional[str] = None
+    payment_confirmation_template: Optional[str] = None
+    announcement_template: Optional[str] = None
+
+
+class WhatsAppTestMessage(BaseModel):
+    phone_number: str
+
+
 class SendNotificationRequest(BaseModel):
     invoice_id: str
     notification_type: str = "invoice"  # invoice, reminder

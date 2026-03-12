@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 # Test Configuration
-BACKEND_URL = "https://addon-logic-system.preview.emergentagent.com/api"
+BACKEND_URL = "https://goofy-yonath-2.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 

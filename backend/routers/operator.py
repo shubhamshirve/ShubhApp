@@ -15,7 +15,7 @@ from models import (
     SubscriberCreate, SubscriberResponse,
     InvoiceCreate, InvoiceResponse, PaymentLinkResponse,
     StaffCreate, StaffResponse, AuditLogResponse,
-    PaymentGatewayConfig, WhatsAppConfig, SendNotificationRequest, BulkNotificationRequest,
+    PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
     ReminderSettingsUpdate,
 )
 from utils import generate_id, hash_password, generate_invoice_number
@@ -41,6 +41,20 @@ async def _has_addon(operator_id: str, addon_code: str) -> bool:
         if plan and addon_code in plan.get("included_addons", []):
             return True
     return False
+
+
+async def _get_platform_whatsapp_config():
+    """Get the global platform WhatsApp config from admin settings."""
+    config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+    if not config or not config.get("access_token"):
+        return None
+    return config
+
+
+async def _get_whatsapp_template_settings():
+    """Get template assignment settings from admin config."""
+    settings = await db.global_settings.find_one({"type": "whatsapp_template_settings"}, {"_id": 0})
+    return settings or {}
 
 
 
@@ -1182,14 +1196,14 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
     }
     await db.invoices.insert_one(invoice)
 
-    # Auto-send WhatsApp if payment_reminder addon is active
+    # Auto-send WhatsApp if payment_reminder addon is active (uses platform WhatsApp config)
     auto_wa_sent = False
     if await _has_addon(current_user["operator_id"], "payment_reminder"):
         try:
-            wa_config = await db.whatsapp_configs.find_one(
-                {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
-            )
+            wa_config = await _get_platform_whatsapp_config()
             if wa_config:
+                template_settings = await _get_whatsapp_template_settings()
+                template_name = template_settings.get("invoice_template") or "invoice_notification"
                 from services.whatsapp_service import WhatsAppService
                 wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
                 await wa_service.send_invoice_notification(
@@ -1198,7 +1212,8 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
                     invoice_number=invoice["invoice_number"],
                     amount=f"₹{invoice['final_amount']:,.2f}",
                     due_date=data.due_date.strftime("%d %b %Y"),
-                    payment_link=None
+                    payment_link=None,
+                    template_name_override=template_name
                 )
                 auto_wa_sent = True
         except Exception as e:
@@ -1535,42 +1550,14 @@ async def get_operator_audit_logs(
     return [AuditLogResponse(**{**log, "created_at": datetime.fromisoformat(log["created_at"])}) for log in logs]
 
 
-# ─── WhatsApp Config & Notifications ───────────────────────────────────────────
-
-@router.post("/whatsapp-config")
-async def configure_whatsapp(data: WhatsAppConfig, current_user: dict = Depends(require_operator)):
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    now = datetime.now(timezone.utc)
-    config = {
-        "id": generate_id(), "operator_id": current_user["operator_id"],
-        "phone_number_id": data.phone_number_id, "access_token": data.access_token,
-        "is_active": True, "created_at": now.isoformat(), "updated_at": now.isoformat()
-    }
-    await db.whatsapp_configs.update_one(
-        {"operator_id": current_user["operator_id"]}, {"$set": config}, upsert=True
-    )
-    return {"message": "WhatsApp configured successfully"}
-
-
-@router.get("/whatsapp-config")
-async def get_whatsapp_config(current_user: dict = Depends(require_operator)):
-    config = await db.whatsapp_configs.find_one(
-        {"operator_id": current_user["operator_id"]}, {"_id": 0, "access_token": 0}
-    )
-    if config:
-        return {"configured": True, "phone_number_id": config.get("phone_number_id", "")[:10] + "***"}
-    return {"configured": False}
-
+# ─── WhatsApp Notifications (uses platform global WhatsApp config) ────────────
 
 @router.post("/send-notification")
 async def send_whatsapp_notification(data: SendNotificationRequest, current_user: dict = Depends(require_operator)):
     from services.whatsapp_service import WhatsAppService
-    wa_config = await db.whatsapp_configs.find_one(
-        {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
-    )
+    wa_config = await _get_platform_whatsapp_config()
     if not wa_config:
-        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+        raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
     invoice = await db.invoices.find_one(
         {"id": data.invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
     )
@@ -1580,23 +1567,28 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     try:
+        template_settings = await _get_whatsapp_template_settings()
         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
         if data.notification_type == "reminder":
+            template_name = template_settings.get("reminder_template") or "payment_reminder"
             due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
             days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
             result = await wa_service.send_payment_reminder(
                 recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
                 invoice_number=invoice["invoice_number"],
                 amount_due=f"₹{invoice['final_amount']:,.2f}", days_overdue=str(days_overdue),
-                payment_link=invoice.get("payment_link")
+                payment_link=invoice.get("payment_link"),
+                template_name_override=template_name
             )
         else:
+            template_name = template_settings.get("invoice_template") or "invoice_notification"
             result = await wa_service.send_invoice_notification(
                 recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
                 invoice_number=invoice["invoice_number"],
                 amount=f"₹{invoice['final_amount']:,.2f}",
                 due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
-                payment_link=invoice.get("payment_link")
+                payment_link=invoice.get("payment_link"),
+                template_name_override=template_name
             )
         return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
     except Exception as e:
@@ -1607,11 +1599,11 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
 @router.post("/bulk-notification")
 async def send_bulk_notification(data: BulkNotificationRequest, current_user: dict = Depends(require_operator)):
     from services.whatsapp_service import WhatsAppService
-    wa_config = await db.whatsapp_configs.find_one(
-        {"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0}
-    )
+    wa_config = await _get_platform_whatsapp_config()
     if not wa_config:
-        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+        raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
+    template_settings = await _get_whatsapp_template_settings()
+    invoice_template = template_settings.get("invoice_template") or "invoice_notification"
     results = {"sent": 0, "failed": 0, "errors": []}
     wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
     for subscriber_id in data.subscriber_ids:
@@ -1631,7 +1623,8 @@ async def send_bulk_notification(data: BulkNotificationRequest, current_user: di
                     invoice_number=invoice["invoice_number"],
                     amount=f"₹{invoice['final_amount']:,.2f}",
                     due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
-                    payment_link=invoice.get("payment_link")
+                    payment_link=invoice.get("payment_link"),
+                    template_name_override=invoice_template
                 )
                 results["sent"] += 1
         except Exception as e:

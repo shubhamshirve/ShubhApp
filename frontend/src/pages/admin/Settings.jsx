@@ -67,8 +67,22 @@ const AdminSettings = () => {
   const [waLoading, setWaLoading] = useState(false);
   const [showToken, setShowToken] = useState(false);
 
+  // WhatsApp template settings state
+  const [templateSettings, setTemplateSettings] = useState({
+    invoice_template: "",
+    reminder_template: "",
+    payment_confirmation_template: "",
+    announcement_template: "",
+  });
+  const [templateSettingsLoading, setTemplateSettingsLoading] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState([]);
+
+  // WhatsApp test message state
+  const [testPhone, setTestPhone] = useState("");
+  const [testSending, setTestSending] = useState(false);
+
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -106,6 +120,25 @@ const AdminSettings = () => {
     } catch { /* ignore */ }
   };
 
+  const fetchTemplateSettings = async () => {
+    try {
+      const res = await authAxios.get("/admin/whatsapp-template-settings");
+      setTemplateSettings({
+        invoice_template: res.data.invoice_template || "",
+        reminder_template: res.data.reminder_template || "",
+        payment_confirmation_template: res.data.payment_confirmation_template || "",
+        announcement_template: res.data.announcement_template || "",
+      });
+    } catch { /* ignore */ }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await authAxios.get("/admin/whatsapp-templates");
+      setAvailableTemplates(res.data.filter(t => t.is_active));
+    } catch { /* ignore */ }
+  };
+
   const handleUpdateWhatsApp = async (e) => {
     e.preventDefault();
     if (!waConfig.phone_number_id || !waConfig.access_token) {
@@ -122,6 +155,34 @@ const AdminSettings = () => {
       toast.error(error.response?.data?.detail || "Failed to update WhatsApp config");
     } finally {
       setWaLoading(false);
+    }
+  };
+
+  const handleSaveTemplateSettings = async () => {
+    setTemplateSettingsLoading(true);
+    try {
+      await authAxios.put("/admin/whatsapp-template-settings", templateSettings);
+      toast.success("Template settings saved successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to save template settings");
+    } finally {
+      setTemplateSettingsLoading(false);
+    }
+  };
+
+  const handleSendTestMessage = async () => {
+    if (!testPhone.trim()) {
+      toast.error("Please enter a phone number");
+      return;
+    }
+    setTestSending(true);
+    try {
+      const res = await authAxios.post("/admin/whatsapp-test", { phone_number: testPhone.trim() });
+      toast.success(res.data.message || "Test message sent!");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to send test message");
+    } finally {
+      setTestSending(false);
     }
   };
 
@@ -392,7 +453,8 @@ const AdminSettings = () => {
           </TabsContent>
 
           {/* WhatsApp Tab */}
-          <TabsContent value="whatsapp" className="mt-6">
+          <TabsContent value="whatsapp" className="mt-6 space-y-6">
+            {/* API Configuration */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -400,7 +462,7 @@ const AdminSettings = () => {
                   Platform WhatsApp API Configuration
                 </CardTitle>
                 <p className="text-sm text-slate-500">
-                  Configure the platform-level WhatsApp Business API used for sending invoices and payment reminders to customers.
+                  Configure the global WhatsApp Business API credentials used for all operators.
                 </p>
               </CardHeader>
               <CardContent>
@@ -467,6 +529,98 @@ const AdminSettings = () => {
                     </Button>
                   </div>
                 </form>
+              </CardContent>
+            </Card>
+
+            {/* Template Assignment */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-blue-600" />
+                  Template Assignment
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Assign which WhatsApp template to use for each type of notification. Templates must be created in the <span className="font-medium">WA Templates</span> section first.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-5 max-w-lg">
+                  {[
+                    { key: "invoice_template", label: "Invoice Sending", desc: "Template used when sending new invoices to subscribers" },
+                    { key: "reminder_template", label: "Payment Reminders", desc: "Template used for overdue payment reminders" },
+                    { key: "payment_confirmation_template", label: "Payment Confirmation", desc: "Template used when a payment is confirmed" },
+                    { key: "announcement_template", label: "Announcements", desc: "Template used for sending announcements" },
+                  ].map(({ key, label, desc }) => (
+                    <div key={key} className="space-y-1.5">
+                      <Label className="text-sm font-medium">{label}</Label>
+                      <Select
+                        value={templateSettings[key] || "_none_"}
+                        onValueChange={(v) => setTemplateSettings(prev => ({ ...prev, [key]: v === "_none_" ? "" : v }))}
+                      >
+                        <SelectTrigger data-testid={`tpl-${key}`}>
+                          <SelectValue placeholder="Select a template..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none_">— Not Assigned —</SelectItem>
+                          {availableTemplates.map(t => (
+                            <SelectItem key={t.id} value={t.template_name}>
+                              {t.display_name} ({t.template_name})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-400">{desc}</p>
+                    </div>
+                  ))}
+
+                  <div className="pt-3">
+                    <Button onClick={handleSaveTemplateSettings} disabled={templateSettingsLoading} data-testid="save-template-settings-btn">
+                      {templateSettingsLoading ? "Saving..." : "Save Template Settings"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Test Message */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-amber-600" />
+                  Send Test Message
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Send a test WhatsApp message using the pre-approved <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">hello_world</code> template to verify your configuration.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end gap-3 max-w-lg">
+                  <div className="flex-1 space-y-1.5">
+                    <Label>Phone Number</Label>
+                    <Input
+                      value={testPhone}
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      placeholder="e.g., 919876543210"
+                      data-testid="wa-test-phone"
+                    />
+                    <p className="text-xs text-slate-400">Enter number with country code (e.g., 91 for India)</p>
+                  </div>
+                  <Button
+                    onClick={handleSendTestMessage}
+                    disabled={testSending || !waConfig.is_configured}
+                    variant="outline"
+                    className="border-green-300 text-green-700 hover:bg-green-50"
+                    data-testid="send-test-btn"
+                  >
+                    {testSending ? "Sending..." : "Send Test"}
+                  </Button>
+                </div>
+                {!waConfig.is_configured && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    <Info className="w-3 h-3 inline mr-1" />
+                    Save your WhatsApp API config above before sending test messages.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
