@@ -5859,3 +5859,187 @@ agent_communication:
       - Tested both positive flows and proper data validation
       
       **SYSTEM STATUS: SETTLEMENT INFRASTRUCTURE 100% FUNCTIONAL ✅**
+
+
+## Frontend Testing - 8 Features - March 13, 2026
+
+frontend:
+  - task: "1. Subscribers visible in operator panel"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Subscribers now show correctly in operator panel with all data fields."
+
+  - task: "2. GST requires GSTIN - frontend validation"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Frontend toast error when toggling charge_gst ON without gst_number. Backend also validates."
+
+  - task: "3. Recent Invoices tab in operator Reports"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "New 'Recent Invoices' tab in Reports page with search, status filter, sortable columns, and pagination."
+
+  - task: "4. WhatsApp reminder settings with expanded schedule"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "After-due days updated to 1-10. Default settings auto-enabled. Settings UI shows all options."
+
+  - task: "5. Invoice number format EBILL-YYYYMM-NNNNNN"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "New invoices get globally unique EBILL-YYYYMM-NNNNNN format via atomic MongoDB counter."
+
+  - task: "6. Invoice prefix removed from operator settings"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Removed invoice prefix input field from operator invoice customization settings."
+
+  - task: "7. Features customization in admin landing page settings"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added feature cards editor in admin Landing Page -> Hero tab -> Features Section. Icon selector, title, description per feature. Add/remove up to 12."
+
+  - task: "8. Platform fee button removed from admin settlements"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Removed Platform Fee button and dialog from admin Settlements page. Only Process Settlements button remains."
+
+  - task: "9. Public Invoice footer shows E-Bill"
+    implemented: true
+    working: true
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Changed footer from 'SaaS Billing Platform' to 'E-Bill - Billing solution for cable operators and ISPs'."
+
+test_plan:
+  current_focus:
+    - "Frontend UI testing all 9 features"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+metadata:
+  run_ui: true
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Run FRONTEND testing for 9 features. App URL: http://localhost:3000
+      
+      **Credentials:**
+      - Admin: admin@saas.com / admin123
+      - Operator1: venkat@krishnacable.in / operator123 (Pro plan, 10 subscribers, WhatsApp addon)
+      - Operator2: sagar@sagarbroadband.com / operator123 (Basic plan, 6 subscribers)
+      
+      ## TEST 1: Operator Subscribers Page
+      - Login as operator1 (venkat@krishnacable.in / operator123)
+      - Navigate to /operator/subscribers
+      - Verify: 10 subscribers visible with names, WhatsApp numbers, plans
+      
+      ## TEST 2: GST Frontend Validation
+      - Login as operator2 (sagar@sagarbroadband.com / operator123)
+      - Navigate to /operator/settings
+      - Go to Profile tab
+      - Clear the GST Number field and save
+      - Then try to toggle "Charge GST" ON
+      - Verify: toast error appears about needing GSTIN
+      
+      ## TEST 3: Reports - Recent Invoices Tab
+      - Login as operator1
+      - Navigate to /operator/reports
+      - Click "Recent Invoices" tab
+      - Verify: Invoice table appears with data
+      - Test search: type "Ramesh" and click Search - verify filtered results
+      - Test status filter: select "Paid" - verify only paid invoices
+      - Verify pagination controls visible
+      
+      ## TEST 4: WhatsApp Reminder Settings
+      - Login as operator1 (has whatsapp_notifications addon)
+      - Navigate to /operator/settings
+      - Go to "Payment Reminders" tab
+      - Verify: reminders are enabled by default
+      - Verify: Before due days show [7,5,3,2,1] options
+      - Verify: After due days show [1,2,3,4,5,6,7,8,9,10] options
+      
+      ## TEST 5: New Invoice Number Format
+      - Login as operator1
+      - Navigate to /operator/invoices
+      - Check if any invoice shows EBILL-202603-XXXXXX format
+      - (Optionally create a new invoice and verify the new format)
+      
+      ## TEST 6: Invoice Prefix Removed
+      - Login as operator1
+      - Navigate to /operator/settings
+      - Go to "Invoice Customization" tab
+      - Verify: NO "Invoice Prefix" input field exists
+      
+      ## TEST 7: Features Customization in Admin Landing Page
+      - Login as admin (admin@saas.com / admin123)
+      - Navigate to /admin/landing-page
+      - Click "Hero" tab
+      - Scroll down to "Features Section" 
+      - Verify: "Feature Cards" section with "Add Feature" button
+      - Click "Add Feature" and fill in title/description
+      - Verify: new feature row appears with icon selector, title, description inputs
+      
+      ## TEST 8: Platform Fee Button Removed
+      - Login as admin
+      - Navigate to /admin/settlements
+      - Verify: NO "Platform Fee: X%" button in the header
+      - Verify: Only "Process Settlements" button visible
+      
+      ## TEST 9: Public Invoice Footer
+      - Navigate to /invoice/{any_invoice_id} (you can get an invoice_id from the operator invoices page)
+      - Verify: Footer shows "Powered by E-Bill - Billing solution for cable operators and ISPs"
