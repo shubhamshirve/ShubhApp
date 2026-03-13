@@ -1370,3 +1370,93 @@ async def update_platform_fee(
         upsert=True,
     )
     return {"message": f"Platform fee updated to {percentage}%", "platform_fee_percentage": percentage}
+
+
+
+# ─── Landing Page Settings ────────────────────────────────────────────────────
+
+DEFAULT_LANDING_PAGE_SETTINGS = {
+    "brand": {
+        "name": "E-Bill",
+        "tagline": "ISP & Cable Billing Solutions",
+        "business_name": "Teasy Services",
+        "logo_url": "/ebill-logo.png",
+    },
+    "colors": {
+        "primary": "#0066B2",
+        "secondary": "#44AB62",
+        "background": "#EFEFEF",
+        "accent": "#004080",
+    },
+    "hero": {
+        "badge": "India's GST-Ready Billing Platform",
+        "title": "Automate Your",
+        "title_highlight": "Recurring Billing",
+        "subtitle": "Multi-tenant billing platform for subscription businesses in India. Auto-generate invoices, send WhatsApp reminders, and collect payments through your own payment gateway.",
+        "cta_primary": "Start Free Trial",
+        "cta_secondary": "Watch Demo",
+        "features": ["No credit card required", "GST compliant invoices", "WhatsApp integration"],
+    },
+    "stats": {
+        "stat1_value": "10K+",
+        "stat1_label": "Active Subscribers",
+        "stat2_value": "₹5Cr+",
+        "stat2_label": "Processed Monthly",
+        "stat3_value": "500+",
+        "stat3_label": "Businesses Trust Us",
+        "stat4_value": "99.9%",
+        "stat4_label": "Uptime",
+    },
+    "features": {
+        "title": "Everything You Need to Manage Billing",
+        "subtitle": "A complete solution for subscription businesses with GST compliance, automated workflows, and seamless payment collection.",
+    },
+    "contact": {
+        "email": "support@teasyservices.com",
+        "phone": "+91 98765 43210",
+        "whatsapp": "+91 98765 43210",
+    },
+    "footer": {
+        "copyright": "© 2026 E-Bill by Teasy Services. All rights reserved.",
+        "tagline": "Made in India 🇮🇳",
+    },
+}
+
+
+@router.get("/landing-page")
+async def get_landing_page_settings(current_user: dict = Depends(require_admin)):
+    """Get landing page customization settings."""
+    settings = await db.global_settings.find_one({"type": "landing_page"}, {"_id": 0})
+    if not settings:
+        return DEFAULT_LANDING_PAGE_SETTINGS
+    return settings.get("settings", DEFAULT_LANDING_PAGE_SETTINGS)
+
+
+@router.put("/landing-page")
+async def update_landing_page_settings(
+    settings: dict,
+    current_user: dict = Depends(require_admin),
+):
+    """Update landing page customization settings."""
+    now = datetime.now(timezone.utc)
+    await db.global_settings.update_one(
+        {"type": "landing_page"},
+        {"$set": {"type": "landing_page", "settings": settings, "updated_at": now.isoformat()}},
+        upsert=True,
+    )
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "landing_page", None, {"updated": True},
+        ip_address=current_user.get("_ip_address")
+    )
+    return {"message": "Landing page settings updated successfully", "settings": settings}
+
+
+# Public endpoint (no auth required) for landing page to fetch settings
+@router.get("/public/landing-page")
+async def get_public_landing_page_settings():
+    """Get landing page settings for public display (no auth required)."""
+    settings = await db.global_settings.find_one({"type": "landing_page"}, {"_id": 0})
+    if not settings:
+        return DEFAULT_LANDING_PAGE_SETTINGS
+    return settings.get("settings", DEFAULT_LANDING_PAGE_SETTINGS)
