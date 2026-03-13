@@ -1357,8 +1357,18 @@ async def trigger_settlement_processing(
         if not operator:
             continue
 
+        # Get plan-specific platform fee percentage
+        plan_fee_pct = platform_fee_pct  # Default to global setting
+        if operator.get("saas_plan_id"):
+            plan = await db.saas_plans.find_one(
+                {"id": operator["saas_plan_id"], "deleted_at": None},
+                {"_id": 0, "platform_fee_percentage": 1, "name": 1}
+            )
+            if plan and plan.get("platform_fee_percentage") is not None:
+                plan_fee_pct = float(plan["platform_fee_percentage"])
+
         total_collected = sum(inv["final_amount"] for inv in invoices)
-        platform_fee = round(total_collected * platform_fee_pct / 100, 2)
+        platform_fee = round(total_collected * plan_fee_pct / 100, 2)
         tax_on_fee = round(platform_fee * 18 / 100, 2)
         net_settlement = round(total_collected - platform_fee - tax_on_fee, 2)
         invoice_ids = [inv["id"] for inv in invoices]
@@ -1367,9 +1377,10 @@ async def trigger_settlement_processing(
             "id": str(uuid.uuid4()),
             "operator_id": operator_id,
             "operator_name": operator.get("company_name", "Unknown"),
+            "plan_name": operator.get("saas_plan_name", "N/A"),
             "settlement_date": settlement_date_str,
             "total_collections": total_collected,
-            "platform_fee_percentage": platform_fee_pct,
+            "platform_fee_percentage": plan_fee_pct,
             "platform_fee": platform_fee,
             "tax_on_platform_fee": tax_on_fee,
             "net_settlement": net_settlement,
@@ -1408,6 +1419,113 @@ async def update_platform_fee(
         upsert=True,
     )
     return {"message": f"Platform fee updated to {percentage}%", "platform_fee_percentage": percentage}
+
+
+class ManualSettlementRequest(BaseModel):
+    operator_id: str
+    invoice_ids: List[str]
+    notes: Optional[str] = None
+
+
+@router.post("/settlements/manual")
+async def create_manual_settlement(
+    data: ManualSettlementRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Create a manual settlement for specific invoices."""
+    import uuid
+
+    operator = await db.operators.find_one(
+        {"id": data.operator_id, "deleted_at": None}, {"_id": 0}
+    )
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+
+    # Validate invoices
+    invoices = await db.invoices.find({
+        "id": {"$in": data.invoice_ids},
+        "operator_id": data.operator_id,
+        "status": "paid",
+        "settled": {"$ne": True},
+        "deleted_at": None,
+    }, {"_id": 0}).to_list(1000)
+
+    if not invoices:
+        raise HTTPException(status_code=400, detail="No valid unsettled paid invoices found")
+
+    # Get plan-specific platform fee percentage
+    global_settings = await db.global_settings.find_one({"type": "platform_settings"}, {"_id": 0})
+    platform_fee_pct = float((global_settings or {}).get("platform_fee_percentage", 2))
+    
+    if operator.get("saas_plan_id"):
+        plan = await db.saas_plans.find_one(
+            {"id": operator["saas_plan_id"], "deleted_at": None},
+            {"_id": 0, "platform_fee_percentage": 1, "name": 1}
+        )
+        if plan and plan.get("platform_fee_percentage") is not None:
+            platform_fee_pct = float(plan["platform_fee_percentage"])
+
+    now = datetime.now(timezone.utc)
+    total_collected = sum(inv["final_amount"] for inv in invoices)
+    platform_fee = round(total_collected * platform_fee_pct / 100, 2)
+    tax_on_fee = round(platform_fee * 18 / 100, 2)
+    net_settlement = round(total_collected - platform_fee - tax_on_fee, 2)
+    invoice_ids = [inv["id"] for inv in invoices]
+
+    settlement = {
+        "id": str(uuid.uuid4()),
+        "operator_id": data.operator_id,
+        "operator_name": operator.get("company_name", "Unknown"),
+        "plan_name": operator.get("saas_plan_name", "N/A"),
+        "settlement_date": now.strftime("%Y-%m-%d"),
+        "total_collections": total_collected,
+        "platform_fee_percentage": platform_fee_pct,
+        "platform_fee": platform_fee,
+        "tax_on_platform_fee": tax_on_fee,
+        "net_settlement": net_settlement,
+        "payment_count": len(invoices),
+        "invoice_ids": invoice_ids,
+        "status": "pending",
+        "is_manual": True,
+        "notes": data.notes,
+        "utr_number": None,
+        "paid_at": None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+    await db.settlements.insert_one(settlement)
+
+    await db.invoices.update_many(
+        {"id": {"$in": invoice_ids}},
+        {"$set": {"settled": True, "settlement_id": settlement["id"]}}
+    )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "create_manual_settlement", "settlement", settlement["id"],
+        {"operator": operator.get("company_name"), "amount": net_settlement, "invoices": len(invoices)},
+        ip_address=current_user.get("_ip_address")
+    )
+
+    return {
+        "message": "Manual settlement created successfully",
+        "settlement": settlement,
+    }
+
+
+@router.get("/settlements/{settlement_id}/invoices")
+async def get_settlement_invoices(settlement_id: str, current_user: dict = Depends(require_admin)):
+    """Get all invoices for a settlement with full details."""
+    settlement = await db.settlements.find_one({"id": settlement_id}, {"_id": 0})
+    if not settlement:
+        raise HTTPException(status_code=404, detail="Settlement not found")
+
+    invoices = await db.invoices.find(
+        {"id": {"$in": settlement.get("invoice_ids", [])}},
+        {"_id": 0}
+    ).to_list(1000)
+
+    return {"invoices": invoices, "settlement_id": settlement_id}
 
 
 

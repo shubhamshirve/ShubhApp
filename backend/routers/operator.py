@@ -1612,6 +1612,102 @@ async def get_operator_audit_logs(
     return [AuditLogResponse(**{**log, "created_at": datetime.fromisoformat(log["created_at"])}) for log in logs]
 
 
+# ─── Operator Settlements ───────────────────────────────────────────────────────
+
+@router.get("/settlements/summary")
+async def get_operator_settlements_summary(current_user: dict = Depends(require_operator)):
+    """Get settlement summary for operator."""
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
+
+    all_settlements = await db.settlements.find(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0}
+    ).to_list(10000)
+
+    total_settled = sum(s["net_settlement"] for s in all_settlements if s["status"] == "completed")
+    total_pending = sum(s["net_settlement"] for s in all_settlements if s["status"] == "pending")
+    total_platform_fee = sum(s["platform_fee"] for s in all_settlements if s["status"] == "completed")
+    total_collections = sum(s["total_collections"] for s in all_settlements if s["status"] == "completed")
+
+    month_settlements = [s for s in all_settlements if s["settlement_date"] >= start_of_month]
+    month_settled = sum(s["net_settlement"] for s in month_settlements if s["status"] == "completed")
+    month_pending = sum(s["net_settlement"] for s in month_settlements if s["status"] == "pending")
+
+    pending_count = sum(1 for s in all_settlements if s["status"] == "pending")
+    completed_count = sum(1 for s in all_settlements if s["status"] == "completed")
+
+    return {
+        "total_settled": total_settled,
+        "total_pending": total_pending,
+        "total_platform_fee": total_platform_fee,
+        "total_collections": total_collections,
+        "month_settled": month_settled,
+        "month_pending": month_pending,
+        "pending_count": pending_count,
+        "completed_count": completed_count,
+        "total_count": len(all_settlements),
+    }
+
+
+@router.get("/settlements")
+async def get_operator_settlements(
+    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(require_operator),
+):
+    """List settlements for operator."""
+    query = {"operator_id": current_user["operator_id"]}
+    if status:
+        query["status"] = status
+
+    total = await db.settlements.count_documents(query)
+    skip = (page - 1) * limit
+
+    settlements = await db.settlements.find(query, {"_id": 0}).sort(
+        "settlement_date", -1
+    ).skip(skip).limit(limit).to_list(limit)
+
+    return {
+        "settlements": settlements,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+@router.get("/settlements/{settlement_id}")
+async def get_operator_settlement_detail(settlement_id: str, current_user: dict = Depends(require_operator)):
+    """Get settlement detail with included invoices."""
+    settlement = await db.settlements.find_one(
+        {"id": settlement_id, "operator_id": current_user["operator_id"]}, {"_id": 0}
+    )
+    if not settlement:
+        raise HTTPException(status_code=404, detail="Settlement not found")
+
+    # Fetch the invoices in this settlement
+    invoices = await db.invoices.find(
+        {"id": {"$in": settlement.get("invoice_ids", [])}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "subscriber_name": 1,
+         "final_amount": 1, "tax_amount": 1, "base_amount": 1, "discount": 1,
+         "paid_at": 1, "plan_name": 1}
+    ).to_list(1000)
+
+    # Fetch operator bank details
+    operator = await db.operators.find_one(
+        {"id": current_user["operator_id"], "deleted_at": None},
+        {"_id": 0, "bank_account_name": 1, "bank_account_number": 1,
+         "bank_ifsc": 1, "bank_name": 1, "company_name": 1}
+    )
+
+    return {
+        **settlement,
+        "invoices": invoices,
+        "operator_details": operator,
+    }
+
+
 # ─── WhatsApp Notifications (uses platform global WhatsApp config) ────────────
 
 @router.post("/send-notification")

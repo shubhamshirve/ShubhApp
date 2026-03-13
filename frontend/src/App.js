@@ -30,6 +30,7 @@ import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
 import AdminSettlements from "./pages/admin/Settlements";
 import AdminLandingPage from "./pages/admin/LandingPage";
+import OperatorSettlements from "./pages/operator/Settlements";
 import PublicInvoice from "./pages/PublicInvoice";
 
 // Theme Context
@@ -273,6 +274,11 @@ function App() {
           <Route path="/operator/audit-logs" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorAuditLogs />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/settlements" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorSettlements />
             </ProtectedRoute>
           } />
           {/* Default Route */}

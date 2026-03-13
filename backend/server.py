@@ -256,10 +256,12 @@ async def seed_data():
             {"id": generate_id(), "name": "Basic", "monthly_price": 500,
              "max_subscribers": 200, "max_staff": 0, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
+             "platform_fee_percentage": 3.5,
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
             {"id": generate_id(), "name": "Pro", "monthly_price": 2500,
              "max_subscribers": 1000, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
+             "platform_fee_percentage": 3.0,
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
         ]
         await db.saas_plans.insert_many(plans)

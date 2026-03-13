@@ -324,12 +324,12 @@ export default function AdminSettlements() {
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="text-left px-4 py-3 font-semibold text-slate-600">Date</th>
                     <th className="text-left px-4 py-3 font-semibold text-slate-600">Operator</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-600">Plan</th>
                     <th className="text-right px-4 py-3 font-semibold text-slate-600">Collections</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-600">Platform Fee</th>
+                    <th className="text-right px-4 py-3 font-semibold text-slate-600">Fee Rate</th>
                     <th className="text-right px-4 py-3 font-semibold text-slate-600">Net Settlement</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-600">Payments</th>
+                    <th className="text-center px-4 py-3 font-semibold text-slate-600">Invoices</th>
                     <th className="text-center px-4 py-3 font-semibold text-slate-600">Status</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">UTR</th>
                     <th className="text-right px-4 py-3 font-semibold text-slate-600">Actions</th>
                   </tr>
                 </thead>
@@ -338,14 +338,24 @@ export default function AdminSettlements() {
                     <tr key={s.id} className="hover:bg-slate-50 transition">
                       <td className="px-4 py-3">
                         <span className="font-medium text-slate-800">{formatDate(s.settlement_date + "T00:00:00")}</span>
+                        {s.is_manual && (
+                          <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-purple-100 text-purple-700 rounded font-medium">Manual</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{s.operator_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                          s.plan_name?.toLowerCase().includes("pro") ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-700"
+                        }`}>
+                          {s.plan_name || "N/A"}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-right font-medium text-slate-800">
                         {formatCurrency(s.total_collections)}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-500">
-                        {formatCurrency(s.platform_fee)}
-                        <span className="text-xs text-slate-400 ml-1">({s.platform_fee_percentage}%)</span>
+                        <span className="font-medium">{s.platform_fee_percentage}%</span>
+                        <span className="text-xs text-slate-400 block">{formatCurrency(s.platform_fee)}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-indigo-700">
                         {formatCurrency(s.net_settlement)}
@@ -353,26 +363,38 @@ export default function AdminSettlements() {
                       <td className="px-4 py-3 text-center text-slate-600">{s.payment_count}</td>
                       <td className="px-4 py-3 text-center">
                         <StatusBadge status={s.status} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">
-                        {s.utr_number || "—"}
+                        {s.utr_number && (
+                          <p className="text-[10px] text-slate-400 mt-1 font-mono">{s.utr_number}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => openDetail(s.id)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                            className="px-2 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded transition"
                             title="View Details"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-3 h-3 inline mr-1" />
+                            View
                           </button>
-                          {s.status !== "completed" && (
+                          {s.status === "pending" && (
                             <button
                               onClick={() => openStatusDialog(s)}
-                              className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                              className="px-2 py-1 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded transition"
+                              title="Mark as Completed"
+                            >
+                              <CheckCircle2 className="w-3 h-3 inline mr-1" />
+                              Mark Paid
+                            </button>
+                          )}
+                          {s.status === "processing" && (
+                            <button
+                              onClick={() => openStatusDialog(s)}
+                              className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition"
                               title="Update Status"
                             >
-                              <CheckCircle2 className="w-4 h-4" />
+                              <RefreshCw className="w-3 h-3 inline mr-1" />
+                              Update
                             </button>
                           )}
                         </div>
