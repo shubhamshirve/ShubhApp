@@ -20,7 +20,7 @@ import sys
 from typing import Dict, Any, Optional
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://admin-dashboard-v2-34.preview.emergentagent.com/api"
+BACKEND_URL = "https://settlement-analyzer-2.preview.emergentagent.com/api"
 
 # Test Data - Pre-existing invoices in the database
 UNPAID_INVOICE_ID = "ee556be3-2944-4560-be09-98a49f30a679"

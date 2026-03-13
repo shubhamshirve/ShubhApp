@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 # Test Configuration
-BACKEND_URL = "https://admin-dashboard-v2-34.preview.emergentagent.com/api"
+BACKEND_URL = "https://settlement-analyzer-2.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 

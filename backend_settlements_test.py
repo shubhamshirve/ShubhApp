@@ -19,7 +19,7 @@ import os
 from typing import Dict, Any, Optional, List
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://admin-dashboard-v2-34.preview.emergentagent.com/api"
+BACKEND_URL = "https://settlement-analyzer-2.preview.emergentagent.com/api"
 
 class SettlementsTester:
     def __init__(self):

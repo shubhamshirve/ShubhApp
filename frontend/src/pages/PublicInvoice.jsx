@@ -542,7 +542,7 @@ export default function PublicInvoice() {
         {/* Footer */}
         <div className="text-center mt-8 pb-8 sm:pb-4">
           <p className="text-xs text-slate-400">
-            Powered by <span className="font-medium text-slate-500">SaaS Billing Platform</span>
+            Powered by <span className="font-medium text-slate-500">E-Bill - Billing solution for cable operators and ISPs</span>
           </p>
         </div>
       </div>

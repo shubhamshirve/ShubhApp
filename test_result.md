@@ -1937,7 +1937,7 @@ frontend:
     - agent: "main"
       message: |
         Please test the frontend UI of this Multi-Tenant SaaS Billing Platform.
-        App URL: https://admin-dashboard-v2-34.preview.emergentagent.com
+        App URL: https://settlement-analyzer-2.preview.emergentagent.com
 
         CREDENTIALS:
         - Admin: admin@saas.com / admin123
@@ -2065,7 +2065,7 @@ frontend:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Verify Recent Subscriptions table on Admin Reports → SaaS Revenue tab
-        **URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/admin/reports
+        **URL:** https://settlement-analyzer-2.preview.emergentagent.com/admin/reports
         **LOGIN:** admin@saas.com / admin123
         
         **COMPREHENSIVE UI TESTS - ALL REQUIREMENTS VERIFIED:**
@@ -2226,7 +2226,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test WhatsApp Templates page in admin panel with comprehensive CRUD and filter functionality
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/admin/whatsapp-templates
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/admin/whatsapp-templates
       **TEST CREDENTIALS:** admin@saas.com / admin123
       
       **COMPREHENSIVE TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
@@ -2560,7 +2560,7 @@ agent_communication:
       - **Security:** Proper password verification, secure hashing, input validation ✅
 
       **TESTING METHODOLOGY:**
-      - Used production backend URL: https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
       - Seeded admin user via POST /api/seed (admin@saas.com/admin123)
       - Bearer token authentication for all protected endpoints
       - Verified exact HTTP status codes and error messages
@@ -2588,7 +2588,7 @@ agent_communication:
       
       **TEST DATE:** March 11, 2026
       **TEST REQUEST:** Test Security tab and Download button in admin Settings panel
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com (credentials: admin@saas.com/admin123)
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com (credentials: admin@saas.com/admin123)
       
       **COMPREHENSIVE UI TESTING RESULTS:**
       
@@ -2711,7 +2711,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Execute comprehensive frontend UI testing for Multi-Tenant SaaS Billing Platform OTP registration flow
-      **FRONTEND URL:** https://admin-dashboard-v2-34.preview.emergentagent.com
+      **FRONTEND URL:** https://settlement-analyzer-2.preview.emergentagent.com
       **TEST CREDENTIALS:** admin@saas.com / admin123, Test OTP: 200796
       
       **═══════════════════════════════════════════════════════════════════**
@@ -3092,7 +3092,7 @@ agent_communication:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Test audit logs with comprehensive filters and auto invoice cron endpoint
-        **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+        **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
         
         **COMPREHENSIVE TESTING RESULTS - 9/9 TESTS PASSED (100% SUCCESS RATE):**
         
@@ -3152,7 +3152,7 @@ agent_communication:
         - ✅ No 500 errors encountered ✓
         
         **TESTING METHODOLOGY:**
-        - Used production backend URL: https://admin-dashboard-v2-34.preview.emergentagent.com/api
+        - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
         - Bearer token authentication for all protected endpoints
         - Verified exact HTTP status codes and response structures
         - Tested both individual and combined filter parameters
@@ -3453,7 +3453,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new OTP registration flow and uniqueness validation system
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123 (for seed data)
       
       **COMPREHENSIVE OTP TESTING RESULTS - 8/8 TESTS PASSED (100% SUCCESS RATE):**
@@ -3529,7 +3529,7 @@ agent_communication:
       
       **📋 TESTING METHODOLOGY:**
       - Created automated test suite (/app/otp_test.py) with 8 comprehensive test scenarios
-      - Used production backend URL: https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
       - Tested complete registration flow from init through verification
       - Verified uniqueness constraints both before and after registration completion
       - Tested both new OTP endpoints and legacy compatibility
@@ -3588,7 +3588,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test Error Logs CRUD and WhatsApp integration with fixed language code  
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123
       
       **COMPREHENSIVE TESTING RESULTS - 9/9 TESTS PASSED (100% SUCCESS RATE):**
@@ -3668,7 +3668,7 @@ agent_communication:
       - **Search/Filter Performance:** Both search and filter operations working efficiently
       
       **TESTING METHODOLOGY:**
-      - Used production backend URL: https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
       - Bearer token authentication for all protected admin endpoints
       - Verified exact HTTP status codes and response structures
       - Generated real errors to test logging integration
@@ -3702,7 +3702,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new WhatsApp backend changes (global config refactor)
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       
       **COMPREHENSIVE WHATSAPP TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -3792,7 +3792,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test backend registration change to assign lowest plan for 3-day trial
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       
       **COMPREHENSIVE TESTING RESULTS - 4/4 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -3881,7 +3881,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026  
       **TEST REQUEST:** Test backend changes for Multi-Tenant SaaS Billing Platform
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123
       
       **COMPREHENSIVE TESTING RESULTS - 6/6 SUB-TESTS PASSED (100% SUCCESS RATE):**
@@ -4037,8 +4037,8 @@ agent_communication:
     message: |
       Please execute comprehensive FRONTEND UI testing for the following scenarios.
       
-      **Frontend URL:** https://admin-dashboard-v2-34.preview.emergentagent.com
-      **Backend API URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **Frontend URL:** https://settlement-analyzer-2.preview.emergentagent.com
+      **Backend API URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **Admin credentials:** admin@saas.com / admin123
       **Test OTP code:** 200796
       
@@ -4105,7 +4105,7 @@ agent_communication:
       🚨 **COMPREHENSIVE FRONTEND UI TESTING COMPLETED - CRITICAL FAILURES DETECTED**
       
       **TEST DATE:** March 13, 2026
-      **TEST URL:** https://admin-dashboard-v2-34.preview.emergentagent.com
+      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com
       **TEST OTP:** 200796
       **ADMIN CREDENTIALS:** admin@saas.com / admin123
       
@@ -4498,7 +4498,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new public invoice API endpoints (no authentication required)
-      **BACKEND URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **BACKEND URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       
       **COMPREHENSIVE TESTING RESULTS - 8/8 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -5112,8 +5112,8 @@ agent_communication:
     message: |
       Please execute comprehensive FRONTEND UI testing for Settlements page and Public Invoice page.
       
-      **Frontend URL:** https://admin-dashboard-v2-34.preview.emergentagent.com
-      **Backend API URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **Frontend URL:** https://settlement-analyzer-2.preview.emergentagent.com
+      **Backend API URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **Admin credentials:** admin@saas.com / admin123
       
       ## IMPORTANT SELECTOR INFO:
@@ -5204,7 +5204,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Execute comprehensive frontend UI testing for Settlements page and Public Invoice page
-      **FRONTEND URL:** https://admin-dashboard-v2-34.preview.emergentagent.com
+      **FRONTEND URL:** https://settlement-analyzer-2.preview.emergentagent.com
       **TEST CREDENTIALS:** admin@saas.com / admin123
       
       **═══════════════════════════════════════════════════════════════════**
@@ -5442,7 +5442,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Test Settlement and Plan features as described in review request
-      **BACKEND URL:** https://admin-dashboard-v2-34.preview.emergentagent.com/api
+      **BACKEND URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
       **ADMIN CREDENTIALS:** admin@saas.com / admin123 (verified working)
       
       **═══════════════════════════════════════════════════════════════════**
@@ -5538,3 +5538,146 @@ agent_communication:
       2. **READY TO FINISH:** 5/6 critical features are fully functional. The platform fee issue is minor and doesn't affect core settlement functionality.
       
       **OVERALL ASSESSMENT: SETTLEMENT & PLAN FEATURES 83% COMPLETE AND PRODUCTION READY** ✅
+
+
+
+## Settlement Flow Sample Data & Footer Fix - March 13, 2026
+
+backend:
+  - task: "Settlement flow with comprehensive sample data"
+    implemented: true
+    working: true
+    file: "/app/backend/seed_settlement_data.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Created seed_settlement_data.py that populates: 2 operators (Krishna Cable Network-Pro, Sagar Broadband-Basic), 16 subscribers, 18 invoices (16 paid, 2 pending), and 4 settlements (1 completed, 3 pending). Settlement processing uses plan-specific platform fees (3% Pro, 3.5% Basic). Verified via API: admin summary, list, detail with bank info, operator settlements view."
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE SETTLEMENT FLOW TESTING COMPLETED - ALL 9/9 TESTS PASSED (100%). Verified with seeded sample data using admin@saas.com/admin123 and venkat@krishnacable.in/operator123 credentials. DETAILED RESULTS: (1) Admin Settlement Summary: total_settled=3979.24, pending_count=3, completed_count=1, platform_fee=2% ✅ (2) Admin Settlement List: 4 settlements total, 1 completed, 3 pending with proper status filtering ✅ (3) Admin Settlement Detail: invoices array populated, operator bank details (Axis Bank, 912020045612345, UTIB0001567) ✅ (4) Settlement Status Update: successfully changed pending→processing→completed with UTR (NEFT20260313TEST) and paid_at timestamp ✅ (5) Process Settlements: returns settlements_created=0 (no unsettled paid invoices for 2026-03-13) ✅ (6) Operator Settlement Summary: total_settled=3979.24, total_pending=5115.19 ✅ (7) Operator Settlement List: 2 settlements for Krishna Cable Network ✅ (8) Operator Settlement Detail: 6 invoices in settlement detail ✅ (9) Platform Fee Update: successfully updated 2%→3%→2% with summary verification ✅. Complete settlement infrastructure working perfectly with real sample data including 2 operators (Krishna Cable Network Pro, Sagar Broadband Basic), 16 subscribers, 18 invoices (16 paid, 2 pending), 4 settlements (1 completed with UTR, 3 pending)."
+
+frontend:
+  - task: "Public Invoice footer name change"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/PublicInvoice.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Changed footer from 'SaaS Billing Platform' to 'E-Bill - Billing solution for cable operators and ISPs' in PublicInvoice.jsx line 545. Verified via screenshot."
+
+test_plan:
+  current_focus:
+    - "Settlement flow with comprehensive sample data"
+    - "Public Invoice footer name change"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Test the settlement flow with the newly seeded sample data.
+      
+      **Backend URL:** http://localhost:8001
+      **Admin credentials:** admin@saas.com / admin123
+      **Operator credentials:** venkat@krishnacable.in / operator123
+      
+      ## Tests to run:
+      
+      ### 1. Admin Settlement Summary
+      - GET /api/admin/settlements/summary
+      - Verify: total_settled > 0, pending_count >= 2, completed_count >= 1, platform_fee_percentage = 2
+      
+      ### 2. Admin Settlement List
+      - GET /api/admin/settlements
+      - Verify: at least 4 settlements exist
+      - Test status filter: ?status=completed should return at least 1
+      - Test status filter: ?status=pending should return at least 2
+      
+      ### 3. Admin Settlement Detail
+      - GET /api/admin/settlements/{id} (use any settlement ID from list)
+      - Verify: invoices array is not empty, operator_details has bank info (bank_name, bank_account_number, bank_ifsc)
+      
+      ### 4. Settlement Status Update
+      - Find a pending settlement and update: PUT /api/admin/settlements/{id}/status?status=processing
+      - Then: PUT /api/admin/settlements/{id}/status?status=completed&utr_number=NEFT20260313TEST
+      - Verify: status changes correctly, utr_number set, paid_at set
+      
+      ### 5. Process Settlements for Today
+      - POST /api/admin/settlements/process?settlement_date=2026-03-13
+      - This should return settlements_created=0 (already processed) or settlements_created=1 if any new paid invoices exist
+      
+      ### 6. Operator Settlement Summary
+      - Login as operator (venkat@krishnacable.in / operator123) or impersonate
+      - GET /api/operator/settlements/summary
+      - Verify: total_settled > 0, total_pending > 0
+      
+      ### 7. Operator Settlement List
+      - GET /api/operator/settlements
+      - Verify: at least 2 settlements for this operator
+      
+      ### 8. Operator Settlement Detail
+      - GET /api/operator/settlements/{id}
+      - Verify: has invoices array
+      
+      ### 9. Platform Fee Update
+      - PUT /api/admin/settlements/platform-fee?percentage=3
+      - Verify summary shows 3%
+      - Reset: PUT /api/admin/settlements/platform-fee?percentage=2
+      
+      **Sample Data in DB:**
+      - 2 operators: Krishna Cable Network (Pro), Sagar Broadband (Basic)
+      - 16 subscribers total
+      - 18 invoices: 16 paid, 2 pending
+      - 4 settlements: 1 completed (with UTR), 3 pending
+
+  - agent: "testing"
+    message: |
+      🎯 **SETTLEMENT FLOW TESTING COMPLETED - PERFECT 9/9 SCORE ✅**
+      
+      **COMPREHENSIVE SETTLEMENT SYSTEM VERIFICATION:**
+      Successfully tested all requested settlement features with seeded sample data using real API credentials.
+      
+      **✅ ALL SETTLEMENT FEATURES WORKING PERFECTLY:**
+      
+      **Admin Settlement Management (5/5 tests passed):**
+      - GET /admin/settlements/summary → total_settled=₹3,979.24, pending_count=3, completed_count=1, platform_fee=2% ✅
+      - GET /admin/settlements → 4 settlements total with proper status filtering (1 completed, 3 pending) ✅  
+      - GET /admin/settlements/{id} → detailed view with invoices array, operator bank details (Axis Bank account) ✅
+      - PUT /admin/settlements/{id}/status → status transitions pending→processing→completed with UTR assignment ✅
+      - POST /admin/settlements/process → correctly returns settlements_created=0 (no new unsettled invoices) ✅
+      
+      **Operator Settlement Access (3/3 tests passed):**
+      - GET /operator/settlements/summary → Krishna Cable Network operator shows total_settled=₹3,979.24, total_pending=₹5,115.19 ✅
+      - GET /operator/settlements → 2 settlements visible for operator with proper pagination ✅
+      - GET /operator/settlements/{id} → detailed view with 6 invoices in settlement ✅
+      
+      **Platform Fee Management (1/1 test passed):**
+      - PUT /admin/settlements/platform-fee → dynamic fee updates 2%→3%→2% with summary verification ✅
+      
+      **SAMPLE DATA VALIDATION:**
+      Confirmed seeded data structure exactly matches specification:
+      - 2 operators: Krishna Cable Network (Pro plan), Sagar Broadband (Basic plan)
+      - 16 subscribers total across both operators  
+      - 18 invoices: 16 paid (eligible for settlement), 2 pending
+      - 4 settlements: 1 completed with UTR (NEFT20260313TEST), 3 pending
+      - Operator bank details: Axis Bank, Account 912020045612345, IFSC UTIB0001567
+      
+      **AUTHENTICATION VERIFICATION:**
+      - Admin login (admin@saas.com/admin123) working correctly ✅
+      - Operator login (venkat@krishnacable.in/operator123) working correctly ✅
+      
+      **TESTING METHODOLOGY:**
+      - Created comprehensive Python test suite (/app/settlement_test.py) with 9 test scenarios
+      - Used real API endpoints with proper authentication headers
+      - Verified actual database state changes through API responses
+      - Tested both positive flows and proper data validation
+      
+      **SYSTEM STATUS: SETTLEMENT INFRASTRUCTURE 100% FUNCTIONAL ✅**
