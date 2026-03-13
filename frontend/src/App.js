@@ -27,6 +27,7 @@ import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
 import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
+import PublicInvoice from "./pages/PublicInvoice";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -152,6 +153,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/invoice/:id" element={<PublicInvoice />} />
 
           {/* Admin Routes */}
           <Route path="/admin" element={

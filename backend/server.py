@@ -33,6 +33,7 @@ from routers.admin import router as admin_router
 from routers.operator import router as operator_router
 from routers.webhooks import router as webhooks_router
 from routers.backup import router as backup_router, _do_backup
+from routers.public import router as public_router
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -49,6 +50,7 @@ app.include_router(admin_router,     prefix="/api")
 app.include_router(operator_router,  prefix="/api")
 app.include_router(webhooks_router,  prefix="/api")
 app.include_router(backup_router,    prefix="/api")
+app.include_router(public_router,    prefix="/api")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(

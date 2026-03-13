@@ -1,5 +1,5 @@
 """Operator router: profile, plans, subscribers, invoices, staff, reports, subscription, checkout, etc."""
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from fastapi.responses import Response
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
@@ -1159,7 +1159,7 @@ async def bulk_upload_subscribers(
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
 @router.post("/invoices", response_model=InvoiceResponse)
-async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(require_operator)):
+async def create_invoice(data: InvoiceCreate, request: Request, current_user: dict = Depends(require_operator)):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot create invoices")
     if await check_operator_read_only(current_user["operator_id"]):
@@ -1198,6 +1198,24 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
 
     # Auto-send WhatsApp if whatsapp_notifications addon is active (uses platform WhatsApp config)
     auto_wa_sent = False
+    # Build public invoice URL from request origin
+    public_invoice_url = None
+    try:
+        # Get the origin from the request headers (set by browser)
+        origin = request.headers.get("origin") or request.headers.get("referer", "")
+        if origin:
+            # Strip trailing slash and any path
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            # Fallback: use request base URL (strips /api prefix)
+            base_url = str(request.base_url).rstrip("/")
+        if base_url:
+            public_invoice_url = f"{base_url}/invoice/{invoice['id']}"
+    except Exception:
+        pass
+
     if await _has_addon(current_user["operator_id"], "whatsapp_notifications"):
         try:
             wa_config = await _get_platform_whatsapp_config()
@@ -1212,7 +1230,7 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
                     invoice_number=invoice["invoice_number"],
                     amount=f"₹{invoice['final_amount']:,.2f}",
                     due_date=data.due_date.strftime("%d %b %Y"),
-                    payment_link=None,
+                    payment_link=public_invoice_url,
                     template_name_override=template_name
                 )
                 auto_wa_sent = True
@@ -1229,6 +1247,7 @@ async def create_invoice(data: InvoiceCreate, current_user: dict = Depends(requi
     result = response.model_dump()
     result["auto_wa_sent"] = auto_wa_sent
     result["has_whatsapp_addon"] = await _has_addon(current_user["operator_id"], "whatsapp_notifications")
+    result["public_url"] = public_invoice_url
     return result
 
 
