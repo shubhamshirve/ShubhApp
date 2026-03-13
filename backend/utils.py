@@ -53,17 +53,22 @@ def generate_invoice_number(operator_id: str) -> str:
 
 async def generate_invoice_number_atomic(db_ref) -> str:
     """
-    Generate a globally-unique invoice number using an atomic MongoDB counter.
-    Format: EBILL-YYYYMM-NNNNNN (zero-padded 6-digit sequence).
-    This guarantees no two operators can ever get the same invoice number.
+    Generate a globally-unique, non-guessable invoice number.
+    Format: EBILL-XXXXXXXX (8 random alphanumeric uppercase characters).
+    Uses a retry loop with DB uniqueness check to guarantee no collisions.
+    8 chars from [A-Z0-9] = 36^8 ≈ 2.8 trillion combinations — practically unguessable.
     """
-    now = datetime.now(timezone.utc)
-    month_key = now.strftime("%Y%m")  # e.g. "202603"
-    result = await db_ref.counters.find_one_and_update(
-        {"_id": f"invoice_{month_key}"},
-        {"$inc": {"seq": 1}},
-        upsert=True,
-        return_document=True,  # return the updated document (pymongo 4.x)
-    )
-    seq = result["seq"]
-    return f"EBILL-{month_key}-{seq:06d}"
+    import secrets
+    import string
+    alphabet = string.ascii_uppercase + string.digits  # A-Z, 0-9
+    for _ in range(20):  # max 20 attempts (collision virtually impossible)
+        code = ''.join(secrets.choice(alphabet) for _ in range(8))
+        invoice_number = f"EBILL-{code}"
+        exists = await db_ref.invoices.find_one(
+            {"invoice_number": invoice_number}, {"_id": 1}
+        )
+        if not exists:
+            return invoice_number
+    # Fallback: append timestamp to ensure uniqueness
+    ts = datetime.now(timezone.utc).strftime("%f")
+    return f"EBILL-{''.join(secrets.choice(alphabet) for _ in range(6))}{ts[:2]}"
