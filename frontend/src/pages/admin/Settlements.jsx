@@ -7,7 +7,7 @@ import {
   Banknote, ArrowUpRight, Clock, CheckCircle2, AlertCircle,
   Loader2, Search, Filter, ChevronLeft, ChevronRight,
   XCircle, RefreshCw, Eye, ArrowDown, CalendarDays,
-  IndianRupee, TrendingUp, Receipt, Settings2, X
+  IndianRupee, TrendingUp, Receipt, X
 } from "lucide-react";
 
 const formatCurrency = (v) =>
@@ -61,11 +61,6 @@ export default function AdminSettlements() {
   const [newStatus, setNewStatus] = useState("");
   const [utrNumber, setUtrNumber] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
-
-  // Platform fee dialog
-  const [feeDialogOpen, setFeeDialogOpen] = useState(false);
-  const [newFeePercent, setNewFeePercent] = useState("");
-  const [updatingFee, setUpdatingFee] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -150,20 +145,6 @@ export default function AdminSettlements() {
     }
   };
 
-  const handleFeeUpdate = async () => {
-    setUpdatingFee(true);
-    try {
-      await axios.put(`${API}/admin/settlements/platform-fee?percentage=${newFeePercent}`, null, { headers });
-      toast.success(`Platform fee updated to ${newFeePercent}%`);
-      setFeeDialogOpen(false);
-      fetchSummary();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to update platform fee");
-    } finally {
-      setUpdatingFee(false);
-    }
-  };
-
   return (
     <AdminLayout title="Settlements">
     <div className="space-y-6">
@@ -177,16 +158,6 @@ export default function AdminSettlements() {
           <p className="text-sm text-slate-500 mt-1">Process and track operator payment settlements</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setNewFeePercent(summary?.platform_fee_percentage || 2);
-              setFeeDialogOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-          >
-            <Settings2 className="w-4 h-4" />
-            Platform Fee: {summary?.platform_fee_percentage ?? "..."}%
-          </button>
           <button
             onClick={handleProcess}
             disabled={processing}
@@ -627,51 +598,6 @@ export default function AdminSettlements() {
         </div>
       )}
 
-      {/* Platform Fee Dialog */}
-      {feeDialogOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full">
-            <div className="flex items-center justify-between p-5 border-b border-slate-200">
-              <h2 className="text-lg font-bold text-slate-900">Platform Fee Settings</h2>
-              <button onClick={() => setFeeDialogOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <p className="text-sm text-slate-500">
-                This percentage is deducted from operator collections before settlement.
-              </p>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Fee Percentage (%)</label>
-                <input
-                  type="number"
-                  value={newFeePercent}
-                  onChange={(e) => setNewFeePercent(e.target.value)}
-                  min="0"
-                  max="50"
-                  step="0.1"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setFeeDialogOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleFeeUpdate}
-                  disabled={updatingFee}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {updatingFee ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
     </AdminLayout>
   );

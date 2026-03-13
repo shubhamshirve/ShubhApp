@@ -20,8 +20,17 @@ import {
   Image,
   Loader2,
   Upload,
-  Link2
+  Link2,
+  Plus,
+  Trash2,
+  GripVertical
 } from "lucide-react";
+
+const ICON_OPTIONS = [
+  "Users", "FileText", "CreditCard", "MessageCircle", "Receipt", "BarChart3",
+  "Bell", "Shield", "Zap", "IndianRupee", "Clock", "Building2", "Wifi",
+  "TrendingUp", "Phone",
+];
 
 const AdminLandingPage = () => {
   const { authAxios } = useAuth();
@@ -68,6 +77,14 @@ const AdminLandingPage = () => {
     features: {
       title: "Everything You Need to Manage Billing",
       subtitle: "A complete solution for subscription businesses with GST compliance, automated workflows, and seamless payment collection.",
+      items: [
+        { icon: "Users", title: "Subscriber Management", description: "Efficiently manage your subscribers with billing dates, plans, and discounts." },
+        { icon: "FileText", title: "Auto Invoice Generation", description: "Invoices are automatically generated 5 days before billing date." },
+        { icon: "CreditCard", title: "Razorpay Integration", description: "Accept payments via UPI, cards, netbanking with your own gateway." },
+        { icon: "MessageCircle", title: "WhatsApp Notifications", description: "Send invoices and reminders directly to customer's WhatsApp." },
+        { icon: "Receipt", title: "GST Compliant", description: "Full GST support with CGST/SGST calculations and tax invoices." },
+        { icon: "BarChart3", title: "Reports & Analytics", description: "Track revenue, GST collected, pending payments, and more." },
+      ],
     },
     contact: {
       email: "support@teasyservices.com",
@@ -125,6 +142,37 @@ const AdminLandingPage = () => {
   const updateFeaturesList = (value) => {
     const features = value.split(",").map(f => f.trim()).filter(f => f);
     updateNestedState("hero", "features", features);
+  };
+
+  // Feature items management
+  const addFeatureItem = () => {
+    const items = settings?.features?.items || [];
+    if (items.length >= 12) { toast.error("Maximum 12 features allowed"); return; }
+    setSettings(prev => ({
+      ...prev,
+      features: {
+        ...prev.features,
+        items: [...(prev.features?.items || []), { icon: "Zap", title: "", description: "" }]
+      }
+    }));
+  };
+
+  const removeFeatureItem = (index) => {
+    setSettings(prev => ({
+      ...prev,
+      features: {
+        ...prev.features,
+        items: (prev.features?.items || []).filter((_, i) => i !== index)
+      }
+    }));
+  };
+
+  const updateFeatureItem = (index, field, value) => {
+    setSettings(prev => {
+      const items = [...(prev.features?.items || [])];
+      items[index] = { ...items[index], [field]: value };
+      return { ...prev, features: { ...prev.features, items } };
+    });
   };
 
   const handleLogoUpload = async (e) => {
@@ -564,7 +612,7 @@ const AdminLandingPage = () => {
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle>Features Section</CardTitle>
-                <CardDescription>Customize the features section heading</CardDescription>
+                <CardDescription>Customize the features section heading and individual feature cards</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -586,6 +634,83 @@ const AdminLandingPage = () => {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     rows={2}
                   />
+                </div>
+
+                {/* Feature Items */}
+                <div className="pt-4 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="font-medium text-slate-800">Feature Cards</p>
+                      <p className="text-xs text-slate-500">{(settings?.features?.items || []).length} of 12 features</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addFeatureItem}
+                      disabled={(settings?.features?.items || []).length >= 12}
+                      className="gap-1"
+                    >
+                      <Plus className="w-4 h-4" /> Add Feature
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {(settings?.features?.items || []).map((item, idx) => (
+                      <div key={idx} className="flex gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-start pt-1 text-slate-400">
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                          {/* Icon selector */}
+                          <div className="md:col-span-2 space-y-1">
+                            <Label className="text-xs">Icon</Label>
+                            <select
+                              value={item.icon || "Zap"}
+                              onChange={(e) => updateFeatureItem(idx, "icon", e.target.value)}
+                              className="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
+                            >
+                              {ICON_OPTIONS.map(icon => (
+                                <option key={icon} value={icon}>{icon}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {/* Title */}
+                          <div className="md:col-span-4 space-y-1">
+                            <Label className="text-xs">Title</Label>
+                            <Input
+                              value={item.title || ""}
+                              onChange={(e) => updateFeatureItem(idx, "title", e.target.value)}
+                              placeholder="Feature title"
+                            />
+                          </div>
+                          {/* Description */}
+                          <div className="md:col-span-6 space-y-1">
+                            <Label className="text-xs">Description</Label>
+                            <Input
+                              value={item.description || ""}
+                              onChange={(e) => updateFeatureItem(idx, "description", e.target.value)}
+                              placeholder="Feature description..."
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFeatureItem(idx)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 self-center"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {(!settings?.features?.items || settings.features.items.length === 0) && (
+                      <div className="text-center py-8 text-slate-400">
+                        <p className="text-sm">No features configured. Click "Add Feature" to start.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -687,17 +687,6 @@ const OperatorSettings = () => {
                           data-testid="inv-company-phone"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Invoice Prefix</Label>
-                        <Input
-                          value={invoiceForm.invoice_prefix}
-                          onChange={(e) => setInvoiceForm(prev => ({...prev, invoice_prefix: e.target.value}))}
-                          placeholder="INV"
-                          maxLength={10}
-                          data-testid="inv-prefix"
-                        />
-                        <p className="text-xs text-slate-500">Invoice numbers will appear as INV-001, INV-002, etc.</p>
-                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Company Address</Label>

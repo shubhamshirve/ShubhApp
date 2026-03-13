@@ -112,38 +112,27 @@ const LandingPage = () => {
   const contact = { ...defaults.contact, ...(s.contact || {}) };
   const footer = { ...defaults.footer, ...(s.footer || {}) };
 
-  const features = [
-    {
-      icon: Users,
-      title: "Subscriber Management",
-      description: "Efficiently manage your subscribers with billing dates, plans, and discounts."
-    },
-    {
-      icon: FileText,
-      title: "Auto Invoice Generation",
-      description: "Invoices are automatically generated 5 days before billing date."
-    },
-    {
-      icon: CreditCard,
-      title: "Razorpay Integration",
-      description: "Accept payments via UPI, cards, netbanking with your own gateway."
-    },
-    {
-      icon: MessageCircle,
-      title: "WhatsApp Notifications",
-      description: "Send invoices and reminders directly to customer's WhatsApp."
-    },
-    {
-      icon: Receipt,
-      title: "GST Compliant",
-      description: "Full GST support with CGST/SGST calculations and tax invoices."
-    },
-    {
-      icon: BarChart3,
-      title: "Reports & Analytics",
-      description: "Track revenue, GST collected, pending payments, and more."
-    }
+  // Icon name to component mapping for dynamic features
+  const iconMap = {
+    Users, FileText, CreditCard, MessageCircle, Receipt, BarChart3,
+    Bell, Shield, Zap, IndianRupee, Clock, Building2, Wifi, TrendingUp, Phone
+  };
+
+  const defaultFeatures = [
+    { icon: "Users", title: "Subscriber Management", description: "Efficiently manage your subscribers with billing dates, plans, and discounts." },
+    { icon: "FileText", title: "Auto Invoice Generation", description: "Invoices are automatically generated 5 days before billing date." },
+    { icon: "CreditCard", title: "Razorpay Integration", description: "Accept payments via UPI, cards, netbanking with your own gateway." },
+    { icon: "MessageCircle", title: "WhatsApp Notifications", description: "Send invoices and reminders directly to customer's WhatsApp." },
+    { icon: "Receipt", title: "GST Compliant", description: "Full GST support with CGST/SGST calculations and tax invoices." },
+    { icon: "BarChart3", title: "Reports & Analytics", description: "Track revenue, GST collected, pending payments, and more." },
   ];
+
+  const features = (featuresSection.items && featuresSection.items.length > 0)
+    ? featuresSection.items.map(f => ({
+        ...f,
+        icon: f.icon || "Zap",
+      }))
+    : defaultFeatures;
 
   const plans = [
     {
@@ -420,7 +409,7 @@ const LandingPage = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, index) => {
-              const Icon = feature.icon;
+              const Icon = (typeof feature.icon === 'string') ? (iconMap[feature.icon] || Zap) : feature.icon;
               return (
                 <Card key={index} className="border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all duration-300 group">
                   <CardHeader>
