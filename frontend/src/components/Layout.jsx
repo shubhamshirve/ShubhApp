@@ -18,7 +18,8 @@ import {
   Bell,
   Database,
   Tag,
-  MessageSquare
+  MessageSquare,
+  Banknote
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -34,6 +35,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/saas-plans", label: "SaaS Plans", icon: Package },
     { href: "/admin/discount-codes", label: "Discount Codes", icon: Tag },
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+    { href: "/admin/settlements", label: "Settlements", icon: Banknote },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },

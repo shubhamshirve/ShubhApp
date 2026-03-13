@@ -27,6 +27,7 @@ import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
 import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
+import AdminSettlements from "./pages/admin/Settlements";
 import PublicInvoice from "./pages/PublicInvoice";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -204,6 +205,11 @@ function App() {
           <Route path="/admin/error-logs" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminErrorLogs />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/settlements" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminSettlements />
             </ProtectedRoute>
           } />
 

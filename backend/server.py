@@ -262,6 +262,7 @@ async def startup_event():
         run_daily_invoice_generation,
         run_daily_reminder_processing,
         run_daily_expiry_check,
+        run_daily_settlement_processing,
     )
 
     scheduler = AsyncIOScheduler()
@@ -290,9 +291,15 @@ async def startup_event():
         "cron", hour=1, minute=0, id="daily_expiry"
     )
 
+    # Daily settlement processing at 03:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_settlement_processing(db)),
+        "cron", hour=3, minute=0, id="daily_settlements"
+    )
+
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00) UTC")
+    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), settlements(03:00) UTC")
 
 
 @app.on_event("shutdown")
