@@ -34,10 +34,12 @@ const AdminSaaSPlans = () => {
     name: "",
     monthly_price: 0,
     max_subscribers: 100,
+    max_staff: 0,
     trial_enabled: false,
     trial_days: 0,
     gst_applicable: true,
-    included_addons: []
+    included_addons: [],
+    platform_fee_percentage: 3.0
   });
 
   useEffect(() => {
@@ -105,10 +107,12 @@ const AdminSaaSPlans = () => {
       name: plan.name,
       monthly_price: plan.monthly_price,
       max_subscribers: plan.max_subscribers,
+      max_staff: plan.max_staff || 0,
       trial_enabled: plan.trial_enabled,
       trial_days: plan.trial_days,
       gst_applicable: plan.gst_applicable,
-      included_addons: plan.included_addons || []
+      included_addons: plan.included_addons || [],
+      platform_fee_percentage: plan.platform_fee_percentage ?? 3.0
     });
     setShowDialog(true);
   };
@@ -119,10 +123,12 @@ const AdminSaaSPlans = () => {
       name: "",
       monthly_price: 0,
       max_subscribers: 100,
+      max_staff: 0,
       trial_enabled: false,
       trial_days: 0,
       gst_applicable: true,
-      included_addons: []
+      included_addons: [],
+      platform_fee_percentage: 3.0
     });
   };
 
@@ -234,6 +240,16 @@ const AdminSaaSPlans = () => {
                       <span className="text-slate-500">Max Subscribers</span>
                       <span className="font-medium">{plan.max_subscribers.toLocaleString()}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Platform Fee</span>
+                      <span className="font-medium text-indigo-600">{plan.platform_fee_percentage ?? 3}%</span>
+                    </div>
+                    {plan.max_staff > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Max Staff</span>
+                        <span className="font-medium">{plan.max_staff}</span>
+                      </div>
+                    )}
                     {plan.trial_enabled && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Trial</span>
@@ -392,6 +408,31 @@ const AdminSaaSPlans = () => {
                     required
                     data-testid="plan-subscribers-input"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Max Staff</Label>
+                  <Input
+                    type="number"
+                    value={formData.max_staff}
+                    onChange={(e) => setFormData(prev => ({ ...prev, max_staff: parseInt(e.target.value) || 0 }))}
+                    min="0"
+                    data-testid="plan-staff-input"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Platform Fee (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formData.platform_fee_percentage}
+                    onChange={(e) => setFormData(prev => ({ ...prev, platform_fee_percentage: parseFloat(e.target.value) || 0 }))}
+                    min="0"
+                    max="50"
+                    data-testid="plan-fee-input"
+                  />
+                  <p className="text-xs text-slate-500">Fee charged on settlements (excluding GST)</p>
                 </div>
 
                 <div className="space-y-2">

@@ -72,7 +72,9 @@ const LandingPage = () => {
       title_highlight: "Recurring Billing",
       subtitle: "Multi-tenant billing platform for subscription businesses in India. Auto-generate invoices, send WhatsApp reminders, and collect payments through your own payment gateway.",
       cta_primary: "Start Free Trial",
+      cta_primary_link: "/register",
       cta_secondary: "Watch Demo",
+      cta_secondary_link: "#features",
       features: ["No credit card required", "GST compliant invoices", "WhatsApp integration"],
     },
     stats: {
@@ -297,7 +299,7 @@ const LandingPage = () => {
               </p>
               
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
-                <Link to="/register">
+                <Link to={hero.cta_primary_link || "/register"}>
                   <Button 
                     size="lg" 
                     className="px-8 h-12 text-base text-white"
@@ -307,14 +309,16 @@ const LandingPage = () => {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </Link>
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="px-8 h-12 text-base"
-                  style={{ borderColor: colors.primary, color: colors.primary }}
-                >
-                  {hero.cta_secondary}
-                </Button>
+                <a href={hero.cta_secondary_link || "#features"}>
+                  <Button 
+                    size="lg" 
+                    variant="outline" 
+                    className="px-8 h-12 text-base"
+                    style={{ borderColor: colors.primary, color: colors.primary }}
+                  >
+                    {hero.cta_secondary}
+                  </Button>
+                </a>
               </div>
               
               <div className="flex flex-wrap items-center gap-6 text-sm text-slate-500">

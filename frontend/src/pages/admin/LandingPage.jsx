@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "../../App";
+import { useState, useEffect, useRef } from "react";
+import { useAuth, API } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -18,7 +18,9 @@ import {
   Eye,
   ExternalLink,
   Image,
-  Loader2
+  Loader2,
+  Upload,
+  Link2
 } from "lucide-react";
 
 const AdminLandingPage = () => {
@@ -26,6 +28,8 @@ const AdminLandingPage = () => {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const defaultSettings = {
     brand: {
@@ -46,7 +50,9 @@ const AdminLandingPage = () => {
       title_highlight: "Recurring Billing",
       subtitle: "Multi-tenant billing platform for subscription businesses in India. Auto-generate invoices, send WhatsApp reminders, and collect payments through your own payment gateway.",
       cta_primary: "Start Free Trial",
+      cta_primary_link: "/register",
       cta_secondary: "Watch Demo",
+      cta_secondary_link: "#features",
       features: ["No credit card required", "GST compliant invoices", "WhatsApp integration"],
     },
     stats: {
@@ -119,6 +125,42 @@ const AdminLandingPage = () => {
   const updateFeaturesList = (value) => {
     const features = value.split(",").map(f => f.trim()).filter(f => f);
     updateNestedState("hero", "features", features);
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload a PNG, JPG, or SVG image");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size must be less than 5MB");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await authAxios.post('/admin/upload-logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      updateNestedState("brand", "logo_url", res.data.url);
+      toast.success("Logo uploaded successfully!");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to upload logo");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   if (loading) {
@@ -240,12 +282,42 @@ const AdminLandingPage = () => {
                       id="logo-url"
                       value={settings?.brand?.logo_url || ""}
                       onChange={(e) => updateNestedState("brand", "logo_url", e.target.value)}
-                      placeholder="/ebill-logo.png"
+                      placeholder="/ebill-logo.svg"
                     />
-                    <p className="text-xs text-slate-500">Path to logo image (e.g., /ebill-logo.png)</p>
+                    <p className="text-xs text-slate-500">Path to logo image or external URL</p>
                   </div>
                 </div>
                 
+                {/* Logo Upload */}
+                <div className="border-t pt-4">
+                  <Label className="mb-2 block">Upload New Logo</Label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      id="logo-upload"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="gap-2"
+                    >
+                      {uploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      {uploading ? "Uploading..." : "Choose File"}
+                    </Button>
+                    <p className="text-xs text-slate-500">PNG, JPG, or SVG (max 5MB)</p>
+                  </div>
+                </div>
+
                 {/* Logo Preview */}
                 {settings?.brand?.logo_url && (
                   <div className="mt-4 p-4 bg-slate-50 rounded-lg">
@@ -429,6 +501,18 @@ const AdminLandingPage = () => {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="hero-cta-primary-link">Primary CTA Link</Label>
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-slate-400" />
+                      <Input
+                        id="hero-cta-primary-link"
+                        value={settings?.hero?.cta_primary_link || ""}
+                        onChange={(e) => updateNestedState("hero", "cta_primary_link", e.target.value)}
+                        placeholder="/register"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="hero-cta-secondary">Secondary CTA Button</Label>
                     <Input
                       id="hero-cta-secondary"
@@ -436,6 +520,18 @@ const AdminLandingPage = () => {
                       onChange={(e) => updateNestedState("hero", "cta_secondary", e.target.value)}
                       placeholder="Watch Demo"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hero-cta-secondary-link">Secondary CTA Link</Label>
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-slate-400" />
+                      <Input
+                        id="hero-cta-secondary-link"
+                        value={settings?.hero?.cta_secondary_link || ""}
+                        onChange={(e) => updateNestedState("hero", "cta_secondary_link", e.target.value)}
+                        placeholder="#features"
+                      />
+                    </div>
                   </div>
                 </div>
                 

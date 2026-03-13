@@ -1,8 +1,11 @@
 """Admin: SaaS Plans, Operators, Settings, Gateways, Addons, Dashboard, Audit, Cron, Reports."""
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
+import os
+import uuid
+import shutil
 
 from database import db
 from models import (
@@ -20,6 +23,10 @@ from dependencies import require_admin, get_current_user
 from audit import log_audit
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+# Upload directory for logos
+UPLOAD_DIR = "/app/frontend/public/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
@@ -1616,3 +1623,41 @@ async def get_public_landing_page_settings():
     if not settings:
         return DEFAULT_LANDING_PAGE_SETTINGS
     return settings.get("settings", DEFAULT_LANDING_PAGE_SETTINGS)
+
+
+
+@router.post("/upload-logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload a logo image for the landing page."""
+    # Validate file type
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, and SVG images are allowed")
+    
+    # Validate file size (5MB max)
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 5MB")
+    
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    filename = f"logo_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    # Save file
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    # Return the public URL
+    public_url = f"/uploads/{filename}"
+    
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "upload", "logo", None, {"filename": filename},
+        ip_address=current_user.get("_ip_address")
+    )
+    
+    return {"message": "Logo uploaded successfully", "url": public_url, "filename": filename}

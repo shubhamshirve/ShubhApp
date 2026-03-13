@@ -162,6 +162,7 @@ class SaaSPlanCreate(BaseModel):
     trial_days: int = 0
     gst_applicable: bool = True
     included_addons: List[str] = []
+    platform_fee_percentage: float = 3.0
 
 
 class SaaSPlanResponse(BaseModel):
@@ -175,6 +176,7 @@ class SaaSPlanResponse(BaseModel):
     trial_days: int
     gst_applicable: bool
     included_addons: List[str] = []
+    platform_fee_percentage: Optional[float] = 3.0
     status: str
     created_at: datetime
 
