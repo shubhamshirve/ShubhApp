@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://otp-registration-1.preview.emergentagent.com/api"
+BACKEND_URL = "https://admin-dashboard-v2-34.preview.emergentagent.com/api"
 
 class OTPTestRunner:
     def __init__(self):

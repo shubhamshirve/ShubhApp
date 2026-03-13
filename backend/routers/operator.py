@@ -980,6 +980,19 @@ async def delete_subscriber(subscriber_id: str, current_user: dict = Depends(req
         raise HTTPException(status_code=403, detail="Only admin can delete subscribers. Use suspend instead.")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
+    # Check for linked invoices that are not cancelled
+    linked_invoices = await db.invoices.find(
+        {"subscriber_id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None, "status": {"$ne": "cancelled"}}
+    ).to_list(None)
+    
+    if linked_invoices:
+        invoice_numbers = ", ".join([inv.get("invoice_number", inv.get("id", "")) for inv in linked_invoices[:5]])
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete subscriber with active invoices. Please cancel these invoices first: {invoice_numbers}"
+        )
+    
     result = await db.subscribers.update_one(
         {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None},
         {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}

@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 # Test Configuration
-BACKEND_URL = "https://otp-registration-1.preview.emergentagent.com/api"
+BACKEND_URL = "https://admin-dashboard-v2-34.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 

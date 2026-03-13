@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { API, useAuth } from "../../App";
+import { AdminLayout } from "../../components/Layout";
 import { toast } from "sonner";
 import {
   Banknote, ArrowUpRight, Clock, CheckCircle2, AlertCircle,
@@ -164,7 +165,8 @@ export default function AdminSettlements() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <AdminLayout title="Settlements">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -649,5 +651,6 @@ export default function AdminSettlements() {
         </div>
       )}
     </div>
+    </AdminLayout>
   );
 }

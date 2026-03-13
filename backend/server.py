@@ -198,24 +198,13 @@ async def seed_data():
     # SaaS Plans — only seed if none exist
     if not await db.saas_plans.find_one({"deleted_at": None}):
         plans = [
-            {"id": generate_id(), "name": "Starter (Trial)", "monthly_price": 0,
-             "max_subscribers": 250, "max_staff": 0, "trial_enabled": True, "trial_days": 3,
-             "gst_applicable": False, "included_addons": [],
+            {"id": generate_id(), "name": "Basic", "monthly_price": 500,
+             "max_subscribers": 200, "max_staff": 0, "trial_enabled": False, "trial_days": 0,
+             "gst_applicable": True, "included_addons": [],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-            {"id": generate_id(), "name": "Basic", "monthly_price": 1100,
-             "max_subscribers": 500, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
-             "gst_applicable": True, "included_addons": ["payment_gateway", "whatsapp_notifications"],
-             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-            {"id": generate_id(), "name": "Professional", "monthly_price": 2000,
-             "max_subscribers": 1000, "max_staff": 10, "trial_enabled": False, "trial_days": 0,
-             "gst_applicable": True,
-             "included_addons": ["payment_gateway", "whatsapp_notifications", "audit_log", "announcement"],
-             "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-            {"id": generate_id(), "name": "Enterprise", "monthly_price": 5800,
-             "max_subscribers": 3000, "max_staff": 20, "trial_enabled": False, "trial_days": 0,
-             "gst_applicable": True,
-             "included_addons": ["payment_gateway", "custom_payment_gateway", "whatsapp_notifications",
-                                  "audit_log", "announcement", "staff_management"],
+            {"id": generate_id(), "name": "Pro", "monthly_price": 2500,
+             "max_subscribers": 1000, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
+             "gst_applicable": True, "included_addons": [],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
         ]
         await db.saas_plans.insert_many(plans)
