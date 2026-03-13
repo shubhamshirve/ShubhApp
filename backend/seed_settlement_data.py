@@ -131,7 +131,7 @@ async def seed_settlement_data():
             "email": "venkat@krishnacable.in",
             "phone": "9876543210",
             "address": "Plot 45, Industrial Area, Hyderabad 500032",
-            "gstin": "36AABCK1234H1ZM",
+            "gst_number": "36AABCK1234H1ZM",
             "charge_gst": True,
             "saas_plan_id": pro_plan_id,
             "saas_plan_name": "Pro",
@@ -177,7 +177,7 @@ async def seed_settlement_data():
             "email": "sagar@sagarbroadband.com",
             "phone": "8765432109",
             "address": "Shop 12, MG Road, Pune 411001",
-            "gstin": "27AABCS5678E1ZP",
+            "gst_number": "27AABCS5678E1ZP",
             "charge_gst": True,
             "saas_plan_id": basic_plan_id,
             "saas_plan_name": "Basic",
@@ -285,7 +285,7 @@ async def seed_settlement_data():
     op1_sub_ids = []
     for sub in op1_subscribers_data:
         existing = await db.subscribers.find_one({
-            "phone": sub["phone"], "operator_id": op1_id, "deleted_at": None
+            "whatsapp_number": sub["phone"], "operator_id": op1_id, "deleted_at": None
         })
         if existing:
             op1_sub_ids.append(existing["id"])
@@ -294,11 +294,12 @@ async def seed_settlement_data():
         plan_idx = len(op1_sub_ids) % len(plan_ids[op1_id])
         await db.subscribers.insert_one({
             "id": sid, "operator_id": op1_id,
-            "name": sub["name"], "phone": sub["phone"],
+            "name": sub["name"], "whatsapp_number": sub["phone"],
             "email": sub.get("email"), "address": sub.get("address"),
             "plan_id": plan_ids[op1_id][plan_idx],
             "plan_name": plans_data[op1_id][plan_idx]["name"],
             "billing_date": 15,
+            "discount": 0,
             "status": "active",
             "created_at": (now - timedelta(days=30)).isoformat(),
             "updated_at": now.isoformat(),
@@ -319,7 +320,7 @@ async def seed_settlement_data():
     op2_sub_ids = []
     for sub in op2_subscribers_data:
         existing = await db.subscribers.find_one({
-            "phone": sub["phone"], "operator_id": op2_id, "deleted_at": None
+            "whatsapp_number": sub["phone"], "operator_id": op2_id, "deleted_at": None
         })
         if existing:
             op2_sub_ids.append(existing["id"])
@@ -328,11 +329,12 @@ async def seed_settlement_data():
         plan_idx = len(op2_sub_ids) % len(plan_ids[op2_id])
         await db.subscribers.insert_one({
             "id": sid, "operator_id": op2_id,
-            "name": sub["name"], "phone": sub["phone"],
+            "name": sub["name"], "whatsapp_number": sub["phone"],
             "email": sub.get("email"), "address": sub.get("address"),
             "plan_id": plan_ids[op2_id][plan_idx],
             "plan_name": plans_data[op2_id][plan_idx]["name"],
             "billing_date": 1,
+            "discount": 0,
             "status": "active",
             "created_at": (now - timedelta(days=30)).isoformat(),
             "updated_at": now.isoformat(),

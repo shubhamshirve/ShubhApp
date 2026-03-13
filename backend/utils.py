@@ -46,5 +46,24 @@ def decode_token(token: str) -> dict:
 
 
 def generate_invoice_number(operator_id: str) -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    """Legacy sync fallback — prefer generate_invoice_number_atomic() for concurrency safety."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")[:18]
     return f"INV-{operator_id[:8].upper()}-{timestamp}"
+
+
+async def generate_invoice_number_atomic(db_ref) -> str:
+    """
+    Generate a globally-unique invoice number using an atomic MongoDB counter.
+    Format: EBILL-YYYYMM-NNNNNN (zero-padded 6-digit sequence).
+    This guarantees no two operators can ever get the same invoice number.
+    """
+    now = datetime.now(timezone.utc)
+    month_key = now.strftime("%Y%m")  # e.g. "202603"
+    result = await db_ref.counters.find_one_and_update(
+        {"_id": f"invoice_{month_key}"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,  # return the updated document (pymongo 4.x)
+    )
+    seq = result["seq"]
+    return f"EBILL-{month_key}-{seq:06d}"

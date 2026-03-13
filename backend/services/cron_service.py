@@ -292,9 +292,9 @@ class CronJobService:
         inv_settings = await self.db.invoice_settings.find_one(
             {"operator_id": operator["id"]}, {"_id": 0}
         )
-        invoice_prefix = (inv_settings or {}).get("invoice_prefix") or "INV"
-        timestamp = now.strftime("%Y%m%d%H%M%S")
-        invoice_number = f"{invoice_prefix}-{operator['id'][:8].upper()}-{timestamp}"
+        # Generate globally unique invoice number using atomic counter
+        from utils import generate_invoice_number_atomic
+        invoice_number = await generate_invoice_number_atomic(self.db)
         
         # Create invoice
         invoice = {

@@ -18,7 +18,7 @@ from models import (
     PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
     ReminderSettingsUpdate,
 )
-from utils import generate_id, hash_password, generate_invoice_number
+from utils import generate_id, hash_password, generate_invoice_number, generate_invoice_number_atomic
 from dependencies import require_operator, require_operator_no_staff, check_operator_read_only
 from audit import log_audit
 
@@ -106,8 +106,41 @@ async def update_operator_profile(data: OperatorUpdate, current_user: dict = Dep
         raise HTTPException(status_code=400, detail="Admin users don't have operator profile")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode. Please renew subscription.")
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+
+    raw = data.model_dump()
+    explicitly_set = data.model_fields_set  # fields actually sent in request body
+
+    # Build update: only include fields that were explicitly sent
+    update_data = {}
+    for k, v in raw.items():
+        if k in explicitly_set:
+            update_data[k] = v  # could be None (for clearing), or a real value
+
     update_data.pop("status", None)
+
+    # GST validation: cannot enable charge_gst without a valid GST number
+    if update_data.get("charge_gst") is True:
+        # Check if a valid gst_number will exist after this update
+        new_gst = update_data.get("gst_number") if "gst_number" in update_data else None
+        if new_gst:
+            pass  # new valid GST provided in this update
+        elif "gst_number" in update_data and not new_gst:
+            # Explicitly clearing gst_number while enabling GST - not allowed
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot enable GST charging without a valid GSTIN. Please add your GST number first."
+            )
+        else:
+            # gst_number not in update, check existing DB
+            existing = await db.operators.find_one(
+                {"id": current_user["operator_id"]}, {"_id": 0, "gst_number": 1}
+            )
+            if not (existing and existing.get("gst_number")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enable GST charging without a valid GSTIN. Please add your GST number first."
+                )
+
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.operators.update_one({"id": current_user["operator_id"]}, {"$set": update_data})
     updated = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
@@ -780,10 +813,28 @@ async def create_operator_plan(data: OperatorPlanCreate, current_user: dict = De
 async def get_operator_plans(current_user: dict = Depends(require_operator)):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot access operator plans")
-    plans = await db.operator_plans.find(
-        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-    ).to_list(100)
-    return [OperatorPlanResponse(**{**p, "created_at": datetime.fromisoformat(p["created_at"])}) for p in plans]
+    try:
+        plans = await db.operator_plans.find(
+            {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+        ).to_list(100)
+        parsed_plans = []
+        for p in plans:
+            try:
+                created_at = p["created_at"]
+                # Handle both string and datetime formats
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at)
+                elif not isinstance(created_at, datetime):
+                    created_at = datetime.now(timezone.utc)
+                parsed_plans.append(OperatorPlanResponse(**{**p, "created_at": created_at}))
+            except Exception as e:
+                logger.error(f"Error parsing plan {p.get('id', 'unknown')}: {e}")
+                # Skip this plan if parsing fails
+                continue
+        return parsed_plans
+    except Exception as e:
+        logger.error(f"Error in get_operator_plans: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving plans: {str(e)}")
 
 
 @router.put("/plans/{plan_id}", response_model=OperatorPlanResponse)
@@ -1217,7 +1268,9 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         raise HTTPException(status_code=404, detail="Plan not found")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     tax_amount = 0
-    if operator.get("charge_gst") and plan.get("tax_percentage", 0) > 0:
+    # GST can only be applied if operator has a valid GSTIN
+    can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
+    if can_charge_gst and plan.get("tax_percentage", 0) > 0:
         if plan.get("tax_type") == "exclusive":
             tax_amount = (data.base_amount - data.discount) * (plan["tax_percentage"] / 100)
         elif plan.get("tax_type") == "inclusive":
@@ -1226,7 +1279,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     now = datetime.now(timezone.utc)
     invoice = {
         "id": generate_id(),
-        "invoice_number": generate_invoice_number(current_user["operator_id"]),
+        "invoice_number": await generate_invoice_number_atomic(db),
         "subscriber_id": data.subscriber_id, "subscriber_name": subscriber["name"],
         "plan_id": data.plan_id, "plan_name": plan["name"],
         "base_amount": data.base_amount, "discount": data.discount,
@@ -1596,6 +1649,67 @@ async def get_pending_overdue_report(current_user: dict = Depends(require_operat
     }
 
 
+@router.get("/reports/invoices")
+async def get_report_invoices(
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc",
+    current_user: dict = Depends(require_operator),
+):
+    """Get paginated invoice list with filters for reports."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
+    query = {"operator_id": current_user["operator_id"], "deleted_at": None}
+
+    # Status filter
+    if status and status != "all":
+        query["status"] = status
+
+    # Date range filter on created_at
+    if start_date or end_date:
+        date_filter = {}
+        if start_date:
+            date_filter["$gte"] = start_date
+        if end_date:
+            date_filter["$lte"] = end_date + "T23:59:59"
+        query["created_at"] = date_filter
+
+    # Text search on invoice_number or subscriber_name
+    if search and search.strip():
+        search_regex = {"$regex": search.strip(), "$options": "i"}
+        query["$or"] = [
+            {"invoice_number": search_regex},
+            {"subscriber_name": search_regex},
+        ]
+
+    # Sort
+    sort_dir = -1 if sort_order == "desc" else 1
+    valid_sort_fields = {"created_at", "final_amount", "due_date", "invoice_number", "status"}
+    sort_field = sort_by if sort_by in valid_sort_fields else "created_at"
+
+    # Count total
+    total = await db.invoices.count_documents(query)
+
+    # Paginate
+    skip = (page - 1) * limit
+    invoices = await db.invoices.find(query, {"_id": 0}).sort(
+        sort_field, sort_dir
+    ).skip(skip).limit(limit).to_list(limit)
+
+    return {
+        "invoices": invoices,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": max(1, -(-total // limit)),  # ceil division
+    }
+
+
 # ─── Audit Logs ────────────────────────────────────────────────────────────
 
 @router.get("/audit-logs", response_model=List[AuditLogResponse])
@@ -1618,7 +1732,6 @@ async def get_operator_audit_logs(
 async def get_operator_settlements_summary(current_user: dict = Depends(require_operator)):
     """Get settlement summary for operator."""
     now = datetime.now(timezone.utc)
-    today = now.strftime("%Y-%m-%d")
     start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
 
     all_settlements = await db.settlements.find(
@@ -1794,7 +1907,7 @@ async def send_bulk_notification(data: BulkNotificationRequest, current_user: di
 # ─── Reminder Settings ──────────────────────────────────────────────────────
 
 VALID_BEFORE_DAYS = [1, 2, 3, 5, 7]
-VALID_AFTER_DAYS = [1, 3, 5, 7, 14, 30]
+VALID_AFTER_DAYS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
 @router.get("/reminder-settings")
@@ -1806,14 +1919,20 @@ async def get_reminder_settings(current_user: dict = Depends(require_operator)):
 
     doc = await db.reminder_settings.find_one({"operator_id": operator_id}, {"_id": 0})
     if not doc:
-        return {
+        # Auto-create default schedule: 7,5,3,2,1 days before + on due + 1-10 days after
+        now = datetime.now(timezone.utc).isoformat()
+        default_settings = {
             "operator_id": operator_id,
-            "enabled": False,
-            "remind_before_due": [],
-            "remind_on_due": False,
-            "remind_after_due": [],
-            "max_reminders_per_invoice": 5,
+            "enabled": True,
+            "remind_before_due": [7, 5, 3, 2, 1],
+            "remind_on_due": True,
+            "remind_after_due": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "max_reminders_per_invoice": 20,
+            "created_at": now,
+            "updated_at": now,
         }
+        await db.reminder_settings.insert_one({**default_settings})
+        return default_settings
     doc.pop("_id", None)
     return doc
 

@@ -367,7 +367,13 @@ const OperatorSettings = () => {
                     </div>
                     <Switch
                       checked={profileForm.charge_gst}
-                      onCheckedChange={(checked) => setProfileForm(prev => ({ ...prev, charge_gst: checked }))}
+                      onCheckedChange={(checked) => {
+                        if (checked && !profileForm.gst_number?.trim()) {
+                          toast.error("Please add your GST number first before enabling GST charging");
+                          return;
+                        }
+                        setProfileForm(prev => ({ ...prev, charge_gst: checked }));
+                      }}
                       disabled={isReadOnly}
                       data-testid="charge-gst-switch"
                     />
@@ -933,7 +939,7 @@ const OperatorSettings = () => {
                         <p className="text-xs text-slate-500 ml-6">Send follow-up reminders for overdue invoices</p>
                       </div>
                       <div className="flex flex-wrap gap-2 ml-6">
-                        {[1, 3, 5, 7, 14, 30].map(day => (
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(day => (
                           <button
                             key={`after-${day}`}
                             type="button"
