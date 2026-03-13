@@ -148,6 +148,36 @@ async def update_invoice_settings(data: InvoiceCustomization, current_user: dict
     return {"message": "Invoice settings updated"}
 
 
+# ─── Theme Settings ─────────────────────────────────────────────────────────
+
+@router.get("/theme-settings")
+async def get_theme_settings(current_user: dict = Depends(require_operator)):
+    """Get theme settings for the operator."""
+    settings = await db.operator_theme.find_one(
+        {"operator_id": current_user["operator_id"]}, {"_id": 0}
+    )
+    if not settings:
+        # Return default based on plan
+        operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
+        is_pro = operator and operator.get("saas_plan_name", "").lower() in ["pro", "professional", "enterprise"]
+        return {"theme": "classic" if is_pro else "modern", "operator_id": current_user["operator_id"]}
+    return settings
+
+
+@router.put("/theme-settings")
+async def update_theme_settings(theme: str, current_user: dict = Depends(require_operator)):
+    """Update theme settings for the operator."""
+    if theme not in ["modern", "classic"]:
+        raise HTTPException(status_code=400, detail="Invalid theme. Choose 'modern' or 'classic'")
+    now = datetime.now(timezone.utc)
+    await db.operator_theme.update_one(
+        {"operator_id": current_user["operator_id"]},
+        {"$set": {"operator_id": current_user["operator_id"], "theme": theme, "updated_at": now.isoformat()}},
+        upsert=True
+    )
+    return {"message": f"Theme updated to {theme}", "theme": theme}
+
+
 # ─── Announcements ─────────────────────────────────────────────────────────
 
 @router.post("/announcements")
@@ -438,7 +468,7 @@ async def create_checkout_order(
         "created_at": now.isoformat(), "deleted_at": None
     })
 
-    platform_name = settings.get("platform_name", "SaaS Billing Platform") if settings else "SaaS Billing Platform"
+    platform_name = settings.get("platform_name", "E-Bill") if settings else "E-Bill"
     return {
         "razorpay_order_id": order["id"], "razorpay_key": razorpay_key,
         "amount": rounded_total * 100, "currency": "INR",

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
+from pydantic import BaseModel
 
 from database import db
 from models import (
@@ -301,6 +302,43 @@ async def return_from_impersonate(current_user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Admin user not found")
     token = create_token({"id": admin_user["id"], "email": admin_user["email"], "role": "admin"})
     return {"access_token": token, "token_type": "bearer"}
+
+
+class AdminChangePasswordRequest(BaseModel):
+    new_password: str
+
+
+@router.put("/operators/{operator_id}/change-password")
+async def admin_change_operator_password(
+    operator_id: str,
+    data: AdminChangePasswordRequest,
+    current_user: dict = Depends(require_admin)
+):
+    """Admin can reset an operator's password."""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+
+    user = await db.users.find_one({"operator_id": operator_id, "role": "operator", "deleted_at": None}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Operator user account not found")
+
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    new_hashed = hash_password(data.new_password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "password_reset", "operator", operator_id, {"operator_name": operator.get("company_name")},
+        ip_address=current_user.get("_ip_address")
+    )
+
+    return {"message": f"Password changed successfully for {operator.get('company_name')}"}
 
 
 # ─── Addons ──────────────────────────────────────────────────────────────────
@@ -1380,7 +1418,7 @@ DEFAULT_LANDING_PAGE_SETTINGS = {
         "name": "E-Bill",
         "tagline": "ISP & Cable Billing Solutions",
         "business_name": "Teasy Services",
-        "logo_url": "/ebill-logo.png",
+        "logo_url": "/ebill-logo.svg",
     },
     "colors": {
         "primary": "#0066B2",

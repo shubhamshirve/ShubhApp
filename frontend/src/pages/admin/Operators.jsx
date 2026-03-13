@@ -58,7 +58,8 @@ import {
   LogIn,
   Plus,
   Calendar,
-  Trash2
+  Trash2,
+  KeyRound
 } from "lucide-react";
 
 const AdminOperators = () => {
@@ -99,6 +100,12 @@ const AdminOperators = () => {
   // Delete Confirmation Dialog
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // Change Password Dialog
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     fetchOperators();
@@ -241,6 +248,33 @@ const AdminOperators = () => {
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords don't match");
+      return;
+    }
+    
+    setChangingPassword(true);
+    try {
+      await authAxios.put(`/admin/operators/${selectedOperator.id}/change-password`, {
+        new_password: newPassword
+      });
+      toast.success(`Password changed for ${selectedOperator.company_name}`);
+      setShowPasswordDialog(false);
+      setNewPassword("");
+      setConfirmPassword("");
+      setSelectedOperator(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to change password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const handleActivate = async (operatorId) => {
     try {
       await authAxios.post(`/admin/operators/${operatorId}/activate`);
@@ -375,6 +409,15 @@ const AdminOperators = () => {
                             }}>
                               <Package className="w-4 h-4 mr-2" />
                               Assign Plan
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedOperator(operator);
+                              setNewPassword("");
+                              setConfirmPassword("");
+                              setShowPasswordDialog(true);
+                            }}>
+                              <KeyRound className="w-4 h-4 mr-2" />
+                              Change Password
                             </DropdownMenuItem>
                             {operator.status === "suspended" ? (
                               <DropdownMenuItem 
@@ -732,6 +775,57 @@ const AdminOperators = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Change Password Dialog */}
+        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Change Password</DialogTitle>
+              <DialogDescription>
+                Set a new password for {selectedOperator?.company_name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  minLength={6}
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                Password must be at least 6 characters.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleChangePassword} 
+                disabled={changingPassword || !newPassword || newPassword !== confirmPassword}
+                className="bg-[#0066B2] hover:bg-[#004080]"
+              >
+                {changingPassword ? "Changing..." : "Change Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );

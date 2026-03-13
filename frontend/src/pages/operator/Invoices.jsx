@@ -52,7 +52,9 @@ import {
   QrCode,
   Send,
   Bell,
-  MessageCircle
+  MessageCircle,
+  ExternalLink,
+  Eye
 } from "lucide-react";
 
 const OperatorInvoices = () => {
@@ -403,6 +405,12 @@ const OperatorInvoices = () => {
                             <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}>
                               <Download className="w-4 h-4 mr-2 text-slate-600" />
                               Download PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => window.open(`/invoice/${invoice.id}`, '_blank')}
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2 text-blue-600" />
+                              View Public Invoice
                             </DropdownMenuItem>
                             {features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>

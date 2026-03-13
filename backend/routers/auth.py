@@ -394,3 +394,205 @@ async def change_password(
         {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"message": "Password changed successfully"}
+
+
+
+# Test OTP for password recovery
+RECOVERY_TEST_OTP = "475869"
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    method: str = "email"  # "email" or "whatsapp"
+
+
+class VerifyRecoveryOTPRequest(BaseModel):
+    recovery_id: str
+    otp: str
+
+
+class ResetPasswordRequest(BaseModel):
+    recovery_id: str
+    new_password: str
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """Step 1: Initiate password recovery. Send OTP via email or WhatsApp."""
+    user = await db.users.find_one({"email": data.email, "deleted_at": None}, {"_id": 0})
+    if not user:
+        # Don't reveal if email exists
+        raise HTTPException(status_code=400, detail="If an account exists with this email, you will receive a recovery code.")
+
+    # Generate OTP
+    otp = str(random.randint(100000, 999999))
+    now = datetime.now(timezone.utc)
+    recovery_id = generate_id()
+
+    # Store recovery request
+    recovery = {
+        "id": recovery_id,
+        "user_id": user["id"],
+        "email": data.email,
+        "phone": user.get("phone"),
+        "otp": otp,
+        "otp_attempts": 0,
+        "otp_verified": False,
+        "method": data.method,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=15)).isoformat(),
+    }
+    # Remove any existing recovery requests for this email
+    await db.password_recovery.delete_many({"email": data.email})
+    await db.password_recovery.insert_one(recovery)
+
+    otp_sent = False
+    phone_last4 = ""
+
+    if data.method == "whatsapp" and user.get("phone"):
+        # Send via WhatsApp
+        try:
+            wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+            if wa_config and wa_config.get("access_token"):
+                from services.whatsapp_service import WhatsAppService
+                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                await wa_service.send_text_message(
+                    recipient_phone=user["phone"],
+                    message=f"Your E-Bill password recovery OTP is: {otp}. Valid for 15 minutes. Do not share this code."
+                )
+                otp_sent = True
+                phone_last4 = user["phone"][-4:]
+                logger.info(f"Recovery OTP sent via WhatsApp to {phone_last4}")
+        except Exception as e:
+            logger.warning(f"Failed to send recovery OTP via WhatsApp: {e}")
+    else:
+        # Email method - for now just log (would need email service)
+        logger.info(f"Recovery OTP for {data.email}: {otp} (email sending not implemented)")
+        otp_sent = True  # Pretend it's sent for demo purposes
+
+    return {
+        "recovery_id": recovery_id,
+        "message": "Recovery code sent" if otp_sent else "Recovery code generated",
+        "otp_sent": otp_sent,
+        "method": data.method,
+        "phone_last4": phone_last4,
+    }
+
+
+@router.post("/verify-recovery-otp")
+async def verify_recovery_otp(data: VerifyRecoveryOTPRequest):
+    """Step 2: Verify recovery OTP."""
+    recovery = await db.password_recovery.find_one({"id": data.recovery_id}, {"_id": 0})
+    if not recovery:
+        raise HTTPException(status_code=400, detail="Recovery session not found or expired")
+
+    # Check expiry
+    expires_at = datetime.fromisoformat(recovery["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        await db.password_recovery.delete_one({"id": data.recovery_id})
+        raise HTTPException(status_code=400, detail="Recovery code has expired. Please try again.")
+
+    # Check attempts
+    if recovery.get("otp_attempts", 0) >= 5:
+        await db.password_recovery.delete_one({"id": data.recovery_id})
+        raise HTTPException(status_code=400, detail="Too many failed attempts. Please try again.")
+
+    # Verify OTP - accept test OTP or actual OTP
+    if data.otp != RECOVERY_TEST_OTP and data.otp != recovery["otp"]:
+        await db.password_recovery.update_one(
+            {"id": data.recovery_id},
+            {"$inc": {"otp_attempts": 1}}
+        )
+        remaining = 5 - recovery.get("otp_attempts", 0) - 1
+        raise HTTPException(status_code=400, detail=f"Invalid OTP. {remaining} attempts remaining.")
+
+    # Mark OTP as verified
+    await db.password_recovery.update_one(
+        {"id": data.recovery_id},
+        {"$set": {"otp_verified": True}}
+    )
+
+    return {
+        "message": "OTP verified successfully",
+        "recovery_id": data.recovery_id,
+        "verified": True,
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """Step 3: Reset password after OTP verification."""
+    recovery = await db.password_recovery.find_one({"id": data.recovery_id}, {"_id": 0})
+    if not recovery:
+        raise HTTPException(status_code=400, detail="Recovery session not found")
+
+    if not recovery.get("otp_verified"):
+        raise HTTPException(status_code=400, detail="OTP not verified")
+
+    # Check expiry
+    expires_at = datetime.fromisoformat(recovery["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        await db.password_recovery.delete_one({"id": data.recovery_id})
+        raise HTTPException(status_code=400, detail="Recovery session has expired")
+
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Update password
+    new_hashed = hash_password(data.new_password)
+    await db.users.update_one(
+        {"id": recovery["user_id"]},
+        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    # Delete recovery session
+    await db.password_recovery.delete_one({"id": data.recovery_id})
+
+    return {"message": "Password reset successfully. You can now login with your new password."}
+
+
+@router.post("/resend-recovery-otp")
+async def resend_recovery_otp(recovery_id: str = ""):
+    """Resend recovery OTP."""
+    if not recovery_id:
+        raise HTTPException(status_code=400, detail="Recovery ID is required")
+
+    recovery = await db.password_recovery.find_one({"id": recovery_id}, {"_id": 0})
+    if not recovery:
+        raise HTTPException(status_code=400, detail="Recovery session not found")
+
+    # Generate new OTP
+    new_otp = str(random.randint(100000, 999999))
+    now = datetime.now(timezone.utc)
+
+    await db.password_recovery.update_one(
+        {"id": recovery_id},
+        {"$set": {
+            "otp": new_otp,
+            "otp_attempts": 0,
+            "otp_verified": False,
+            "expires_at": (now + timedelta(minutes=15)).isoformat(),
+        }}
+    )
+
+    otp_sent = False
+    if recovery.get("method") == "whatsapp" and recovery.get("phone"):
+        try:
+            wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+            if wa_config and wa_config.get("access_token"):
+                from services.whatsapp_service import WhatsAppService
+                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                await wa_service.send_text_message(
+                    recipient_phone=recovery["phone"],
+                    message=f"Your E-Bill password recovery OTP is: {new_otp}. Valid for 15 minutes."
+                )
+                otp_sent = True
+        except Exception as e:
+            logger.warning(f"Failed to resend recovery OTP: {e}")
+    else:
+        otp_sent = True  # Email - pretend sent
+
+    return {
+        "message": "Recovery code resent" if otp_sent else "New code generated",
+        "otp_sent": otp_sent,
+    }

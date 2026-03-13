@@ -6,6 +6,7 @@ import axios from "axios";
 // Pages
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
 import LandingPage from "./pages/LandingPage";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminOperators from "./pages/admin/Operators";
@@ -30,6 +31,9 @@ import AdminErrorLogs from "./pages/admin/ErrorLogs";
 import AdminSettlements from "./pages/admin/Settlements";
 import AdminLandingPage from "./pages/admin/LandingPage";
 import PublicInvoice from "./pages/PublicInvoice";
+
+// Theme Context
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -155,6 +159,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/invoice/:id" element={<PublicInvoice />} />
 
           {/* Admin Routes */}

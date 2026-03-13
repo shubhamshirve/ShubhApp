@@ -58,7 +58,7 @@ const LandingPage = () => {
       name: "E-Bill",
       tagline: "ISP & Cable Billing Solutions",
       business_name: "Teasy Services",
-      logo_url: "/ebill-logo.png",
+      logo_url: "/ebill-logo.svg",
     },
     colors: {
       primary: "#0066B2",

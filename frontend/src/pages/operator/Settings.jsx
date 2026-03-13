@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -28,6 +28,7 @@ import {
   LayoutTemplate,
   Clock,
   CalendarClock,
+  Palette,
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -39,6 +40,10 @@ const OperatorSettings = () => {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [profile, setProfile] = useState(null);
   const [gatewayConfig, setGatewayConfig] = useState(null);
+
+  // Theme state
+  const [currentTheme, setCurrentTheme] = useState("modern");
+  const [themeSaving, setThemeSaving] = useState(false);
 
   const [reminderForm, setReminderForm] = useState({
     enabled: false,
@@ -92,15 +97,17 @@ const OperatorSettings = () => {
         authAxios.get("/operator/profile"),
         authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } })),
         authAxios.get("/operator/invoice-settings").catch(() => ({ data: {} })),
+        authAxios.get("/operator/theme-settings").catch(() => ({ data: { theme: "modern" } })),
       ];
       if (hasPaymentReminder) {
         promises.push(authAxios.get("/operator/reminder-settings").catch(() => ({ data: {} })));
       }
-      const [dashboardRes, profileRes, gatewayRes, invoiceRes, reminderRes] = await Promise.all(promises);
+      const [dashboardRes, profileRes, gatewayRes, invoiceRes, themeRes, reminderRes] = await Promise.all(promises);
 
       setDashboardStats(dashboardRes.data);
       setProfile(profileRes.data);
       setGatewayConfig(gatewayRes.data);
+      setCurrentTheme(themeRes.data.theme || "modern");
 
       setProfileForm({
         company_name: profileRes.data.company_name || "",
@@ -223,6 +230,19 @@ const OperatorSettings = () => {
     }
   };
 
+  const handleThemeChange = async (newTheme) => {
+    setThemeSaving(true);
+    try {
+      await authAxios.put(`/operator/theme-settings?theme=${newTheme}`);
+      setCurrentTheme(newTheme);
+      toast.success(`Theme changed to ${newTheme === 'modern' ? 'Modern' : 'Classic'}`);
+    } catch (error) {
+      toast.error("Failed to update theme");
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
   const toggleBeforeDay = (day) => {
     setReminderForm(prev => ({
       ...prev,
@@ -273,6 +293,10 @@ const OperatorSettings = () => {
             <TabsTrigger value="invoice" data-testid="tab-invoice">
               <FileText className="w-4 h-4 mr-2" />
               Invoice
+            </TabsTrigger>
+            <TabsTrigger value="theme" data-testid="tab-theme">
+              <Palette className="w-4 h-4 mr-2" />
+              Theme
             </TabsTrigger>
             {hasPaymentReminder && (
               <TabsTrigger value="reminders" data-testid="tab-reminders">
@@ -738,6 +762,85 @@ const OperatorSettings = () => {
                     </Button>
                   </div>
                 </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Theme Tab */}
+          <TabsContent value="theme">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-purple-600" />
+                  Theme Settings
+                </CardTitle>
+                <CardDescription>
+                  Choose your preferred color theme for the dashboard
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Modern Theme */}
+                  <div
+                    onClick={() => !themeSaving && handleThemeChange("modern")}
+                    className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
+                      currentTheme === "modern" 
+                        ? "border-blue-500 bg-blue-50" 
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600" />
+                      <div>
+                        <p className="font-semibold text-slate-900">Modern</p>
+                        <p className="text-xs text-slate-500">Fresh blue theme (Default)</p>
+                      </div>
+                      {currentTheme === "modern" && (
+                        <CheckCircle2 className="w-5 h-5 text-blue-500 ml-auto" />
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <div className="w-8 h-8 rounded bg-[#3B82F6]" title="Primary" />
+                      <div className="w-8 h-8 rounded bg-[#10B981]" title="Secondary" />
+                      <div className="w-8 h-8 rounded bg-[#6366F1]" title="Accent" />
+                      <div className="w-8 h-8 rounded bg-[#1E293B]" title="Sidebar" />
+                    </div>
+                  </div>
+
+                  {/* Classic Theme */}
+                  <div
+                    onClick={() => !themeSaving && handleThemeChange("classic")}
+                    className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
+                      currentTheme === "classic" 
+                        ? "border-[#0066B2] bg-blue-50" 
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#0066B2] to-[#004080]" />
+                      <div>
+                        <p className="font-semibold text-slate-900">Classic</p>
+                        <p className="text-xs text-slate-500">E-Bill brand colors (Pro)</p>
+                      </div>
+                      {currentTheme === "classic" && (
+                        <CheckCircle2 className="w-5 h-5 text-[#0066B2] ml-auto" />
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <div className="w-8 h-8 rounded bg-[#0066B2]" title="EB Blue" />
+                      <div className="w-8 h-8 rounded bg-[#44AB62]" title="EB Green" />
+                      <div className="w-8 h-8 rounded bg-[#004080]" title="EB Deep Blue" />
+                      <div className="w-8 h-8 rounded bg-[#EFEFEF] border" title="Cool Gray" />
+                    </div>
+                  </div>
+                </div>
+
+                {themeSaving && (
+                  <p className="text-sm text-slate-500 mt-4 flex items-center gap-2">
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-600"></span>
+                    Saving theme...
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

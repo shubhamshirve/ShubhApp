@@ -187,29 +187,27 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 py-8">
+    <div className="min-h-screen bg-[#EFEFEF] flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-lg">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-slate-900 rounded-xl mb-4">
-            <span className="text-white font-bold text-xl">SB</span>
-          </div>
-          <h1 className="text-2xl font-heading font-bold text-slate-900">Register as Operator</h1>
+          <img src="/ebill-logo.svg" alt="E-Bill" className="w-16 h-16 mx-auto mb-4" />
+          <h1 className="text-2xl font-heading font-bold text-[#004080]">Register as Operator</h1>
           <p className="text-slate-500 mt-1">Start with a 3-day trial on our Starter plan</p>
         </div>
 
         {step === 1 ? (
           /* ── Step 1: Registration Form ── */
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-slate-200 shadow-lg">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-xl font-heading">Create your account</CardTitle>
+              <CardTitle className="text-xl font-heading text-[#004080]">Create your account</CardTitle>
               <CardDescription>Fill in your business details to get started</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="company_name">Company Name *</Label>
+                    <Label htmlFor="company_name" className="text-[#004080]">Company Name *</Label>
                     <Input
                       id="company_name"
                       name="company_name"
@@ -221,7 +219,7 @@ const Register = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="owner_name">Owner Name *</Label>
+                    <Label htmlFor="owner_name" className="text-[#004080]">Owner Name *</Label>
                     <Input
                       id="owner_name"
                       name="owner_name"
@@ -236,7 +234,7 @@ const Register = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email *</Label>
+                    <Label htmlFor="email" className="text-[#004080]">Email *</Label>
                     <Input
                       id="email"
                       name="email"
@@ -334,7 +332,8 @@ const Register = () => {
 
                 <Button
                   type="submit"
-                  className="w-full bg-slate-900 hover:bg-slate-800"
+                  className="w-full text-white"
+                  style={{ backgroundColor: '#0066B2' }}
                   disabled={loading}
                   data-testid="register-submit"
                 >
@@ -355,13 +354,13 @@ const Register = () => {
               <div className="mt-6 text-center">
                 <p className="text-sm text-slate-500">
                   Already have an account?{" "}
-                  <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">Sign in</Link>
+                  <Link to="/login" className="text-[#0066B2] hover:text-[#004080] font-medium">Sign in</Link>
                 </p>
               </div>
 
               <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="text-sm font-medium text-blue-800 mb-1">3-Day Trial Includes:</p>
-                <ul className="text-xs text-blue-600 space-y-1">
+                <p className="text-sm font-medium text-[#004080] mb-1">3-Day Trial Includes:</p>
+                <ul className="text-xs text-[#0066B2] space-y-1">
                   <li>• Full access to Starter plan features</li>
                   <li>• No credit card required</li>
                   <li>• Upgrade anytime to continue after trial</li>

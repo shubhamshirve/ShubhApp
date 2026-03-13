@@ -68,10 +68,8 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           {/* Header */}
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200">
             <Link to="/admin" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">SB</span>
-              </div>
-              <span className="font-heading font-bold text-slate-900">SaaS Billing</span>
+              <img src="/ebill-logo.svg" alt="E-Bill" className="w-8 h-8" />
+              <span className="font-heading font-bold text-[#004080]">E-Bill</span>
             </Link>
             <button onClick={onClose} className="lg:hidden p-1 hover:bg-slate-100 rounded">
               <X className="w-5 h-5" />
@@ -81,7 +79,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           {/* User info */}
           <div className="px-4 py-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-slate-900 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-[#0066B2] rounded-full flex items-center justify-center">
                 <span className="text-white font-medium text-sm">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
@@ -178,10 +176,8 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
         <div className="flex flex-col h-full">
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200">
             <Link to="/operator" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">SB</span>
-              </div>
-              <span className="font-heading font-bold text-slate-900">SaaS Billing</span>
+              <img src="/ebill-logo.svg" alt="E-Bill" className="w-8 h-8" />
+              <span className="font-heading font-bold text-[#004080]">E-Bill</span>
             </Link>
             <button onClick={onClose} className="lg:hidden p-1 hover:bg-slate-100 rounded">
               <X className="w-5 h-5" />
@@ -190,7 +186,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
 
           <div className="px-4 py-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-[#0066B2] rounded-full flex items-center justify-center">
                 <span className="text-white font-medium text-sm">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
