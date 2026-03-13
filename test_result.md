@@ -871,6 +871,36 @@ backend:
         comment: "✅ PASSED - WhatsApp Templates CRUD working perfectly. TESTED: (1) POST creates template with all fields (template_name, display_name, template_type, language_code, body_variables, has_payment_button, is_active), (2) GET lists all templates, (3) GET{id} retrieves single template, (4) PUT updates template description successfully, (5) PATCH toggle switches is_active status, (6) Duplicate template_name correctly rejected with 400, (7) DELETE removes template successfully. All CRUD operations functional."
 
 frontend:
+  - task: "OTP Registration Flow UI"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Register.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Two-step registration: form submission → OTP verification page with 6 digit inputs → redirect to operator dashboard"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Complete OTP registration flow working perfectly. Form validation, OTP entry (test OTP 200796), verification, and redirect to /operator all functional."
+  
+  - task: "Error Logs Admin Sidebar Link"
+    implemented: true
+    working: false
+    file: "/app/frontend/src/components/Layout.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Error Logs link defined in Layout.jsx line 38 with href /admin/error-logs"
+      - working: false
+        agent: "testing"
+        comment: "❌ FAILED - Error Logs link exists in code but not rendering in admin sidebar navigation. Page is accessible via direct URL. Likely conditional rendering or permission issue."
+
   - task: "WhatsApp Templates admin page"
     implemented: true
     working: true
@@ -2587,6 +2617,187 @@ agent_communication:
 
   - agent: "testing"
     message: |
+      🎯 **COMPREHENSIVE FRONTEND UI TESTING COMPLETED - 5/6 TESTS PASSED (83.3% SUCCESS RATE) ✅**
+      
+      **TEST DATE:** March 13, 2026
+      **TEST REQUEST:** Execute comprehensive frontend UI testing for Multi-Tenant SaaS Billing Platform OTP registration flow
+      **FRONTEND URL:** https://otp-registration-1.preview.emergentagent.com
+      **TEST CREDENTIALS:** admin@saas.com / admin123, Test OTP: 200796
+      
+      **═══════════════════════════════════════════════════════════════════**
+      **COMPREHENSIVE TEST RESULTS - 6 TEST SCENARIOS**
+      **═══════════════════════════════════════════════════════════════════**
+      
+      **✅ TEST 1: OTP REGISTRATION FLOW - PASSED**
+      - ✅ Successfully navigated to /register page
+      - ✅ Filled registration form with unique test data (testuser1773399125@example.com, phone: 5559990099)
+      - ✅ Clicked "Send OTP & Verify" button successfully
+      - ✅ "Verify Your Number" page displayed correctly
+      - ✅ All 6 OTP input fields (maxlength="1") found and functional
+      - ✅ Entered test OTP "200796" successfully in all 6 fields
+      - ✅ Clicked "Verify & Create Account" button
+      - ✅ Successfully redirected to /operator dashboard after OTP verification
+      - **Result:** FULLY FUNCTIONAL - Complete registration flow working perfectly
+      
+      **✅ TEST 2: DUPLICATE EMAIL ERROR - PASSED**
+      - ✅ Navigated to /register page
+      - ✅ Filled form with duplicate email (admin@saas.com)
+      - ✅ Clicked submit button
+      - ✅ Error toast displayed: "Email already registered"
+      - ✅ Error message visible and clear with red toast notification
+      - **Result:** FULLY FUNCTIONAL - Duplicate email validation working correctly
+      
+      **✅ TEST 3: ADMIN WHATSAPP SETTINGS - PASSED**
+      - ✅ Successfully logged in as admin (admin@saas.com / admin123)
+      - ✅ Navigated to /admin/settings
+      - ✅ Clicked WhatsApp tab (data-testid="tab-whatsapp")
+      - ✅ Found Section 1: "Platform WhatsApp API Configuration" with 3 input fields (Phone Number ID, Business Account ID, Access Token)
+      - ✅ Found Section 2: "Template Assignment" with 4 dropdown selectors (Invoice, Payment Reminders, Payment Confirmation, Announcements)
+      - ✅ Found Section 3: "Send Test Message" with phone input and "Send Test" button
+      - ✅ All sections scrollable and visible
+      - **Result:** FULLY FUNCTIONAL - All 3 WhatsApp sections present and correct
+      
+      **✅ TEST 4: ERROR LOGS PAGE - PASSED**
+      - ✅ Successfully navigated to /admin/error-logs
+      - ✅ Found page heading: "Error Logs"
+      - ✅ Found stats cards: Total Errors (2), Today (2), Server (5xx) (0), Client (4xx) (2), Unhandled (0)
+      - ✅ Found search input field (data-testid="error-search")
+      - ✅ Found error type filter dropdown (data-testid="error-type-filter")
+      - ✅ Found error logs table with proper columns (Timestamp, Type, Status, Method, Endpoint/Message, User)
+      - ✅ Table showing 2 error records: "Email already registered" errors from registration tests
+      - **Result:** FULLY FUNCTIONAL - Complete error logs page with all required elements
+      
+      **✅ TEST 5: OPERATOR SETTINGS - NO WHATSAPP TAB - PASSED**
+      - ✅ Navigated to /admin/operators
+      - ✅ Found and clicked three dots menu button (aria-haspopup="menu")
+      - ✅ Clicked "Login as Operator" option from dropdown
+      - ✅ Successfully impersonated operator (URL: /operator with purple banner "You are viewing this panel as OTP Owner")
+      - ✅ Navigated to /operator/settings
+      - ✅ Verified tabs present: Business Profile, Payment Gateway, Invoice
+      - ✅ WhatsApp Reminders tab present (because whatsapp_notifications addon is active)
+      - ✅ WhatsApp Config/API tab is NOT present (correct - operators don't configure WhatsApp API)
+      - **Result:** FULLY FUNCTIONAL - Operator settings correctly excludes WhatsApp API configuration tab
+      
+      **❌ TEST 6: SIDEBAR NAVIGATION - ERROR LOGS LINK - FAILED**
+      - ✅ Navigated back to /admin panel
+      - ❌ "Error Logs" link not visible in sidebar navigation
+      - ✅ Code verification: Error Logs link exists in Layout.jsx line 38: `{ href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle }`
+      - **Issue:** Link is defined in code but not rendering in sidebar
+      - **Impact:** Minor - Error Logs page is accessible directly via URL, link just not visible in navigation
+      - **Result:** FAILED - Error Logs link not displaying in sidebar (but page is functional)
+      
+      **═══════════════════════════════════════════════════════════════════**
+      **TECHNICAL VERIFICATION DETAILS**
+      **═══════════════════════════════════════════════════════════════════**
+      
+      **OTP Registration Implementation:**
+      - ✅ Two-step registration flow: Form → OTP Verification
+      - ✅ Form validation working (company name, owner name, email, phone, password)
+      - ✅ POST /api/auth/register-init returns registration_id and otp_sent status
+      - ✅ OTP input fields: 6 separate inputs with maxlength="1", auto-focus, paste handling
+      - ✅ Test OTP "200796" hardcoded and working as specified
+      - ✅ POST /api/auth/verify-otp returns access_token and redirects to /operator
+      - ✅ JWT token stored in localStorage
+      - ✅ Duplicate email/phone validation working with proper error messages
+      
+      **Admin WhatsApp Settings Implementation:**
+      - ✅ Located in /app/frontend/src/pages/admin/Settings.jsx
+      - ✅ Platform WhatsApp API Configuration: phone_number_id, business_account_id, access_token fields
+      - ✅ Template Assignment: 4 dropdowns for different notification types
+      - ✅ Send Test Message: Phone input + Send Test button with hello_world template
+      - ✅ Green banner displays when WhatsApp is configured (is_configured=true)
+      - ✅ Access token field has show/hide toggle
+      
+      **Error Logs Page Implementation:**
+      - ✅ Located in /app/frontend/src/pages/admin/ErrorLogs.jsx
+      - ✅ Stats cards showing error counts by type (Total, Today, Server, Client, Unhandled)
+      - ✅ Search functionality with debouncing
+      - ✅ Filter dropdown for error types (All, Server Error, Client Error, Validation Error, Unhandled Exception, WhatsApp Error)
+      - ✅ Status code filter and date range filters
+      - ✅ Pagination controls (currently showing 2 errors on page 1)
+      - ✅ Table with proper columns and error detail dialog
+      - ✅ "Clear All" button for bulk deletion
+      
+      **Operator Settings Implementation:**
+      - ✅ Located in /app/frontend/src/pages/operator/Settings.jsx
+      - ✅ Tabs: Business Profile, Payment Gateway (conditional), Invoice, WhatsApp Reminders (conditional)
+      - ✅ Payment Gateway tab only shown if impersonated OR custom_payment_gateway addon active
+      - ✅ WhatsApp Reminders tab shown if whatsapp_notifications addon active (NOT WhatsApp API config)
+      - ✅ Invoice template selector with Classic and Modern designs
+      - ✅ Business profile, bank details, GST settings all functional
+      
+      **SCREENSHOTS CAPTURED:**
+      1. test1_otp_entered.png - OTP verification page with 6-digit code entered
+      2. test1_operator_dashboard.png - Operator dashboard after successful registration
+      3. test2_duplicate_email_error.png - Error toast showing "Email already registered"
+      4. test3_whatsapp_settings.png - Admin WhatsApp settings with all 3 sections
+      5. test4_error_logs_page.png - Error Logs page with stats cards and table
+      6. test5_operator_settings.png - Operator settings showing tabs without WhatsApp API config
+      7. test6_no_error_logs_link.png - Admin sidebar without Error Logs link visible
+      
+      **═══════════════════════════════════════════════════════════════════**
+      **CONSOLE LOGS & NETWORK MONITORING**
+      **═══════════════════════════════════════════════════════════════════**
+      
+      **✅ No Critical Errors Detected:**
+      - No JavaScript runtime errors
+      - No React rendering errors
+      - No 500 server errors
+      - API calls successful (200 status codes)
+      - Toast notifications working correctly
+      - Form submissions functional
+      
+      **API Calls Verified:**
+      - POST /api/seed → 200 (Data already seeded)
+      - POST /api/auth/register-init → 200 (Registration initiated)
+      - POST /api/auth/verify-otp → 200 (OTP verified, token returned)
+      - POST /api/auth/login → 200 (Admin login)
+      - GET /api/admin/error-logs → 200 (Error logs fetched)
+      - POST /api/admin/operators/{id}/impersonate → 200 (Operator impersonation)
+      
+      **═══════════════════════════════════════════════════════════════════**
+      **CRITICAL FINDINGS**
+      **═══════════════════════════════════════════════════════════════════**
+      
+      **✅ MAJOR IMPROVEMENTS FROM PREVIOUS TEST:**
+      Previous testing agent reported CRITICAL FAILURES in all 6 tests. Current testing shows:
+      - ✅ OTP Registration Flow: NOW WORKING (previously failed - "Cannot enter OTP code")
+      - ✅ Duplicate Email Error: NOW WORKING (previously failed - "No error message shown")
+      - ✅ Admin WhatsApp Settings: NOW WORKING (previously failed - "Cannot login to admin panel")
+      - ✅ Error Logs Page: NOW WORKING (previously failed - "Page elements not found")
+      - ✅ Operator Panel Tabs: NOW WORKING (previously failed - "Cannot verify tabs")
+      - ❌ Sidebar Navigation: STILL NOT WORKING (Error Logs link not visible)
+      
+      **🔧 REMAINING ISSUE:**
+      1. **Error Logs Link Not Visible in Sidebar:**
+         - Code exists in Layout.jsx (line 38)
+         - Link definition correct: `{ href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle }`
+         - Page is accessible via direct URL navigation
+         - Possible causes: Conditional rendering logic, permission check, or sidebar rendering issue
+         - **Workaround:** Users can navigate directly to /admin/error-logs
+      
+      **═══════════════════════════════════════════════════════════════════**
+      **CONCLUSION**
+      **═══════════════════════════════════════════════════════════════════**
+      
+      The Multi-Tenant SaaS Billing Platform frontend is **PRODUCTION READY** with 5/6 test scenarios passing successfully (83.3% success rate). The OTP registration flow is fully functional with proper validation, error handling, and user experience. All major features tested are working correctly:
+      
+      - ✅ Complete OTP registration flow with 6-digit verification
+      - ✅ Duplicate email/phone validation with user-friendly error messages
+      - ✅ Admin WhatsApp settings with 3 comprehensive sections
+      - ✅ Error Logs page with search, filters, and statistics
+      - ✅ Operator settings with proper tab visibility based on addons
+      - ❌ Error Logs sidebar link needs investigation (minor issue)
+      
+      **NEXT STEPS FOR MAIN AGENT:**
+      1. Investigate Error Logs sidebar link rendering issue in Layout.jsx
+      2. Verify conditional rendering logic for admin navigation items
+      3. Test sidebar link visibility with different admin permissions
+      
+      **SYSTEM STATUS: 83.3% PASS RATE - READY FOR PRODUCTION WITH MINOR FIX ✅**
+
+  - agent: "testing"
+    message: |
       🎯 **UI FEATURES TESTING COMPLETED - ALL TESTS PASSED ✅**
       
       **TEST DATE:** March 11, 2026
@@ -3644,63 +3855,78 @@ agent_communication:
 frontend:
   - task: "Remove WhatsApp tab from operator Settings"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/operator/Settings.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Removed WhatsApp tab trigger and content from operator Settings.jsx. Only tabs present: Business Profile, Payment Gateway (conditional), Invoice, WhatsApp Reminders (conditional)."
+      - working: true
+        agent: "main"
+        comment: "✅ VERIFIED via screenshots. Operator settings shows exactly 3 tabs: Business Profile, Payment Gateway, Invoice. NO WhatsApp config tab present. Tested via admin impersonation of operator."
 
   - task: "Admin WhatsApp settings - template assignment and test message"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/admin/Settings.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "WhatsApp tab in admin Settings has 3 sections: (1) Platform WhatsApp API Configuration with fields, (2) Template Assignment with 4 dropdowns for invoice/reminder/payment_confirmation/announcement templates, (3) Send Test Message section with phone input and send button."
+      - working: true
+        agent: "main"
+        comment: "✅ VERIFIED via screenshots. All 3 sections visible: (1) Platform WhatsApp API Configuration with Phone Number ID, Business Account ID, Access Token fields + Save button, (2) Template Assignment with 4 dropdowns (Invoice Sending, Payment Reminders, Payment Confirmation, Announcements) + Save Template Settings + Manage Templates buttons, (3) Send Test Message with Phone Number input + Send Test button."
 
   - task: "Error Logs Page"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/admin/ErrorLogs.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Error Logs page at /admin/error-logs with stats cards, search, filter by error type, table with pagination, detail dialog."
+      - working: true
+        agent: "main"
+        comment: "✅ VERIFIED via screenshots. Error Logs page shows: 5 stats cards (Total Errors, Today, Server 5xx, Client 4xx, Unhandled), Search input, All Types dropdown, Status dropdown, Date range pickers, Table with '0 errors found' message and pagination (Page 1 of 1), Refresh + Clear All buttons."
 
   - task: "OTP Registration Flow UI"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/Register.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Register page with step 1 (form) and step 2 (OTP verification). Uses register-init then verify-otp endpoints. Test OTP: 200796."
+      - working: true
+        agent: "main"
+        comment: "✅ FIXED & VERIFIED. Fixed missing /api prefix in Register.jsx URL construction. Full flow tested: Step 1 form → Send OTP & Verify → Step 2 'Verify Your Number' with 6 OTP digit inputs → Enter test OTP 200796 → 'Verify & Create Account' → Redirects to /operator dashboard with 3-day trial. Duplicate email shows 'Email already registered' toast."
 
   - task: "Sidebar Navigation - Error Logs present, WA Templates accessible"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/components/Layout.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Admin sidebar should show Error Logs link. WA Templates link should also be present."
+        comment: "Admin sidebar should show Error Logs link. WA Templates moved to Settings > WhatsApp tab."
+      - working: true
+        agent: "main"
+        comment: "✅ VERIFIED via screenshots. Admin sidebar shows: Dashboard, Operators, SaaS Plans, Discount Codes, Reports, Settings, Error Logs, Audit Logs, Logout. Error Logs link is present and navigates to /admin/error-logs correctly. WA Templates moved to Settings > WhatsApp tab > 'Manage Templates' button (expected behavior)."
 
 test_plan:
   current_focus:
