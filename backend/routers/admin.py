@@ -50,6 +50,7 @@ async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(re
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
+        "platform_fee_percentage": data.platform_fee_percentage,
         "status": "active", "created_at": now.isoformat(),
         "updated_at": now.isoformat(), "deleted_at": None
     }
@@ -77,6 +78,7 @@ async def update_saas_plan(plan_id: str, data: SaaSPlanCreate, current_user: dic
         "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
         "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
         "gst_applicable": data.gst_applicable, "included_addons": data.included_addons,
+        "platform_fee_percentage": data.platform_fee_percentage,
         "updated_at": now.isoformat()
     }
     await db.saas_plans.update_one({"id": plan_id}, {"$set": update_data})
