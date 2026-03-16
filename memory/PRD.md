@@ -91,6 +91,58 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 7. **Frontend Reminders Tab**: In operator Settings, gated by payment_reminder feature
 8. **File Cleanup**: Removed stale root-level test files, updated README
 
+### Deployment and Infra Updates (Mar 2026)
+- Dockerized app with `docker-compose.yml` using `init-env`, `mongodb`, `backend`, `frontend`, and `caddy`.
+- Added Caddy reverse proxy in `Caddyfile`:
+  - serves frontend
+  - proxies `/api/*` to FastAPI
+  - uses automatic HTTPS for `DOMAIN`
+  - uses `tls internal` fallback for `SERVER_IP`
+- Mongo image pinned to `mongo:4.4` because the target VM CPU lacks AVX support and Mongo 5+ failed to start.
+- Backend Docker env is normalized to container-safe Mongo values:
+  - `MONGO_URL=mongodb://mongodb:27017/${DB_NAME}`
+  - `MONGO_URI=mongodb://mongodb:27017/${DB_NAME}`
+  - `DB_NAME=saas_db` by default
+- Backend code now accepts both `MONGO_URL` and `MONGO_URI`.
+- Frontend was adjusted for same-origin deployment behind Caddy, so `REACT_APP_BACKEND_URL` can be blank in production.
+
+### Environment Strategy (Current)
+- Standard is now a single shared root `.env`.
+- `backend/.env` and `frontend/.env.local` are no longer required.
+- Docker bootstraps a missing root `.env` via `docker/init-env.sh`.
+- Backend local/dev code loads root `.env` and falls back to:
+  - `mongodb://localhost:27017/saas_db`
+  - `DB_NAME=saas_db`
+- Frontend CRACO config reads env from the root `.env`.
+- `setup.bat` now creates only one root `.env` containing backend, frontend, Docker, Caddy, Razorpay, WhatsApp, and backup variables.
+- Seed/bootstrap code in `backend/server.py` also creates the root `.env` if missing.
+- Test `backend/tests/test_iteration7_impersonation.py` was updated to read `/app/.env`.
+
+### Workspace Cleanup and Repo Hygiene (Mar 2026)
+- Removed archived/local clutter from the repo:
+  - `v7/`
+  - `eBill.zip`
+  - `backups/`
+  - multiple root-level standalone test/debug scripts
+- Cleaned generated artifacts like `frontend/build/` and stray `__pycache__` directories.
+- Updated ignore rules and kept `.env.example` as the tracked template.
+
+### Branch History Relevant to Current State
+- `V7.6` contains Docker/Caddy setup, Mongo compatibility fixes, SSL fallback, workspace cleanup, and deployment fixes.
+- `V7.7` is branched from `V7.6` and adds the single-root-`.env` consolidation.
+- Latest important commits:
+  - `8c28d18` Update frontend index page
+  - `3b1a7f7` Consolidate app configuration into root env
+
+### Known Deployment Notes
+- If HTTPS shows `ERR_SSL_PROTOCOL_ERROR`, first confirm the root `.env` exists and `DOMAIN` is set correctly before recreating Caddy.
+- Production values used during debugging:
+  - domain: `e-bill.in`
+  - server IP: `45.196.196.21`
+- For publicly trusted SSL, DNS must point to the server and ports `80` and `443` must be open.
+- Visiting by raw IP uses Caddy internal TLS and may show a browser certificate warning.
+- A `401` on `/api/auth/me` is expected when not logged in and is not itself a deployment failure.
+
 ## Key API Endpoints
 - `GET /api/operator/features` — Active features for current operator
 - `GET/PUT /api/operator/reminder-settings` — Reminder schedule configuration
