@@ -62,16 +62,9 @@ See `requirements_local.txt` in both `backend/` and `frontend/` for dependency l
 The app is Docker-ready with Caddy in front of the React frontend and FastAPI backend.
 
 1. Set a public DNS record for your domain to this server's IP.
-2. Create a `.env` file in the project root with at least:
-
-```env
-DOMAIN=your-domain.com
-MONGO_URI=mongodb://mongodb:27017/saas_db
-CORS_ORIGINS=https://your-domain.com,http://your-domain.com
-REACT_APP_BACKEND_URL=
-```
-
-3. Start the stack:
+2. Start the stack once. Docker will create missing `.env`, `backend/.env`, and `frontend/.env.local` files automatically with placeholder values.
+3. Update the generated env files with your real domain, secrets, and provider credentials.
+4. Restart the stack:
 
 ```bash
 docker compose up -d --build
@@ -81,3 +74,4 @@ Notes:
 - Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.
 - Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
 - Backend and frontend are only exposed inside the Docker network; Caddy is the only public entrypoint.
+- Default env templates are also available in `.env.example`.

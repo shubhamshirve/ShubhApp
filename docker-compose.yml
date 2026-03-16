@@ -1,9 +1,23 @@
 
 services:
+  init-env:
+    image: alpine:3.20
+    container_name: ebill_init_env
+    restart: "no"
+    working_dir: /workspace
+    command: ["/bin/sh", "/workspace/docker/init-env.sh"]
+    volumes:
+      - ./:/workspace
+    networks:
+      - ebill
+
   mongodb:
     image: mongo:4.4
     container_name: ebill_mongodb
     restart: unless-stopped
+    depends_on:
+      init-env:
+        condition: service_completed_successfully
     volumes:
       - mongo_data:/data/db
     networks:
@@ -15,7 +29,10 @@ services:
     container_name: ebill_backend
     restart: unless-stopped
     depends_on:
-      - mongodb
+      init-env:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_started
     environment:
       MONGO_URL: mongodb://mongodb:27017/${DB_NAME:-saas_db}
       MONGO_URI: mongodb://mongodb:27017/${DB_NAME:-saas_db}
@@ -34,7 +51,10 @@ services:
     container_name: ebill_frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      init-env:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
     expose:
       - "3000"
     networks:
@@ -45,8 +65,12 @@ services:
     container_name: ebill_caddy
     restart: unless-stopped
     depends_on:
-      - frontend
-      - backend
+      init-env:
+        condition: service_completed_successfully
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"
