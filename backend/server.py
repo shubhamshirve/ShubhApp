@@ -45,38 +45,9 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_env_files():
-    """Create expected env files with default keys when missing."""
+    """Create the root env file with default keys when missing."""
     backend_dir = Path(__file__).resolve().parent
     root_dir = backend_dir.parent
-    frontend_dir = root_dir / "frontend"
-
-    backend_env = backend_dir / ".env"
-    if not backend_env.exists():
-        backend_env.write_text(
-            "\n".join(
-                [
-                    "MONGO_URL=mongodb://localhost:27017/saas_db",
-                    "DB_NAME=saas_db",
-                    "CORS_ORIGINS=http://localhost:3000",
-                    "JWT_SECRET=change-this-to-a-strong-random-secret",
-                    "RAZORPAY_KEY_ID=your_razorpay_key_id",
-                    "RAZORPAY_KEY_SECRET=your_razorpay_key_secret",
-                    "WHATSAPP_PHONE_NUMBER_ID=",
-                    "WHATSAPP_ACCESS_TOKEN=",
-                    "WHATSAPP_BUSINESS_ACCOUNT_ID=",
-                    "BACKUP_PASSWORD=change-this-backup-password",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-
-    frontend_env = frontend_dir / ".env.local"
-    if not frontend_env.exists():
-        frontend_env.write_text(
-            "REACT_APP_BACKEND_URL=http://localhost:8001\n",
-            encoding="utf-8",
-        )
 
     root_env = root_dir / ".env"
     if not root_env.exists():
@@ -84,6 +55,7 @@ def _ensure_env_files():
             "\n".join(
                 [
                     "DOMAIN=localhost",
+                    "SERVER_IP=",
                     "MONGO_URI=mongodb://mongodb:27017/saas_db",
                     "CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost",
                     "REACT_APP_BACKEND_URL=",

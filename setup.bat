@@ -8,9 +8,7 @@ echo   SaaS Billing Platform - Local Setup
 echo  ==========================================
 echo.
 
-REM ──────────────────────────────────────────
-REM  1. Check Prerequisites
-REM ──────────────────────────────────────────
+REM  1. Check prerequisites
 echo [1/7] Checking prerequisites...
 
 python --version >nul 2>&1
@@ -33,7 +31,6 @@ if errorlevel 1 (
 for /f %%v in ('node --version') do set NODE_VER=%%v
 echo  [OK] Node.js !NODE_VER! found.
 
-REM Check yarn, fallback to npm
 yarn --version >nul 2>&1
 if errorlevel 1 (
     echo  [INFO] yarn not found, will use npm instead.
@@ -46,22 +43,18 @@ if errorlevel 1 (
     set PKG_INSTALL=yarn install
 )
 
-REM Check MongoDB
 mongod --version >nul 2>&1
 if errorlevel 1 (
     echo  [WARN] MongoDB not found in PATH.
     echo         Make sure MongoDB is installed and running on port 27017.
     echo         Download from https://www.mongodb.com/try/download/community
 ) else (
-    for /f "tokens=3" %%v in ('mongod --version 2^>^&1 ^| findstr "db version"') do set MONGO_VER=%%v
     echo  [OK] MongoDB found.
 )
 
 echo.
 
-REM ──────────────────────────────────────────
 REM  2. Backend - Virtual Environment
-REM ──────────────────────────────────────────
 echo [2/7] Setting up Python virtual environment...
 cd /d "%~dp0backend"
 
@@ -79,9 +72,7 @@ if not exist "venv" (
 
 echo.
 
-REM ──────────────────────────────────────────
 REM  3. Backend - Install Dependencies
-REM ──────────────────────────────────────────
 echo [3/7] Installing backend Python dependencies...
 call venv\Scripts\activate.bat
 
@@ -97,15 +88,18 @@ call venv\Scripts\deactivate.bat
 
 echo.
 
-REM ──────────────────────────────────────────
-REM  4. Backend - Create .env if not exists
-REM ──────────────────────────────────────────
-echo [4/7] Configuring backend environment...
+REM  4. Shared Environment - Create root .env if not exists
+echo [4/7] Configuring shared environment...
+cd /d "%~dp0"
 if not exist ".env" (
     (
+        echo DOMAIN=localhost
+        echo SERVER_IP=
+        echo MONGO_URI=mongodb://mongodb:27017/saas_db
         echo MONGO_URL=mongodb://localhost:27017/saas_db
         echo DB_NAME=saas_db
-        echo CORS_ORIGINS=http://localhost:3000
+        echo CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost
+        echo REACT_APP_BACKEND_URL=http://localhost:8001
         echo JWT_SECRET=change-this-to-a-strong-random-secret
         echo RAZORPAY_KEY_ID=your_razorpay_key_id
         echo RAZORPAY_KEY_SECRET=your_razorpay_key_secret
@@ -114,17 +108,14 @@ if not exist ".env" (
         echo WHATSAPP_BUSINESS_ACCOUNT_ID=
         echo BACKUP_PASSWORD=change-this-backup-password
     ) > .env
-    echo  [CREATED] backend\.env — please update with your credentials.
+    echo  [CREATED] .env with shared backend, frontend, and Docker settings.
 ) else (
-    echo  [OK] backend\.env already exists.
+    echo  [OK] root .env already exists.
 )
 
-cd /d "%~dp0"
 echo.
 
-REM ──────────────────────────────────────────
 REM  5. Frontend - Install Dependencies
-REM ──────────────────────────────────────────
 echo [5/7] Installing frontend dependencies...
 cd /d "%~dp0frontend"
 
@@ -143,43 +134,16 @@ if not exist "node_modules" (
 
 echo.
 
-REM ──────────────────────────────────────────
-REM  6. Frontend - Create .env.local for local backend
-REM ──────────────────────────────────────────
+REM  6. Frontend - Shared env is already available from root .env
 echo [6/7] Configuring frontend environment...
-if not exist ".env.local" (
-    (
-        echo REACT_APP_BACKEND_URL=http://localhost:8001
-    ) > .env.local
-    echo  [CREATED] frontend\.env.local with REACT_APP_BACKEND_URL=http://localhost:8001
-) else (
-    echo  [OK] frontend\.env.local already exists.
-)
+echo  [OK] Frontend reads REACT_APP_BACKEND_URL from the root .env file.
 
 cd /d "%~dp0"
 echo.
-REM Root .env for Docker / shared configuration
-echo [7/7] Creating root environment file...
-if not exist ".env" (
-    (
-        echo DOMAIN=localhost
-        echo MONGO_URI=mongodb://mongodb:27017/saas_db
-        echo CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost
-        echo REACT_APP_BACKEND_URL=
-        echo MONGO_URL=mongodb://localhost:27017/saas_db
-        echo DB_NAME=saas_db
-        echo JWT_SECRET=change-this-to-a-strong-random-secret
-        echo RAZORPAY_KEY_ID=your_razorpay_key_id
-        echo RAZORPAY_KEY_SECRET=your_razorpay_key_secret
-        echo WHATSAPP_PHONE_NUMBER_ID=
-        echo WHATSAPP_ACCESS_TOKEN=
-        echo WHATSAPP_BUSINESS_ACCOUNT_ID=
-        echo BACKUP_PASSWORD=change-this-backup-password
-    ) > .env
-    echo  [CREATED] .env with all required Docker, backend, and frontend variables.
-) else (
-    echo  [OK] root .env already exists.
-)
+
+REM  7. Finalize
+echo [7/7] Finalizing setup...
+echo  [OK] Shared environment is configured in the root .env file.
 
 echo.
 echo  ==========================================
@@ -188,7 +152,7 @@ echo  ==========================================
 echo.
 echo   Next steps:
 echo   1. Make sure MongoDB is running on port 27017
-echo   2. Update backend\.env and root .env with your real credentials
+echo   2. Update the root .env with your real credentials
 echo   3. Run RunApp.bat to start the application
 echo   4. Open http://localhost:3000 in your browser
 echo.

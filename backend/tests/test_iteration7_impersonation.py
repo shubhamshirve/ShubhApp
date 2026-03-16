@@ -166,8 +166,8 @@ class TestWhatsAppEnvKeys:
     """Test WhatsApp Business API .env keys"""
     
     def test_env_keys_present(self):
-        """Backend .env has WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID keys"""
-        with open('/app/backend/.env', 'r') as f:
+        """Root .env has WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID keys"""
+        with open('/app/.env', 'r') as f:
             env_content = f.read()
         
         # Check for presence of keys (they may be empty but should exist)
