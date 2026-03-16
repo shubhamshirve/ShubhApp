@@ -1,7 +1,7 @@
 
 services:
   mongodb:
-    image: mongo:7
+    image: mongo:4.4
     container_name: ebill_mongodb
     restart: unless-stopped
     volumes:
@@ -17,7 +17,9 @@ services:
     depends_on:
       - mongodb
     environment:
+      MONGO_URL: ${MONGO_URL:-mongodb://mongodb:27017/saas_db}
       MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/saas_db}
+      DB_NAME: ${DB_NAME:-saas_db}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN:-localhost},http://${DOMAIN:-localhost}}
     expose:
       - "8000"
