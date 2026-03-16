@@ -52,6 +52,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      SERVER_IP: ${SERVER_IP:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
