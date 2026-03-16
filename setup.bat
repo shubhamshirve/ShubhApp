@@ -103,8 +103,8 @@ REM ─────────────────────────�
 echo [4/7] Configuring backend environment...
 if not exist ".env" (
     (
-        echo MONGO_URL=mongodb://localhost:27017
-        echo DB_NAME=saas_billing_db
+        echo MONGO_URL=mongodb://localhost:27017/saas_db
+        echo DB_NAME=saas_db
         echo CORS_ORIGINS=http://localhost:3000
         echo JWT_SECRET=change-this-to-a-strong-random-secret
         echo RAZORPAY_KEY_ID=your_razorpay_key_id
@@ -166,8 +166,8 @@ if not exist ".env" (
         echo MONGO_URI=mongodb://mongodb:27017/saas_db
         echo CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost
         echo REACT_APP_BACKEND_URL=
-        echo MONGO_URL=mongodb://localhost:27017
-        echo DB_NAME=saas_billing_db
+        echo MONGO_URL=mongodb://localhost:27017/saas_db
+        echo DB_NAME=saas_db
         echo JWT_SECRET=change-this-to-a-strong-random-secret
         echo RAZORPAY_KEY_ID=your_razorpay_key_id
         echo RAZORPAY_KEY_SECRET=your_razorpay_key_secret

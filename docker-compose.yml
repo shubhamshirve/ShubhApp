@@ -17,8 +17,8 @@ services:
     depends_on:
       - mongodb
     environment:
-      MONGO_URL: ${MONGO_URL:-mongodb://mongodb:27017/saas_db}
-      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/saas_db}
+      MONGO_URL: mongodb://mongodb:27017/${DB_NAME:-saas_db}
+      MONGO_URI: mongodb://mongodb:27017/${DB_NAME:-saas_db}
       DB_NAME: ${DB_NAME:-saas_db}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN:-localhost},http://${DOMAIN:-localhost}}
     expose:

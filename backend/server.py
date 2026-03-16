@@ -55,8 +55,8 @@ def _ensure_env_files():
         backend_env.write_text(
             "\n".join(
                 [
-                    "MONGO_URL=mongodb://localhost:27017",
-                    "DB_NAME=saas_billing_db",
+                    "MONGO_URL=mongodb://localhost:27017/saas_db",
+                    "DB_NAME=saas_db",
                     "CORS_ORIGINS=http://localhost:3000",
                     "JWT_SECRET=change-this-to-a-strong-random-secret",
                     "RAZORPAY_KEY_ID=your_razorpay_key_id",
@@ -87,8 +87,8 @@ def _ensure_env_files():
                     "MONGO_URI=mongodb://mongodb:27017/saas_db",
                     "CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost",
                     "REACT_APP_BACKEND_URL=",
-                    "MONGO_URL=mongodb://localhost:27017",
-                    "DB_NAME=saas_billing_db",
+                    "MONGO_URL=mongodb://localhost:27017/saas_db",
+                    "DB_NAME=saas_db",
                     "JWT_SECRET=change-this-to-a-strong-random-secret",
                     "RAZORPAY_KEY_ID=your_razorpay_key_id",
                     "RAZORPAY_KEY_SECRET=your_razorpay_key_secret",
