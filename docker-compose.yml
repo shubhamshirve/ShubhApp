@@ -1,0 +1,67 @@
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: ebill_mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ebill
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ebill_backend
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/saas_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN:-localhost},http://${DOMAIN:-localhost}}
+    expose:
+      - "8000"
+    networks:
+      - ebill
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-}
+    container_name: ebill_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    networks:
+      - ebill
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: ebill_caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ebill
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  ebill:
+    driver: bridge

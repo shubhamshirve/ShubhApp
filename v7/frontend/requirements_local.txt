@@ -1,0 +1,70 @@
+# ============================================================
+# Frontend Requirements — Local Deployment
+# All packages are publicly available on npm / yarn registry
+# Install with: npm install   OR   yarn install
+#
+# This file lists the key packages used in this project.
+# The full dependency list is maintained in package.json.
+# ============================================================
+
+# --- Runtime: package.json (run: npm install / yarn install) ---
+
+# Core Framework
+react@^19.0.0
+react-dom@^19.0.0
+react-router-dom@^7.5.1
+react-scripts@5.0.1
+
+# UI Components (Radix UI / Shadcn)
+@radix-ui/react-dialog
+@radix-ui/react-select
+@radix-ui/react-tabs
+@radix-ui/react-label
+@radix-ui/react-dropdown-menu
+@radix-ui/react-tooltip
+@radix-ui/react-checkbox
+@radix-ui/react-switch
+@radix-ui/react-popover
+@radix-ui/react-alert-dialog
+@radix-ui/react-scroll-area
+@radix-ui/react-separator
+@radix-ui/react-slot
+
+# Icons
+lucide-react@^0.507.0
+
+# Styling
+tailwindcss@^3.4.17
+tailwind-merge@^3.2.0
+tailwindcss-animate@^1.0.7
+class-variance-authority@^0.7.1
+clsx@^2.1.1
+autoprefixer@^10.4.20
+postcss@^8.4.49
+
+# HTTP Client
+axios@^1.8.4
+
+# Charts
+recharts@^3.6.0
+
+# Forms
+react-hook-form@^7.56.2
+@hookform/resolvers@^5.0.1
+zod@^3.24.4
+
+# Notifications
+sonner@^2.0.3
+
+# Date Picker
+react-day-picker@8.10.1
+date-fns@^4.1.0
+
+# Theming
+next-themes@^0.4.6
+
+# Build Tool
+@craco/craco@^7.1.0
+
+# External Payment Script (loaded via CDN in index.html)
+# https://checkout.razorpay.com/v1/checkout.js
