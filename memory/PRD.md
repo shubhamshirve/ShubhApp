@@ -130,9 +130,44 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 ### Branch History Relevant to Current State
 - `V7.6` contains Docker/Caddy setup, Mongo compatibility fixes, SSL fallback, workspace cleanup, and deployment fixes.
 - `V7.7` is branched from `V7.6` and adds the single-root-`.env` consolidation.
+- `V7.8` is branched from `V7.7` and adds:
+  - Caddy startup loading `DOMAIN` and `SERVER_IP` from the generated root `.env`
+  - shared backend request sanitization
+  - stricter validation for phone, WhatsApp, GSTIN, IFSC, and invoice prefix fields
+  - upload filename sanitization for logo and bulk-upload endpoints
 - Latest important commits:
   - `8c28d18` Update frontend index page
   - `3b1a7f7` Consolidate app configuration into root env
+  - `388eadc` Load Caddy env from generated root env file
+  - `93a38c3` Harden backend input validation and upload sanitization
+
+### Backend Input Hardening (V7.8)
+- Added `backend/sanitization.py` with:
+  - shared text sanitization
+  - recursive sanitization for nested request payloads
+  - safe filename normalization for uploads
+- Most request models now inherit from a shared sanitized base model in `backend/models.py`.
+- Sensitive fields are exempted from aggressive sanitization:
+  - passwords
+  - API secrets
+  - webhook secrets
+  - WhatsApp access tokens
+- Added stricter validators for:
+  - Indian mobile/WhatsApp numbers
+  - GSTIN format
+  - IFSC format
+  - invoice prefix format
+  - WhatsApp phone number ID digits
+- Applied raw string sanitization in routers that still take direct query/path parameters:
+  - `auth.py`
+  - `admin.py`
+  - `backup.py`
+  - `operator.py`
+
+### Current Seeding Workflow
+- Recommended seeding command is:
+  - `docker compose exec backend python -c "import asyncio, json; from server import seed_data; print(json.dumps(asyncio.run(seed_data()), indent=2))"`
+- This is preferred over relying on public HTTPS or one-off cross-container DNS during first boot.
 
 ### Known Deployment Notes
 - If HTTPS shows `ERR_SSL_PROTOCOL_ERROR`, first confirm the root `.env` exists and `DOMAIN` is set correctly before recreating Caddy.

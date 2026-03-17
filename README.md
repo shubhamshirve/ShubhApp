@@ -93,3 +93,22 @@ Notes:
 - If you expose Mongo remotely, restrict port `27017` in your firewall to your desktop IP only.
 - All app settings now live in the root `.env`; `backend/.env` and `frontend/.env.local` are no longer required.
 - Default env templates are also available in `.env.example`.
+
+## Input Validation
+
+The backend now applies shared sanitization and stricter validation for common request fields:
+
+- trims and sanitizes incoming text through a shared Pydantic base model
+- preserves sensitive fields like passwords, tokens, and secrets without destructive trimming
+- validates Indian phone and WhatsApp numbers
+- validates GSTIN and IFSC formats
+- constrains invoice prefixes to a safe format
+- sanitizes uploaded filenames before writing them to disk
+
+Main files involved:
+- `backend/sanitization.py`
+- `backend/models.py`
+- `backend/routers/auth.py`
+- `backend/routers/admin.py`
+- `backend/routers/operator.py`
+- `backend/routers/backup.py`
