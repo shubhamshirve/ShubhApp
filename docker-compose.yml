@@ -18,6 +18,11 @@ services:
     depends_on:
       init-env:
         condition: service_completed_successfully
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
+    ports:
+      - "${MONGO_BIND_ADDRESS:-127.0.0.1}:27017:27017"
     volumes:
       - mongo_data:/data/db
     networks:
@@ -34,14 +39,43 @@ services:
       mongodb:
         condition: service_started
     environment:
-      MONGO_URL: mongodb://mongodb:27017/${DB_NAME:-saas_db}
-      MONGO_URI: mongodb://mongodb:27017/${DB_NAME:-saas_db}
+      MONGO_URL: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-change-this-mongo-password}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-change-this-mongo-password}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
       DB_NAME: ${DB_NAME:-saas_db}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN:-localhost},http://${DOMAIN:-localhost}}
     expose:
       - "8000"
     networks:
       - ebill
+
+  seed:
+    build:
+      context: ./backend
+    container_name: ebill_seed
+    restart: "no"
+    depends_on:
+      init-env:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    command:
+      - python
+      - -c
+      - |
+        import json
+        import urllib.request
+
+        request = urllib.request.Request(
+            "http://backend:8000/api/seed",
+            data=b"",
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            print(response.read().decode())
+    networks:
+      - ebill
+    profiles:
+      - tools
 
   frontend:
     build:

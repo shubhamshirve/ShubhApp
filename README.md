@@ -70,9 +70,22 @@ The app is Docker-ready with Caddy in front of the React frontend and FastAPI ba
 docker compose up -d --build
 ```
 
+Seed the default data any time with:
+
+```bash
+docker compose run --rm seed
+```
+
 Notes:
 - Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.
 - Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
 - Backend and frontend are only exposed inside the Docker network; Caddy is the only public entrypoint.
+- MongoDB now uses credentials from `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD`.
+- MongoDB bind address is controlled by `MONGO_BIND_ADDRESS`.
+- Default is `127.0.0.1`, which only allows server-local admin access.
+- Set `MONGO_BIND_ADDRESS=0.0.0.0` if you intentionally want remote desktop access from outside the server.
+- Example local Mongo shell URI: `mongodb://admin:your-password@127.0.0.1:27017/saas_db?authSource=admin`
+- Example remote desktop URI: `mongodb://admin:your-password@YOUR_SERVER_IP:27017/saas_db?authSource=admin`
+- If you expose Mongo remotely, restrict port `27017` in your firewall to your desktop IP only.
 - All app settings now live in the root `.env`; `backend/.env` and `frontend/.env.local` are no longer required.
 - Default env templates are also available in `.env.example`.

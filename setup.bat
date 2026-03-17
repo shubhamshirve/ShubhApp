@@ -98,6 +98,9 @@ if not exist ".env" (
         echo MONGO_URI=mongodb://mongodb:27017/saas_db
         echo MONGO_URL=mongodb://localhost:27017/saas_db
         echo DB_NAME=saas_db
+        echo MONGO_ROOT_USERNAME=admin
+        echo MONGO_ROOT_PASSWORD=change-this-mongo-password
+        echo MONGO_BIND_ADDRESS=127.0.0.1
         echo CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost
         echo REACT_APP_BACKEND_URL=http://localhost:8001
         echo JWT_SECRET=change-this-to-a-strong-random-secret
