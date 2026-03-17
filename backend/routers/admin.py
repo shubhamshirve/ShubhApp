@@ -2,7 +2,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from pydantic import BaseModel
 import os
 import uuid
 import shutil
@@ -21,6 +20,7 @@ from models import (
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
 from audit import log_audit
+from sanitization import SanitizedModel, sanitize_filename, sanitize_text
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -313,7 +313,8 @@ async def return_from_impersonate(current_user: dict = Depends(get_current_user)
     return {"access_token": token, "token_type": "bearer"}
 
 
-class AdminChangePasswordRequest(BaseModel):
+class AdminChangePasswordRequest(SanitizedModel):
+    _unsanitized_fields = {"new_password"}
     new_password: str
 
 
@@ -1287,6 +1288,9 @@ async def update_settlement_status(
     current_user: dict = Depends(require_admin),
 ):
     """Update settlement status (e.g., mark as completed with UTR)."""
+    settlement_id = sanitize_text(settlement_id)
+    status = sanitize_text(status)
+    utr_number = sanitize_text(utr_number) if utr_number else utr_number
     settlement = await db.settlements.find_one({"id": settlement_id}, {"_id": 0})
     if not settlement:
         raise HTTPException(status_code=404, detail="Settlement not found")
@@ -1316,6 +1320,7 @@ async def trigger_settlement_processing(
     settlement_date: Optional[str] = Query(None, description="Date to process (YYYY-MM-DD). Defaults to yesterday."),
     current_user: dict = Depends(require_admin),
 ):
+    settlement_date = sanitize_text(settlement_date) if settlement_date else settlement_date
     """Manually trigger settlement processing for a specific date."""
     import uuid
 
@@ -1430,7 +1435,7 @@ async def update_platform_fee(
     return {"message": f"Platform fee updated to {percentage}%", "platform_fee_percentage": percentage}
 
 
-class ManualSettlementRequest(BaseModel):
+class ManualSettlementRequest(SanitizedModel):
     operator_id: str
     invoice_ids: List[str]
     notes: Optional[str] = None
@@ -1525,6 +1530,7 @@ async def create_manual_settlement(
 @router.get("/settlements/{settlement_id}/invoices")
 async def get_settlement_invoices(settlement_id: str, current_user: dict = Depends(require_admin)):
     """Get all invoices for a settlement with full details."""
+    settlement_id = sanitize_text(settlement_id)
     settlement = await db.settlements.find_one({"id": settlement_id}, {"_id": 0})
     if not settlement:
         raise HTTPException(status_code=404, detail="Settlement not found")
@@ -1645,7 +1651,8 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="File size must be less than 5MB")
     
     # Generate unique filename
-    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    safe_original = sanitize_filename(file.filename or "logo.png", default="logo")
+    ext = safe_original.split(".")[-1].lower() if "." in safe_original else "png"
     filename = f"logo_{uuid.uuid4().hex[:8]}.{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
     

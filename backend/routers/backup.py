@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from datetime import datetime, timezone
 from pathlib import Path
-from pydantic import BaseModel
 import json
 import gzip
 import os
@@ -12,6 +11,7 @@ import logging
 from database import db
 from dependencies import require_admin
 from utils import generate_id
+from sanitization import SanitizedModel, sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,8 @@ COLLECTIONS = [
 router = APIRouter(prefix="/admin/backup", tags=["Backup"])
 
 
-class RestoreRequest(BaseModel):
+class RestoreRequest(SanitizedModel):
+    _unsanitized_fields = {"password"}
     password: str
 
 
@@ -100,6 +101,7 @@ async def restore_backup(
     current_user: dict = Depends(require_admin),
 ):
     """Restore from a backup after password confirmation."""
+    backup_id = sanitize_text(backup_id)
     if body.password != BACKUP_PASSWORD:
         raise HTTPException(status_code=403, detail="Invalid backup password")
 
@@ -133,6 +135,7 @@ async def restore_backup(
 @router.get("/download/{backup_id}")
 async def download_backup(backup_id: str, current_user: dict = Depends(require_admin)):
     """Download a backup file as a gzipped JSON attachment."""
+    backup_id = sanitize_text(backup_id)
     meta = await db.backups.find_one({"id": backup_id}, {"_id": 0})
     if not meta:
         raise HTTPException(status_code=404, detail="Backup not found")
@@ -152,6 +155,7 @@ async def download_backup(backup_id: str, current_user: dict = Depends(require_a
 @router.delete("/{backup_id}")
 async def delete_backup(backup_id: str, current_user: dict = Depends(require_admin)):
     """Delete a backup file and its metadata."""
+    backup_id = sanitize_text(backup_id)
     meta = await db.backups.find_one({"id": backup_id}, {"_id": 0})
     if not meta:
         raise HTTPException(status_code=404, detail="Backup not found")

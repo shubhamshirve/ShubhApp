@@ -1,7 +1,10 @@
 """All Pydantic models for the application."""
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+import re
+
+from pydantic import Field, EmailStr, ConfigDict, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from sanitization import SanitizedModel
 
 
 def _empty_to_none(v):
@@ -11,12 +14,53 @@ def _empty_to_none(v):
     return v
 
 
+GST_PATTERN = re.compile(r"^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
+IFSC_PATTERN = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+
+
+def _normalize_phone(value: Optional[str], *, required: bool = False) -> Optional[str]:
+    if value is None:
+        if required:
+            raise ValueError("Phone number is required")
+        return None
+
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if len(digits) == 10:
+        return digits
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits
+    raise ValueError("Phone number must be a valid 10-digit Indian mobile or 12-digit number with country code")
+
+
+def _normalize_gst(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    gst = value.upper()
+    if not GST_PATTERN.fullmatch(gst):
+        raise ValueError("GST number must be a valid 15-character GSTIN")
+    return gst
+
+
+def _normalize_ifsc(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    ifsc = value.upper()
+    if not IFSC_PATTERN.fullmatch(ifsc):
+        raise ValueError("IFSC code must be a valid 11-character IFSC")
+    return ifsc
+
+
 # ============== USER MODELS ==============
 
-class UserBase(BaseModel):
+class UserBase(SanitizedModel):
     email: EmailStr
     name: str
     phone: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value)
 
 
 class UserCreate(UserBase):
@@ -24,12 +68,13 @@ class UserCreate(UserBase):
     role: str = "operator"
 
 
-class UserLogin(BaseModel):
+class UserLogin(SanitizedModel):
+    _unsanitized_fields = {"password"}
     email: EmailStr
     password: str
 
 
-class UserResponse(BaseModel):
+class UserResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     email: str
@@ -42,7 +87,7 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(SanitizedModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
@@ -50,7 +95,8 @@ class TokenResponse(BaseModel):
 
 # ============== OPERATOR MODELS ==============
 
-class OperatorCreate(BaseModel):
+class OperatorCreate(SanitizedModel):
+    _unsanitized_fields = {"password"}
     company_name: str
     owner_name: str
     email: EmailStr
@@ -68,8 +114,23 @@ class OperatorCreate(BaseModel):
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
 
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value, required=True)
 
-class OperatorUpdate(BaseModel):
+    @field_validator("gst_number")
+    @classmethod
+    def normalize_gst(cls, value):
+        return _normalize_gst(value)
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def normalize_ifsc(cls, value):
+        return _normalize_ifsc(value)
+
+
+class OperatorUpdate(SanitizedModel):
     company_name: Optional[str] = None
     owner_name: Optional[str] = None
     phone: Optional[str] = None
@@ -86,8 +147,23 @@ class OperatorUpdate(BaseModel):
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
 
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value)
 
-class OperatorResponse(BaseModel):
+    @field_validator("gst_number")
+    @classmethod
+    def normalize_gst(cls, value):
+        return _normalize_gst(value)
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def normalize_ifsc(cls, value):
+        return _normalize_ifsc(value)
+
+
+class OperatorResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     company_name: str
@@ -109,7 +185,8 @@ class OperatorResponse(BaseModel):
     created_at: datetime
 
 
-class AdminOperatorCreate(BaseModel):
+class AdminOperatorCreate(SanitizedModel):
+    _unsanitized_fields = {"password"}
     company_name: str
     owner_name: str
     email: EmailStr
@@ -130,8 +207,23 @@ class AdminOperatorCreate(BaseModel):
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
 
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value, required=True)
 
-class ExtendSubscriptionRequest(BaseModel):
+    @field_validator("gst_number")
+    @classmethod
+    def normalize_gst(cls, value):
+        return _normalize_gst(value)
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def normalize_ifsc(cls, value):
+        return _normalize_ifsc(value)
+
+
+class ExtendSubscriptionRequest(SanitizedModel):
     months: Optional[int] = None
     custom_date: Optional[str] = None
 
@@ -153,7 +245,7 @@ def calc_plan_price(max_subscribers: int, max_staff: int, addon_prices: List[flo
     return base + staff + sum(addon_prices)
 
 
-class SaaSPlanCreate(BaseModel):
+class SaaSPlanCreate(SanitizedModel):
     name: str
     monthly_price: float
     max_subscribers: int
@@ -165,7 +257,7 @@ class SaaSPlanCreate(BaseModel):
     platform_fee_percentage: float = 3.0
 
 
-class SaaSPlanResponse(BaseModel):
+class SaaSPlanResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     name: str
@@ -183,7 +275,7 @@ class SaaSPlanResponse(BaseModel):
 
 # ============== SUBSCRIBER MODELS ==============
 
-class SubscriberCreate(BaseModel):
+class SubscriberCreate(SanitizedModel):
     name: str
     whatsapp_number: str
     email: Optional[EmailStr] = None
@@ -197,8 +289,13 @@ class SubscriberCreate(BaseModel):
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
 
+    @field_validator("whatsapp_number")
+    @classmethod
+    def normalize_whatsapp(cls, value):
+        return _normalize_phone(value, required=True)
 
-class SubscriberResponse(BaseModel):
+
+class SubscriberResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     name: str
@@ -216,7 +313,7 @@ class SubscriberResponse(BaseModel):
 
 # ============== OPERATOR PLAN MODELS ==============
 
-class OperatorPlanCreate(BaseModel):
+class OperatorPlanCreate(SanitizedModel):
     name: str
     price: float
     validity: str  # monthly, quarterly, half_yearly, yearly
@@ -225,7 +322,7 @@ class OperatorPlanCreate(BaseModel):
     description: Optional[str] = None
 
 
-class OperatorPlanResponse(BaseModel):
+class OperatorPlanResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     name: str
@@ -241,7 +338,7 @@ class OperatorPlanResponse(BaseModel):
 
 # ============== INVOICE MODELS ==============
 
-class InvoiceCreate(BaseModel):
+class InvoiceCreate(SanitizedModel):
     subscriber_id: str
     plan_id: str
     base_amount: float
@@ -251,7 +348,7 @@ class InvoiceCreate(BaseModel):
     due_date: datetime
 
 
-class InvoiceResponse(BaseModel):
+class InvoiceResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     invoice_number: str
@@ -272,11 +369,11 @@ class InvoiceResponse(BaseModel):
     created_at: datetime
 
 
-class PaymentLinkCreate(BaseModel):
+class PaymentLinkCreate(SanitizedModel):
     invoice_id: str
 
 
-class PaymentLinkResponse(BaseModel):
+class PaymentLinkResponse(SanitizedModel):
     payment_link: str
     payment_link_id: str
     qr_code: str
@@ -285,7 +382,8 @@ class PaymentLinkResponse(BaseModel):
 
 # ============== STAFF MODELS ==============
 
-class StaffCreate(BaseModel):
+class StaffCreate(SanitizedModel):
+    _unsanitized_fields = {"password"}
     name: str
     email: EmailStr
     password: str
@@ -297,8 +395,13 @@ class StaffCreate(BaseModel):
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
 
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value)
 
-class StaffResponse(BaseModel):
+
+class StaffResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     name: str
@@ -313,7 +416,7 @@ class StaffResponse(BaseModel):
 
 # ============== AUDIT LOG MODELS ==============
 
-class AuditLogResponse(BaseModel):
+class AuditLogResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     user_id: str
@@ -330,7 +433,7 @@ class AuditLogResponse(BaseModel):
 
 # ============== ADMIN / SETTINGS MODELS ==============
 
-class GlobalSettingsUpdate(BaseModel):
+class GlobalSettingsUpdate(SanitizedModel):
     active_payment_gateway: Optional[str] = None  # razorpay, cashfree, phonepe
     notification_enabled: bool = True
     auto_invoice_days_before: int = 3
@@ -338,7 +441,8 @@ class GlobalSettingsUpdate(BaseModel):
     gst_rate: float = 18
 
 
-class AdminPaymentGatewayConfig(BaseModel):
+class AdminPaymentGatewayConfig(SanitizedModel):
+    _unsanitized_fields = {"api_secret", "webhook_secret"}
     gateway_type: str  # razorpay, cashfree, phonepe
     api_key: str
     api_secret: str
@@ -349,7 +453,7 @@ class AdminPaymentGatewayConfig(BaseModel):
 
 # ============== INVOICE CUSTOMIZATION MODELS ==============
 
-class InvoiceCustomization(BaseModel):
+class InvoiceCustomization(SanitizedModel):
     company_name: str
     company_address: Optional[str] = None
     company_phone: Optional[str] = None
@@ -361,10 +465,23 @@ class InvoiceCustomization(BaseModel):
     terms_conditions: Optional[str] = None
     invoice_template: str = "classic"  # "classic" or "modern"
 
+    @field_validator("company_phone")
+    @classmethod
+    def normalize_company_phone(cls, value):
+        return _normalize_phone(value)
+
+    @field_validator("invoice_prefix")
+    @classmethod
+    def normalize_invoice_prefix(cls, value):
+        prefix = value.upper()
+        if not re.fullmatch(r"[A-Z0-9_-]{2,10}", prefix):
+            raise ValueError("Invoice prefix must be 2-10 characters using letters, numbers, underscore, or hyphen")
+        return prefix
+
 
 # ============== ANNOUNCEMENT MODELS ==============
 
-class AnnouncementCreate(BaseModel):
+class AnnouncementCreate(SanitizedModel):
     title: str
     message: str
     send_whatsapp: bool = True
@@ -374,7 +491,8 @@ class AnnouncementCreate(BaseModel):
 
 # ============== PAYMENT GATEWAY MODELS ==============
 
-class PaymentGatewayConfig(BaseModel):
+class PaymentGatewayConfig(SanitizedModel):
+    _unsanitized_fields = {"api_secret", "webhook_secret"}
     gateway_type: str  # razorpay, cashfree, phonepe
     api_key: str
     api_secret: str
@@ -383,36 +501,49 @@ class PaymentGatewayConfig(BaseModel):
 
 # ============== WHATSAPP MODELS ==============
 
-class WhatsAppConfig(BaseModel):
+class WhatsAppConfig(SanitizedModel):
+    _unsanitized_fields = {"access_token"}
     phone_number_id: str
     access_token: str
     business_account_id: Optional[str] = None
 
+    @field_validator("phone_number_id")
+    @classmethod
+    def validate_phone_number_id(cls, value):
+        if not value.isdigit():
+            raise ValueError("Phone number ID must contain only digits")
+        return value
 
-class WhatsAppTemplateSettings(BaseModel):
+
+class WhatsAppTemplateSettings(SanitizedModel):
     invoice_template: Optional[str] = None
     reminder_template: Optional[str] = None
     payment_confirmation_template: Optional[str] = None
     announcement_template: Optional[str] = None
 
 
-class WhatsAppTestMessage(BaseModel):
+class WhatsAppTestMessage(SanitizedModel):
     phone_number: str
 
+    @field_validator("phone_number")
+    @classmethod
+    def normalize_phone_number(cls, value):
+        return _normalize_phone(value, required=True)
 
-class SendNotificationRequest(BaseModel):
+
+class SendNotificationRequest(SanitizedModel):
     invoice_id: str
     notification_type: str = "invoice"  # invoice, reminder
 
 
-class BulkNotificationRequest(BaseModel):
+class BulkNotificationRequest(SanitizedModel):
     subscriber_ids: List[str]
     message_template: str = "invoice"
 
 
 # ============== REMINDER SETTINGS MODELS ==============
 
-class ReminderSettingsUpdate(BaseModel):
+class ReminderSettingsUpdate(SanitizedModel):
     enabled: bool = False
     remind_before_due: List[int] = []      # e.g. [3, 1] = 3 days and 1 day before
     remind_on_due: bool = False
@@ -422,7 +553,8 @@ class ReminderSettingsUpdate(BaseModel):
 
 # ============== ADDON MODELS ==============
 
-class AddonCreate(BaseModel):
+class AddonCreate(SanitizedModel):
+    description: Optional[str] = None
     name: str
     code: str
     price: float
@@ -430,7 +562,7 @@ class AddonCreate(BaseModel):
 
 # ============== DISCOUNT CODE MODELS ==============
 
-class DiscountCodeCreate(BaseModel):
+class DiscountCodeCreate(SanitizedModel):
     code: str
     description: Optional[str] = None
     discount_type: str  # "percentage" or "flat"
@@ -440,7 +572,7 @@ class DiscountCodeCreate(BaseModel):
     is_active: bool = True
 
 
-class DiscountCodeResponse(BaseModel):
+class DiscountCodeResponse(SanitizedModel):
     id: str
     code: str
     description: Optional[str] = None
@@ -456,7 +588,7 @@ class DiscountCodeResponse(BaseModel):
 
 # ============== WHATSAPP TEMPLATE MODELS ==============
 
-class WhatsAppTemplateCreate(BaseModel):
+class WhatsAppTemplateCreate(SanitizedModel):
     template_name: str          # API name used in send_template_message calls
     display_name: str           # Human readable name shown in UI
     template_type: str          # invoice_notification, payment_reminder, payment_confirmation, announcement, custom
@@ -467,7 +599,7 @@ class WhatsAppTemplateCreate(BaseModel):
     is_active: bool = True
 
 
-class WhatsAppTemplateUpdate(BaseModel):
+class WhatsAppTemplateUpdate(SanitizedModel):
     display_name: Optional[str] = None
     template_name: Optional[str] = None
     language_code: Optional[str] = None

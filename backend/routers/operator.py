@@ -21,6 +21,7 @@ from models import (
 from utils import generate_id, hash_password, generate_invoice_number, generate_invoice_number_atomic
 from dependencies import require_operator, require_operator_no_staff, check_operator_read_only
 from audit import log_audit
+from sanitization import sanitize_filename, sanitize_text
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
@@ -200,6 +201,7 @@ async def get_theme_settings(current_user: dict = Depends(require_operator)):
 @router.put("/theme-settings")
 async def update_theme_settings(theme: str, current_user: dict = Depends(require_operator)):
     """Update theme settings for the operator."""
+    theme = sanitize_text(theme)
     if theme not in ["modern", "classic"]:
         raise HTTPException(status_code=400, detail="Invalid theme. Choose 'modern' or 'classic'")
     now = datetime.now(timezone.utc)
@@ -902,7 +904,7 @@ async def bulk_upload_plans(
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
     content = await file.read()
-    filename = (file.filename or "").lower()
+    filename = sanitize_filename(file.filename or "", default="plans").lower()
     rows = []
     VALID_VALIDITY = ["monthly", "quarterly", "half_yearly", "yearly"]
     VALID_TAX_TYPE = ["inclusive", "exclusive", "none"]
@@ -1148,7 +1150,7 @@ async def bulk_upload_subscribers(
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
     content = await file.read()
-    filename = (file.filename or "").lower()
+    filename = sanitize_filename(file.filename or "", default="subscribers").lower()
     rows = []
 
     try:
@@ -1375,6 +1377,7 @@ async def get_invoices(
 async def update_invoice_status(
     invoice_id: str, status: str = Query(...), current_user: dict = Depends(require_operator)
 ):
+    status = sanitize_text(status)
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     if status not in ["pending", "paid", "overdue", "cancelled"]:
@@ -1595,6 +1598,8 @@ async def get_revenue_report(
     start_date: Optional[str] = None, end_date: Optional[str] = None,
     current_user: dict = Depends(require_operator)
 ):
+    start_date = sanitize_text(start_date) if start_date else start_date
+    end_date = sanitize_text(end_date) if end_date else end_date
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
     query = {"operator_id": current_user["operator_id"], "status": "paid", "deleted_at": None}
@@ -1617,6 +1622,8 @@ async def get_gst_summary(
     start_date: Optional[str] = None, end_date: Optional[str] = None,
     current_user: dict = Depends(require_operator)
 ):
+    start_date = sanitize_text(start_date) if start_date else start_date
+    end_date = sanitize_text(end_date) if end_date else end_date
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
     query = {"operator_id": current_user["operator_id"], "deleted_at": None}
@@ -1662,6 +1669,12 @@ async def get_report_invoices(
     current_user: dict = Depends(require_operator),
 ):
     """Get paginated invoice list with filters for reports."""
+    status = sanitize_text(status) if status else status
+    search = sanitize_text(search) if search else search
+    start_date = sanitize_text(start_date) if start_date else start_date
+    end_date = sanitize_text(end_date) if end_date else end_date
+    sort_by = sanitize_text(sort_by) if sort_by else sort_by
+    sort_order = sanitize_text(sort_order) if sort_order else sort_order
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot access operator reports")
     query = {"operator_id": current_user["operator_id"], "deleted_at": None}

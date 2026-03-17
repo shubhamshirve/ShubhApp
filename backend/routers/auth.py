@@ -1,7 +1,6 @@
 """Auth router: register (with OTP), login, me."""
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel
 import random
 import logging
 
@@ -9,6 +8,7 @@ from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
 from utils import generate_id, hash_password, verify_password, create_token
 from dependencies import get_current_user
+from sanitization import SanitizedModel, sanitize_text
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 TEST_OTP = "200796"
 
 
-class OTPVerifyRequest(BaseModel):
+class OTPVerifyRequest(SanitizedModel):
     registration_id: str
     otp: str
 
@@ -205,6 +205,7 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
 @router.post("/resend-otp")
 async def resend_otp(registration_id: str = ""):
     """Resend OTP for a pending registration."""
+    registration_id = sanitize_text(registration_id)
     if not registration_id:
         raise HTTPException(status_code=400, detail="Registration ID is required")
     pending = await db.pending_registrations.find_one({"id": registration_id}, {"_id": 0})
@@ -373,7 +374,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     )
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(SanitizedModel):
+    _unsanitized_fields = {"current_password", "new_password"}
     current_password: str
     new_password: str
 
@@ -401,17 +403,18 @@ async def change_password(
 RECOVERY_TEST_OTP = "475869"
 
 
-class ForgotPasswordRequest(BaseModel):
+class ForgotPasswordRequest(SanitizedModel):
     email: str
     method: str = "email"  # "email" or "whatsapp"
 
 
-class VerifyRecoveryOTPRequest(BaseModel):
+class VerifyRecoveryOTPRequest(SanitizedModel):
     recovery_id: str
     otp: str
 
 
-class ResetPasswordRequest(BaseModel):
+class ResetPasswordRequest(SanitizedModel):
+    _unsanitized_fields = {"new_password"}
     recovery_id: str
     new_password: str
 
@@ -554,6 +557,7 @@ async def reset_password(data: ResetPasswordRequest):
 @router.post("/resend-recovery-otp")
 async def resend_recovery_otp(recovery_id: str = ""):
     """Resend recovery OTP."""
+    recovery_id = sanitize_text(recovery_id)
     if not recovery_id:
         raise HTTPException(status_code=400, detail="Recovery ID is required")
 
