@@ -76,6 +76,8 @@ Seed the default data any time with:
 docker compose run --rm seed
 ```
 
+This helper seeds directly inside the backend image and does not depend on Caddy or backend DNS.
+
 Notes:
 - Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.
 - Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
