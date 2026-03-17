@@ -83,6 +83,7 @@ Notes:
 - Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
 - Backend and frontend are only exposed inside the Docker network; Caddy is the only public entrypoint.
 - MongoDB now uses credentials from `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD`.
+- Docker passes Mongo host, username, and password separately so special characters in the password are handled safely.
 - MongoDB bind address is controlled by `MONGO_BIND_ADDRESS`.
 - Default is `127.0.0.1`, which only allows server-local admin access.
 - Set `MONGO_BIND_ADDRESS=0.0.0.0` if you intentionally want remote desktop access from outside the server.
