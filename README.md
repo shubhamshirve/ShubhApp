@@ -73,10 +73,10 @@ docker compose up -d --build
 Seed the default data any time with:
 
 ```bash
-docker compose run --rm seed
+docker compose exec backend python -c "import asyncio, json; from server import seed_data; print(json.dumps(asyncio.run(seed_data()), indent=2))"
 ```
 
-This helper seeds directly inside the backend image and does not depend on Caddy or backend DNS.
+This runs seeding inside the already-running backend container, which avoids Docker DNS and dependency startup issues.
 
 Notes:
 - Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.

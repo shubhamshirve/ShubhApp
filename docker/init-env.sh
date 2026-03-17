@@ -5,8 +5,8 @@ ROOT_DIR="/workspace"
 
 if [ ! -f "$ROOT_DIR/.env" ]; then
   cat > "$ROOT_DIR/.env" <<'EOF'
-DOMAIN=localhost
-SERVER_IP=
+DOMAIN=e-bill.in
+SERVER_IP=45.196.196.21
 MONGO_URI=mongodb://mongodb:27017/saas_db
 CORS_ORIGINS=https://localhost,http://localhost
 REACT_APP_BACKEND_URL=
