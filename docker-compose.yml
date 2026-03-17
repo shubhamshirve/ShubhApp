@@ -114,10 +114,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN:-localhost}
-      SERVER_IP: ${SERVER_IP:-}
+    command: ["/bin/sh", "/workspace/docker/run-caddy.sh"]
     volumes:
+      - ./:/workspace:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config

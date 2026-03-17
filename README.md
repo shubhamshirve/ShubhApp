@@ -80,6 +80,7 @@ This runs seeding inside the already-running backend container, which avoids Doc
 
 Notes:
 - Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.
+- Caddy now loads `DOMAIN` and `SERVER_IP` from the generated root `.env` at container startup, so first boot picks up the created env file automatically.
 - Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
 - Backend and frontend are only exposed inside the Docker network; Caddy is the only public entrypoint.
 - MongoDB now uses credentials from `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD`.
