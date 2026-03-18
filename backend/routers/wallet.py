@@ -95,9 +95,24 @@ async def deduct_wallet(
 
 
 async def deduct_wallet_for_invoice(operator_id: str, invoice_id: str) -> float:
-    """Deduct Rs.10 from operator wallet for invoice generation."""
+    """Deduct per_invoice_price from operator wallet for invoice generation."""
+    # Get operator's current plan to find per_invoice_price
+    per_invoice_price = 10.0  # default fallback
+    try:
+        operator = await db.operators.find_one({"id": operator_id}, {"_id": 0, "saas_plan_id": 1})
+        if operator and operator.get("saas_plan_id"):
+            plan = await db.saas_plans.find_one(
+                {"id": operator["saas_plan_id"]}, {"_id": 0, "per_invoice_price": 1}
+            )
+            if plan and plan.get("per_invoice_price") is not None:
+                per_invoice_price = float(plan["per_invoice_price"])
+    except Exception:
+        pass
+
     new_balance, _ = await deduct_wallet(
-        operator_id, 10.0, "Invoice generation charge", reference_id=invoice_id
+        operator_id, per_invoice_price,
+        f"Invoice generation charge (₹{per_invoice_price})",
+        reference_id=invoice_id,
     )
     return new_balance
 

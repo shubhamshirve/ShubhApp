@@ -325,17 +325,11 @@ def calc_plan_price(max_subscribers: int, max_staff: int, addon_prices: List[flo
 
 class SaaSPlanCreate(SanitizedModel):
     name: str
-    monthly_price: float = 0.0  # Legacy/custom; auto-calculated for basic/pro
-    max_subscribers: int = 99999
-    max_staff: int = 999  # default high; staff access managed via addon
-    trial_enabled: bool = False
-    trial_days: int = 0
-    gst_applicable: bool = True
+    monthly_price: float  # GST inclusive monthly fixed price
+    per_invoice_price: float = 10.0  # Amount deducted from wallet per invoice generated
     included_addons: List[str] = []
-    platform_fee_percentage: float = 0.0
-    plan_type: Optional[str] = None  # "basic", "pro", or None (custom/legacy)
-    per_customer_rate: Optional[float] = None  # Rs.12 for basic, Rs.22 for pro
-    monthly_base_fee: Optional[float] = 0.0  # Rs.0 for basic, Rs.1000 for pro
+    max_subscribers: int = 99999
+    max_staff: int = 999
 
 
 class SaaSPlanResponse(SanitizedModel):
@@ -343,16 +337,11 @@ class SaaSPlanResponse(SanitizedModel):
     id: str
     name: str
     monthly_price: float
+    per_invoice_price: float = 10.0
     max_subscribers: int
     max_staff: int
-    trial_enabled: bool
-    trial_days: int
-    gst_applicable: bool
     included_addons: List[str] = []
     platform_fee_percentage: Optional[float] = 0.0
-    plan_type: Optional[str] = None
-    per_customer_rate: Optional[float] = None
-    monthly_base_fee: Optional[float] = 0.0
     status: str
     created_at: datetime
 

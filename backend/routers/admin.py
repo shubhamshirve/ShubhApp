@@ -45,43 +45,22 @@ def _parse_operator(o: dict) -> OperatorResponse:
 @router.post("/saas-plans", response_model=SaaSPlanResponse)
 async def create_saas_plan(data: SaaSPlanCreate, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)
-
-    # Auto-configure Basic/Pro plan type
-    plan_type = data.plan_type
-    if plan_type == "basic":
-        per_customer_rate = 12.0
-        monthly_base_fee = 0.0
-        platform_fee = 0.0
-        all_addons = await db.addons.find({"deleted_at": None}, {"_id": 0, "code": 1}).to_list(100)
-        included_addons = []  # Basic: no addons
-    elif plan_type == "pro":
-        per_customer_rate = 22.0
-        monthly_base_fee = 1000.0
-        platform_fee = 0.0
-        all_addons = await db.addons.find({"deleted_at": None}, {"_id": 0, "code": 1}).to_list(100)
-        included_addons = [a["code"] for a in all_addons]  # Pro: all addons
-    else:
-        per_customer_rate = data.per_customer_rate
-        monthly_base_fee = data.monthly_base_fee or 0.0
-        platform_fee = data.platform_fee_percentage
-        included_addons = data.included_addons
-
     plan = {
         "id": generate_id(), "name": data.name,
-        "monthly_price": data.monthly_price or 0.0,
-        "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
-        "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
-        "gst_applicable": data.gst_applicable, "included_addons": included_addons,
-        "platform_fee_percentage": platform_fee,
-        "plan_type": plan_type,
-        "per_customer_rate": per_customer_rate,
-        "monthly_base_fee": monthly_base_fee,
+        "monthly_price": data.monthly_price,
+        "per_invoice_price": data.per_invoice_price,
+        "max_subscribers": data.max_subscribers,
+        "max_staff": data.max_staff,
+        "included_addons": data.included_addons,
+        "platform_fee_percentage": 0.0,
+        "gst_applicable": False,  # GST inclusive pricing
+        "trial_enabled": False, "trial_days": 0,
         "status": "active", "created_at": now.isoformat(),
-        "updated_at": now.isoformat(), "deleted_at": None
+        "updated_at": now.isoformat(), "deleted_at": None,
     }
     await db.saas_plans.insert_one(plan)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "create", "saas_plans", None, {"name": data.name, "plan_type": plan_type},
+                    "create", "saas_plans", None, {"name": data.name, "monthly_price": data.monthly_price},
                     ip_address=current_user.get("_ip_address"))
     return SaaSPlanResponse(**{**plan, "created_at": now})
 
@@ -98,35 +77,16 @@ async def update_saas_plan(plan_id: str, data: SaaSPlanCreate, current_user: dic
     if not existing:
         raise HTTPException(status_code=404, detail="Plan not found")
     now = datetime.now(timezone.utc)
-
-    plan_type = data.plan_type
-    if plan_type == "basic":
-        per_customer_rate = 12.0
-        monthly_base_fee = 0.0
-        platform_fee = 0.0
-        included_addons = []
-    elif plan_type == "pro":
-        per_customer_rate = 22.0
-        monthly_base_fee = 1000.0
-        platform_fee = 0.0
-        all_addons = await db.addons.find({"deleted_at": None}, {"_id": 0, "code": 1}).to_list(100)
-        included_addons = [a["code"] for a in all_addons]
-    else:
-        per_customer_rate = data.per_customer_rate
-        monthly_base_fee = data.monthly_base_fee or 0.0
-        platform_fee = data.platform_fee_percentage
-        included_addons = data.included_addons
-
     update_data = {
-        "name": data.name, "monthly_price": data.monthly_price or 0.0,
-        "max_subscribers": data.max_subscribers, "max_staff": data.max_staff,
-        "trial_enabled": data.trial_enabled, "trial_days": data.trial_days,
-        "gst_applicable": data.gst_applicable, "included_addons": included_addons,
-        "platform_fee_percentage": platform_fee,
-        "plan_type": plan_type,
-        "per_customer_rate": per_customer_rate,
-        "monthly_base_fee": monthly_base_fee,
-        "updated_at": now.isoformat()
+        "name": data.name,
+        "monthly_price": data.monthly_price,
+        "per_invoice_price": data.per_invoice_price,
+        "max_subscribers": data.max_subscribers,
+        "max_staff": data.max_staff,
+        "included_addons": data.included_addons,
+        "platform_fee_percentage": 0.0,
+        "gst_applicable": False,
+        "updated_at": now.isoformat(),
     }
     await db.saas_plans.update_one({"id": plan_id}, {"$set": update_data})
     updated = await db.saas_plans.find_one({"id": plan_id}, {"_id": 0})

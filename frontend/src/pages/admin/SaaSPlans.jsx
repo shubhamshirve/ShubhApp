@@ -1,614 +1,298 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { useAuth } from "../../App";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { Switch } from "../../components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Textarea } from "../../components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, Puzzle } from "lucide-react";
+import { Package, Plus, Pencil, Trash2, RefreshCw, IndianRupee, FileText } from "lucide-react";
 
-const AdminSaaSPlans = () => {
+export default function AdminSaaSPlans() {
   const { authAxios } = useAuth();
   const [plans, setPlans] = useState([]);
   const [addons, setAddons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
-  // Addon dialog state
-  const [showAddonDialog, setShowAddonDialog] = useState(false);
-  const [editingAddon, setEditingAddon] = useState(null);
-  const [addonForm, setAddonForm] = useState({ name: "", code: "", price: 0, description: "" });
+  const [saving, setSaving] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const emptyForm = {
     name: "",
-    plan_type: "basic",   // "basic", "pro", or "custom"
-    monthly_price: 0,
-    per_customer_rate: 12,
-    monthly_base_fee: 0,
-    max_subscribers: 99999,
-    max_staff: 999,
-    trial_enabled: false,
-    trial_days: 0,
-    gst_applicable: true,
+    monthly_price: "",
+    per_invoice_price: "10",
     included_addons: [],
-    platform_fee_percentage: 0.0
-  });
+  };
+  const [formData, setFormData] = useState(emptyForm);
 
-  useEffect(() => {
-    Promise.all([fetchPlans(), fetchAddons()])
-      .finally(() => setLoading(false));
-  }, []);
-
-  const fetchPlans = async () => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const response = await authAxios.get("/admin/saas-plans");
-      setPlans(response.data);
-    } catch (error) {
-      toast.error("Failed to load plans");
+      const [plansRes, addonsRes] = await Promise.all([
+        authAxios.get("/admin/saas-plans"),
+        authAxios.get("/admin/addons"),
+      ]);
+      setPlans(plansRes.data || []);
+      setAddons(addonsRes.data || []);
+    } catch {
+      toast.error("Failed to load data");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchAddons = async () => {
-    try {
-      const response = await authAxios.get("/admin/addons");
-      setAddons(response.data);
-    } catch { /* ignore */ }
+  useEffect(() => { fetchData(); }, []);
+
+  const openCreate = () => {
+    setEditingPlan(null);
+    setFormData(emptyForm);
+    setShowDialog(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    // Validation
-    if (!formData.name.trim() || formData.name.trim().length < 2) {
-      toast.error("Plan name must be at least 2 characters"); return;
-    }
-    if (formData.monthly_price < 0) { toast.error("Monthly price cannot be negative"); return; }
-    if (formData.max_subscribers < 0) { toast.error("Max subscribers cannot be negative"); return; }
-    if (formData.max_staff !== undefined && formData.max_staff < 0) {
-      toast.error("Max staff cannot be negative"); return;
-    }
-    try {
-      if (editingPlan) {
-        await authAxios.put(`/admin/saas-plans/${editingPlan.id}`, formData);
-        toast.success("Plan updated successfully");
-      } else {
-        await authAxios.post("/admin/saas-plans", formData);
-        toast.success("Plan created successfully");
-      }
-      setShowDialog(false);
-      resetForm();
-      fetchPlans();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to save plan");
-    }
-  };
-
-  const handleDelete = async (planId) => {
-    if (!confirm("Are you sure you want to delete this plan?")) return;
-    try {
-      await authAxios.delete(`/admin/saas-plans/${planId}`);
-      toast.success("Plan deleted");
-      fetchPlans();
-    } catch (error) {
-      toast.error("Failed to delete plan");
-    }
-  };
-
-  const openEditDialog = (plan) => {
+  const openEdit = (plan) => {
     setEditingPlan(plan);
     setFormData({
       name: plan.name,
-      plan_type: plan.plan_type || "custom",
-      monthly_price: plan.monthly_price || 0,
-      per_customer_rate: plan.per_customer_rate || 12,
-      monthly_base_fee: plan.monthly_base_fee || 0,
-      max_subscribers: plan.max_subscribers,
-      max_staff: plan.max_staff || 0,
-      trial_enabled: plan.trial_enabled,
-      trial_days: plan.trial_days,
-      gst_applicable: plan.gst_applicable,
+      monthly_price: String(plan.monthly_price ?? ""),
+      per_invoice_price: String(plan.per_invoice_price ?? "10"),
       included_addons: plan.included_addons || [],
-      platform_fee_percentage: plan.platform_fee_percentage ?? 0.0
     });
     setShowDialog(true);
   };
 
-  const resetForm = () => {
-    setEditingPlan(null);
-    setFormData({
-      name: "",
-      plan_type: "basic",
-      monthly_price: 0,
-      per_customer_rate: 12,
-      monthly_base_fee: 0,
-      max_subscribers: 99999,
-      max_staff: 999,
-      trial_enabled: false,
-      trial_days: 0,
-      gst_applicable: true,
-      included_addons: [],
-      platform_fee_percentage: 0.0
-    });
+  const toggleAddon = (code) => {
+    setFormData((prev) => ({
+      ...prev,
+      included_addons: prev.included_addons.includes(code)
+        ? prev.included_addons.filter((c) => c !== code)
+        : [...prev.included_addons, code],
+    }));
   };
 
-  const toggleAddon = (addonCode) => {
-    setFormData(prev => {
-      const current = prev.included_addons || [];
-      const updated = current.includes(addonCode)
-        ? current.filter(c => c !== addonCode)
-        : [...current, addonCode];
-      return { ...prev, included_addons: updated };
-    });
-  };
-
-  // ── Addon CRUD ──────────────────────────────────────────────────────────
-  const openAddonCreate = () => {
-    setEditingAddon(null);
-    setAddonForm({ name: "", code: "", price: 0, description: "" });
-    setShowAddonDialog(true);
-  };
-
-  const openAddonEdit = (addon) => {
-    setEditingAddon(addon);
-    setAddonForm({ name: addon.name, code: addon.code, price: addon.price, description: addon.description || "" });
-    setShowAddonDialog(true);
-  };
-
-  const handleAddonSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Validation
-    if (!addonForm.name.trim() || addonForm.name.trim().length < 2) {
-      toast.error("Add-on name must be at least 2 characters"); return;
-    }
-    if (!addonForm.code.trim() || !/^[a-z0-9_]+$/.test(addonForm.code.trim())) {
-      toast.error("Add-on code must be lowercase letters, numbers, and underscores only"); return;
-    }
-    if (addonForm.price < 0) { toast.error("Price cannot be negative"); return; }
+    const monthlyPrice = parseFloat(formData.monthly_price);
+    const perInvoicePrice = parseFloat(formData.per_invoice_price);
+    if (!formData.name.trim()) { toast.error("Plan name is required"); return; }
+    if (isNaN(monthlyPrice) || monthlyPrice < 0) { toast.error("Monthly price must be a valid number"); return; }
+    if (isNaN(perInvoicePrice) || perInvoicePrice < 0) { toast.error("Per invoice price must be a valid number"); return; }
+
+    setSaving(true);
+    const payload = {
+      name: formData.name.trim(),
+      monthly_price: monthlyPrice,
+      per_invoice_price: perInvoicePrice,
+      included_addons: formData.included_addons,
+    };
     try {
-      if (editingAddon) {
-        await authAxios.put(`/admin/addons/${editingAddon.id}`, addonForm);
-        toast.success("Add-on updated");
+      if (editingPlan) {
+        await authAxios.put(`/admin/saas-plans/${editingPlan.id}`, payload);
+        toast.success("Plan updated successfully");
       } else {
-        await authAxios.post("/admin/addons", addonForm);
-        toast.success("Add-on created");
+        await authAxios.post("/admin/saas-plans", payload);
+        toast.success("Plan created successfully");
       }
-      setShowAddonDialog(false);
-      fetchAddons();
+      setShowDialog(false);
+      fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to save add-on");
+      toast.error(err.response?.data?.detail || "Failed to save plan");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleAddonDelete = async (id) => {
-    if (!confirm("Delete this add-on?")) return;
+  const handleDelete = async (plan) => {
+    if (!window.confirm(`Delete plan "${plan.name}"? This cannot be undone.`)) return;
     try {
-      await authAxios.delete(`/admin/addons/${id}`);
-      toast.success("Add-on deleted");
-      fetchAddons();
-    } catch {
-      toast.error("Failed to delete add-on");
+      await authAxios.delete(`/admin/saas-plans/${plan.id}`);
+      toast.success("Plan deleted");
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete plan");
     }
   };
-
-  if (loading) {
-    return (
-      <AdminLayout title="SaaS Plans">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
-        </div>
-      </AdminLayout>
-    );
-  }
 
   return (
     <AdminLayout title="SaaS Plans">
-      <div className="space-y-8 animate-fade-in">
-        {/* ── SaaS Plans Section ── */}
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <p className="text-slate-500">Manage subscription plans for operators</p>
-            <Button onClick={() => { resetForm(); setShowDialog(true); }} data-testid="create-plan-btn">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Plan
-            </Button>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">SaaS Plans</h2>
+            <p className="text-sm text-slate-500">All prices are GST inclusive</p>
           </div>
+          <Button onClick={openCreate} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="create-plan-btn">
+            <Plus className="w-4 h-4 mr-2" /> New Plan
+          </Button>
+        </div>
 
-          {/* Plans Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Plans Grid */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
+          </div>
+        ) : plans.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-16 text-center">
+              <Package className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+              <p className="text-slate-500 font-medium">No plans created yet</p>
+              <p className="text-slate-400 text-sm mt-1">Click "New Plan" to get started</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {plans.map((plan) => (
-              <Card key={plan.id} className="relative card-hover" data-testid={`plan-card-${plan.id}`}>
-                {plan.trial_enabled && (
-                  <div className="absolute top-3 right-3 badge-trial">Trial</div>
-                )}
-                {plan.plan_type && (
-                  <div className={`absolute top-3 left-3 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                    plan.plan_type === "pro" ? "bg-purple-100 text-purple-700" :
-                    plan.plan_type === "basic" ? "bg-blue-100 text-blue-700" :
-                    "bg-slate-100 text-slate-600"
-                  }`}>
-                    {plan.plan_type}
+              <Card key={plan.id} className="relative hover:shadow-md transition-shadow" data-testid={`plan-card-${plan.id}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-5 h-5 text-[#0066B2]" />
+                      <CardTitle className="text-base">{plan.name}</CardTitle>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(plan)} data-testid={`edit-plan-${plan.id}`}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(plan)} className="text-red-500 hover:text-red-700" data-testid={`delete-plan-${plan.id}`}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                )}
-                <CardHeader className="pb-2">
-                  <CardTitle className={`flex items-center gap-2 text-lg ${plan.plan_type ? "mt-4" : ""}`}>
-                    <Package className="w-5 h-5 text-blue-600" />
-                    {plan.name}
-                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {plan.plan_type ? (
-                    <div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-slate-900">
-                          ₹{plan.per_customer_rate}
-                        </span>
-                        <span className="text-slate-500 text-sm">/customer/month</span>
+                  {/* Pricing */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-blue-50 rounded-lg p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <IndianRupee className="w-3 h-3 text-blue-600" />
+                        <span className="text-xl font-bold text-blue-700">{plan.monthly_price?.toLocaleString("en-IN")}</span>
                       </div>
-                      {plan.monthly_base_fee > 0 && (
-                        <p className="text-xs text-purple-700 font-medium mt-0.5">+ ₹{plan.monthly_base_fee}/month base fee → wallet</p>
-                      )}
+                      <p className="text-xs text-blue-600">Monthly Price</p>
+                      <p className="text-[10px] text-blue-400">GST Inclusive</p>
                     </div>
-                  ) : (
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-slate-900">
-                        ₹{(plan.monthly_price || 0).toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-slate-500">/month</span>
+                    <div className="bg-amber-50 rounded-lg p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <FileText className="w-3 h-3 text-amber-600" />
+                        <span className="text-xl font-bold text-amber-700">₹{plan.per_invoice_price ?? 10}</span>
+                      </div>
+                      <p className="text-xs text-amber-600">Per Invoice</p>
+                      <p className="text-[10px] text-amber-400">Wallet deduction</p>
                     </div>
-                  )}
-
-                  <div className="space-y-2 text-sm">
-                    {!plan.plan_type && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Platform Fee</span>
-                        <span className="font-medium text-indigo-600">{plan.platform_fee_percentage ?? 0}%</span>
-                      </div>
-                    )}
-                    {plan.plan_type && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Addons</span>
-                        <span className="font-medium text-green-700">{plan.plan_type === "pro" ? "All included" : "None"}</span>
-                      </div>
-                    )}
-                    {plan.plan_type && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Platform Fee</span>
-                        <span className="font-medium text-green-700">None</span>
-                      </div>
-                    )}
-                    {plan.trial_enabled && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Trial</span>
-                        <span className="font-medium text-amber-600">{plan.trial_days} days</span>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Included Addons */}
-                  {plan.included_addons && plan.included_addons.length > 0 && (
-                    <div className="border-t pt-3">
-                      <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1">
-                        <Puzzle className="w-3 h-3" /> Included Add-ons
-                      </p>
+                  {/* Addons */}
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1.5">Included Addons</p>
+                    {(plan.included_addons || []).length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">None</p>
+                    ) : (
                       <div className="flex flex-wrap gap-1">
-                        {plan.included_addons.map(code => {
-                          const addon = addons.find(a => a.code === code);
-                          return (
-                            <span key={code} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                              {addon?.name || code}
-                            </span>
-                          );
-                        })}
+                        {(plan.included_addons || []).map((code) => (
+                          <Badge key={code} variant="secondary" className="text-[10px]">{code.replace(/_/g, " ")}</Badge>
+                        ))}
                       </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => openEditDialog(plan)}
-                      data-testid={`edit-plan-${plan.id}`}
-                    >
-                      <Pencil className="w-3 h-3 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDelete(plan.id)}
-                      data-testid={`delete-plan-${plan.id}`}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
-        </div>
+        )}
 
-        {/* ── Add-ons Section ── */}
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <Puzzle className="w-5 h-5 text-indigo-600" />
-                Add-ons Management
-              </h2>
-              <p className="text-slate-500 text-sm mt-0.5">Create add-ons that can be bundled with plans or purchased individually</p>
-            </div>
-            <Button variant="outline" onClick={openAddonCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              New Add-on
-            </Button>
-          </div>
-
-          {addons.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-10 text-slate-500">
-                <Puzzle className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                No add-ons created yet. Add some to bundle with your plans.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {addons.map((addon) => (
-                <Card key={addon.id} className="card-hover">
-                  <CardContent className="pt-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">{addon.name}</p>
-                        <p className="text-xs text-slate-500 font-mono mt-0.5">{addon.code}</p>
-                      </div>
-                      <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                        ₹{addon.price}/mo
-                      </span>
-                    </div>
-                    {addon.description && (
-                      <p className="text-xs text-slate-500 line-clamp-2">{addon.description}</p>
-                    )}
-                    <div className="flex gap-2 pt-1">
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => openAddonEdit(addon)}>
-                        <Pencil className="w-3 h-3 mr-1" /> Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={() => handleAddonDelete(addon.id)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Create/Edit Plan Dialog */}
+        {/* Create / Edit Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingPlan ? "Edit Plan" : "Create New Plan"}</DialogTitle>
-              <DialogDescription>
-                {editingPlan ? "Update plan details" : "Create a new SaaS subscription plan"}
-              </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Plan Type */}
-              <div className="space-y-2">
-                <Label>Plan Type</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: "basic", label: "Basic", desc: "₹12/customer, no addons" },
-                    { value: "pro", label: "Pro", desc: "₹22/customer + ₹1000 base" },
-                    { value: "custom", label: "Custom", desc: "Fixed price, manual config" },
-                  ].map((pt) => (
-                    <button
-                      key={pt.value}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, plan_type: pt.value }))}
-                      className={`p-3 rounded-lg border-2 text-left transition-all ${
-                        formData.plan_type === pt.value
-                          ? pt.value === "pro" ? "border-purple-500 bg-purple-50"
-                          : pt.value === "basic" ? "border-blue-500 bg-blue-50"
-                          : "border-slate-500 bg-slate-50"
-                          : "border-slate-200 hover:border-slate-300"
-                      }`}
-                      data-testid={`plan-type-${pt.value}`}
-                    >
-                      <p className="text-sm font-bold">{pt.label}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{pt.desc}</p>
-                    </button>
-                  ))}
-                </div>
-                {formData.plan_type !== "custom" && (
-                  <div className={`text-xs p-2 rounded-lg ${formData.plan_type === "pro" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>
-                    {formData.plan_type === "basic"
-                      ? "Basic plan: ₹12/customer/month. No addons. No platform fee."
-                      : "Pro plan: ₹22/customer/month + ₹1,000/month base fee (credited to operator wallet). All addons included. No platform fee."}
-                  </div>
-                )}
+            <form onSubmit={handleSubmit} className="space-y-5 pt-2">
+              {/* Plan Name */}
+              <div className="space-y-1.5">
+                <Label>Plan Name <span className="text-red-500">*</span></Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g., Starter, Business, Enterprise"
+                  required
+                  data-testid="plan-name-input"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-2">
-                  <Label>Plan Name</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder={formData.plan_type === "basic" ? "e.g., Basic Plan" : formData.plan_type === "pro" ? "e.g., Pro Plan" : "e.g., Custom Plan"}
-                    required
-                    data-testid="plan-name-input"
-                  />
-                </div>
-
-                {formData.plan_type === "custom" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Monthly Price (₹)</Label>
-                      <Input
-                        type="number"
-                        value={formData.monthly_price}
-                        onChange={(e) => setFormData(prev => ({ ...prev, monthly_price: parseFloat(e.target.value) || 0 }))}
-                        min="0"
-                        data-testid="plan-price-input"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Platform Fee (%)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formData.platform_fee_percentage}
-                        onChange={(e) => setFormData(prev => ({ ...prev, platform_fee_percentage: parseFloat(e.target.value) || 0 }))}
-                        min="0" max="50"
-                        data-testid="plan-fee-input"
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div className="space-y-2">
-                  <Label>Trial Days</Label>
+              {/* Monthly Fixed Price */}
+              <div className="space-y-1.5">
+                <Label>Monthly Fixed Price (₹) <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">₹</span>
                   <Input
                     type="number"
-                    value={formData.trial_days}
-                    onChange={(e) => setFormData(prev => ({ ...prev, trial_days: parseInt(e.target.value) || 0 }))}
                     min="0"
-                    data-testid="plan-trial-days-input"
+                    step="0.01"
+                    className="pl-7"
+                    value={formData.monthly_price}
+                    onChange={(e) => setFormData((p) => ({ ...p, monthly_price: e.target.value }))}
+                    placeholder="e.g., 999"
+                    required
+                    data-testid="plan-monthly-price-input"
                   />
                 </div>
+                <p className="text-xs text-slate-400">GST inclusive. Charged monthly for account to remain active.</p>
               </div>
 
-              <div className="border-t pt-4 space-y-3">
-                <p className="text-sm font-medium text-slate-700">Plan Options</p>
-                <div className="space-y-3">
-                  {[
-                    { key: "trial_enabled", label: "Enable Trial Period" },
-                    { key: "gst_applicable", label: "GST Applicable" }
-                  ].map((feature) => (
-                    <div key={feature.key} className="flex items-center justify-between">
-                      <Label className="font-normal">{feature.label}</Label>
-                      <Switch
-                        checked={formData[feature.key]}
-                        onCheckedChange={(checked) =>
-                          setFormData(prev => ({ ...prev, [feature.key]: checked }))
-                        }
-                      />
-                    </div>
-                  ))}
+              {/* Per Invoice Price */}
+              <div className="space-y-1.5">
+                <Label>Per Invoice Price (₹) <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">₹</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="pl-7"
+                    value={formData.per_invoice_price}
+                    onChange={(e) => setFormData((p) => ({ ...p, per_invoice_price: e.target.value }))}
+                    placeholder="e.g., 10"
+                    required
+                    data-testid="plan-per-invoice-input"
+                  />
                 </div>
+                <p className="text-xs text-slate-400">Deducted from operator wallet each time an invoice is generated.</p>
               </div>
 
-              {/* Included Add-ons — only for custom plans */}
-              {formData.plan_type === "custom" && addons.length > 0 && (
-                <div className="border-t pt-4 space-y-3">
-                  <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                    <Puzzle className="w-4 h-4" /> Included Add-ons
-                  </p>
-                  <p className="text-xs text-slate-500">Select add-ons bundled with this plan at no extra cost</p>
-                  <div className="space-y-2">
+              {/* Addons */}
+              {addons.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Included Addons</Label>
+                  <p className="text-xs text-slate-400">Operators on this plan will have these addons automatically active.</p>
+                  <div className="border rounded-lg p-3 space-y-2 max-h-44 overflow-y-auto">
                     {addons.map((addon) => (
-                      <div key={addon.code} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                      <div key={addon.code} className="flex items-center gap-2">
                         <Checkbox
                           id={`addon-${addon.code}`}
-                          checked={(formData.included_addons || []).includes(addon.code)}
+                          checked={formData.included_addons.includes(addon.code)}
                           onCheckedChange={() => toggleAddon(addon.code)}
-                          data-testid={`addon-check-${addon.code}`}
+                          data-testid={`addon-checkbox-${addon.code}`}
                         />
-                        <div className="flex-1">
-                          <label htmlFor={`addon-${addon.code}`} className="text-sm font-medium cursor-pointer">
-                            {addon.name}
-                          </label>
-                          <p className="text-xs text-slate-500">{addon.description || addon.code} — ₹{addon.price}/mo standalone</p>
-                        </div>
+                        <label htmlFor={`addon-${addon.code}`} className="text-sm cursor-pointer flex-1">
+                          <span className="font-medium">{addon.name}</span>
+                          {addon.price > 0 && <span className="text-slate-400 text-xs ml-1">(₹{addon.price}/mo)</span>}
+                        </label>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+              <div className="flex gap-3 pt-1">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setShowDialog(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" data-testid="save-plan-btn">
+                <Button type="submit" disabled={saving} className="flex-1 bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="save-plan-btn">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
                   {editingPlan ? "Update Plan" : "Create Plan"}
                 </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Create/Edit Add-on Dialog */}
-        <Dialog open={showAddonDialog} onOpenChange={setShowAddonDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Puzzle className="w-5 h-5" />
-                {editingAddon ? "Edit Add-on" : "Create Add-on"}
-              </DialogTitle>
-              <DialogDescription>
-                {editingAddon ? "Update add-on details" : "Create a new purchasable add-on"}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleAddonSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={addonForm.name}
-                  onChange={(e) => setAddonForm(p => ({ ...p, name: e.target.value }))}
-                  placeholder="e.g., WhatsApp Notifications"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Code <span className="text-xs text-slate-400">(unique identifier)</span></Label>
-                <Input
-                  value={addonForm.code}
-                  onChange={(e) => setAddonForm(p => ({ ...p, code: e.target.value.toLowerCase().replace(/\s+/g, "_") }))}
-                  placeholder="e.g., notifications"
-                  required
-                  disabled={!!editingAddon}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Monthly Price (₹)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={addonForm.price}
-                  onChange={(e) => setAddonForm(p => ({ ...p, price: parseFloat(e.target.value) }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={addonForm.description}
-                  onChange={(e) => setAddonForm(p => ({ ...p, description: e.target.value }))}
-                  placeholder="Short description..."
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowAddonDialog(false)}>Cancel</Button>
-                <Button type="submit">{editingAddon ? "Update" : "Create"} Add-on</Button>
               </div>
             </form>
           </DialogContent>
@@ -616,6 +300,4 @@ const AdminSaaSPlans = () => {
       </div>
     </AdminLayout>
   );
-};
-
-export default AdminSaaSPlans;
+}
