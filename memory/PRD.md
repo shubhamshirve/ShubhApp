@@ -11,7 +11,7 @@ Multi-tenant SaaS billing platform for ISP/broadband operators. Features 3-role 
   ```
   /app/
   ├── backend/
-  │   ├── routers/ (admin.py, auth.py, backup.py, operator.py, webhooks.py)
+  │   ├── routers/ (admin.py, auth.py, backup.py, operator.py, webhooks.py, wallet.py)
   │   ├── services/ (cron_service.py, pdf_service.py, razorpay_service.py, whatsapp_service.py)
   │   ├── tests/ (pytest suites)
   │   ├── models.py, database.py, config.py, dependencies.py, audit.py, utils.py
@@ -205,27 +205,52 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 - `GET /api/admin/audit-logs` — Filterable audit logs
 - `PUT /api/auth/change-password` — Change password
 - `GET /api/admin/backup/download/{id}` — Download backup
-- `POST /api/auth/register-init` — Registration with KYC (business_type, pan_number, address, bank details)
+- `POST /api/auth/register-init` — Registration with KYC (business_type, pan_number, address, bank details, referral_code)
 - `POST /api/admin/operators/create` — Create operator with full KYC support
 - `PUT /api/admin/operators/{id}` — Update operator KYC fields
 - `GET /api/admin/operators` — List operators with KYC fields in response
+- `GET /api/operator/wallet` — Get operator wallet balance + referral info
+- `GET /api/operator/wallet/transactions` — Wallet transaction history
+- `POST /api/operator/wallet/topup/create-order` — Create Razorpay topup order
+- `POST /api/operator/wallet/topup/verify` — Verify topup payment + credit wallet
+- `GET /api/admin/wallets` — Admin view all operator wallets
+- `GET /api/admin/wallets/{id}/transactions` — Admin view wallet transactions
 
 ## Test Credentials
 - **Admin**: admin@saas.com / admin123
+- **Test Admin**: admin@test.com / Admin@123 (saas_db only)
+- **Test Operator 1**: operator1@test.com / Test@123 (referral code: REF-8HVOO1)
+- **Test Operator 2**: operator2@test.com / Test@123 (referred by REF-8HVOO1)
 - **Seed**: POST /api/seed
+
+## Completed Tasks Log
+| Date | Task | Status |
+|------|------|--------|
+| 2026-03-18 | Task 1: Referral + Wallet System | ✅ DONE (100% tests passed) |
 
 ## Backlog
 
+### P0 (In Progress)
+- Task 2: Basic/Pro Plan Revamp (Rs.10/customer basic, Rs.22/customer+Rs.1000/month pro)
+- Task 5: Support Ticket System
+- Task 7: Remove Landing Page
+
 ### P1
-- Better 403 page for feature-gated routes
-- Operator plan page showing active vs available addons
+- Task 3: Email (Resend)/SMS/WhatsApp OTP + Admin toggle (needs API keys)
+- Task 4: Cashfree payment gateway (needs Cashfree credentials)
+- Task 6: Payment receipt generation + WhatsApp send
+- Task 8: SMS & Email invoice/reminders (needs credentials)
 
 ### P2
-- MongoDB indexes on high-cardinality fields
-- Pagination on high-volume lists (subscribers, invoices)
+- Task 9: GST R1 & 3B reconciliation
+- Better 403 page for feature-gated routes
+- Operator plan page showing active vs available addons
+- Advanced reporting and analytics
+- Custom domain support
 
 ### P3
 - authAxios useMemo optimization in App.js
 - Invoice number generation concurrency safety
 - Review/deprecate legacy renew-subscription endpoint
 - Configurable WhatsApp template names
+- MongoDB indexes on high-cardinality fields

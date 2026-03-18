@@ -174,6 +174,19 @@ export default function WalletPage() {
           </div>
         )}
 
+        {/* Critical Balance Warning (not yet suspended) */}
+        {isCritical && !wallet?.wallet_suspended && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-critical-banner">
+            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-red-800">Critical: Wallet Balance Below Rs.100</p>
+              <p className="text-sm text-red-700 mt-1">
+                Your balance is critically low. Please topup immediately — once balance reaches Rs.100, your account will be suspended and all automation will stop.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Low Balance Warning */}
         {isLow && !isCritical && !wallet?.wallet_suspended && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-low-banner">
