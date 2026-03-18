@@ -52,3 +52,7 @@ build/
 # App data / runtime artifacts
 dump.rdb
 *.pem
+-e 
+# Environment files
+*.env
+*.env.*
