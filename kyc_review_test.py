@@ -11,7 +11,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = "https://kyc-details-editor.preview.emergentagent.com/api"
+BACKEND_URL = "https://code-analyzer-313.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 TEST_OTP = "200796"
