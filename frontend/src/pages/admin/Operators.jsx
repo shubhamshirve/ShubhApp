@@ -59,8 +59,25 @@ import {
   Plus,
   Calendar,
   Trash2,
-  KeyRound
+  KeyRound,
+  Pencil,
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  CreditCard,
+  FileText,
+  X
 } from "lucide-react";
+
+const BUSINESS_TYPES = [
+  "Sole Proprietorship",
+  "Partnership",
+  "LLP",
+  "Private Limited",
+  "Public Limited",
+  "Others"
+];
 
 const AdminOperators = () => {
   const { authAxios, login } = useAuth();
@@ -81,7 +98,10 @@ const AdminOperators = () => {
     email: "",
     phone: "",
     password: "",
+    business_type: "",
     gst_number: "",
+    pan_number: "",
+    address: "",
     charge_gst: false,
     bank_account_name: "",
     bank_account_number: "",
@@ -90,6 +110,26 @@ const AdminOperators = () => {
     saas_plan_id: "",
     status: "active",
     subscription_months: 1
+  });
+  
+  // View Details Dialog
+  const [showViewDetails, setShowViewDetails] = useState(false);
+  
+  // Edit Operator Dialog
+  const [showEditOperator, setShowEditOperator] = useState(false);
+  const [editForm, setEditForm] = useState({
+    company_name: "",
+    owner_name: "",
+    phone: "",
+    business_type: "",
+    gst_number: "",
+    pan_number: "",
+    address: "",
+    charge_gst: false,
+    bank_account_name: "",
+    bank_account_number: "",
+    bank_ifsc: "",
+    bank_name: "",
   });
   
   // Extend Subscription Dialog
@@ -151,21 +191,94 @@ const AdminOperators = () => {
       toast.error("Password must be at least 6 characters"); return;
     }
     if (!createForm.saas_plan_id) { toast.error("Please select a SaaS plan"); return; }
-    if (createForm.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(createForm.gst_number.toUpperCase())) {
+    if (createForm.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(createForm.gst_number)) {
       toast.error("Please enter a valid GST number (e.g. 22AAAAA0000A1Z5)"); return;
     }
+    if (createForm.pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(createForm.pan_number)) {
+      toast.error("Please enter a valid PAN number (e.g. ABCDE1234F)"); return;
+    }
+    if (createForm.bank_ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(createForm.bank_ifsc)) {
+      toast.error("Please enter a valid IFSC code (e.g. SBIN0001234)"); return;
+    }
     try {
-      await authAxios.post("/admin/operators/create", createForm);
+      await authAxios.post("/admin/operators/create", {
+        ...createForm,
+        gst_number: createForm.gst_number?.toUpperCase() || null,
+        pan_number: createForm.pan_number?.toUpperCase() || null,
+        bank_ifsc: createForm.bank_ifsc?.toUpperCase() || null,
+      });
       toast.success("Operator created successfully");
       setShowCreateOperator(false);
       setCreateForm({
         company_name: "", owner_name: "", email: "", phone: "", password: "",
-        gst_number: "", charge_gst: false, bank_account_name: "", bank_account_number: "",
+        business_type: "", gst_number: "", pan_number: "", address: "",
+        charge_gst: false, bank_account_name: "", bank_account_number: "",
         bank_ifsc: "", bank_name: "", saas_plan_id: "", status: "active", subscription_months: 1
       });
       fetchOperators();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to create operator");
+    }
+  };
+
+  const handleViewDetails = (operator) => {
+    setSelectedOperator(operator);
+    setShowViewDetails(true);
+  };
+
+  const handleOpenEditDialog = (operator) => {
+    setSelectedOperator(operator);
+    setEditForm({
+      company_name: operator.company_name || "",
+      owner_name: operator.owner_name || "",
+      phone: operator.phone || "",
+      business_type: operator.business_type || "",
+      gst_number: operator.gst_number || "",
+      pan_number: operator.pan_number || "",
+      address: operator.address || "",
+      charge_gst: operator.charge_gst || false,
+      bank_account_name: operator.bank_account_name || "",
+      bank_account_number: operator.bank_account_number || "",
+      bank_ifsc: operator.bank_ifsc || "",
+      bank_name: operator.bank_name || "",
+    });
+    setShowEditOperator(true);
+  };
+
+  const handleEditOperator = async () => {
+    // Validation
+    if (!editForm.company_name.trim() || editForm.company_name.trim().length < 2) {
+      toast.error("Company name must be at least 2 characters"); return;
+    }
+    if (!editForm.owner_name.trim() || editForm.owner_name.trim().length < 2) {
+      toast.error("Owner name must be at least 2 characters"); return;
+    }
+    const phoneDigits = (editForm.phone || "").replace(/\D/g, "");
+    if (!phoneDigits || phoneDigits.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits"); return;
+    }
+    if (editForm.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(editForm.gst_number)) {
+      toast.error("Please enter a valid GST number (e.g. 22AAAAA0000A1Z5)"); return;
+    }
+    if (editForm.pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(editForm.pan_number)) {
+      toast.error("Please enter a valid PAN number (e.g. ABCDE1234F)"); return;
+    }
+    if (editForm.bank_ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(editForm.bank_ifsc)) {
+      toast.error("Please enter a valid IFSC code (e.g. SBIN0001234)"); return;
+    }
+    try {
+      await authAxios.put(`/admin/operators/${selectedOperator.id}`, {
+        ...editForm,
+        gst_number: editForm.gst_number?.toUpperCase() || null,
+        pan_number: editForm.pan_number?.toUpperCase() || null,
+        bank_ifsc: editForm.bank_ifsc?.toUpperCase() || null,
+      });
+      toast.success("Operator updated successfully");
+      setShowEditOperator(false);
+      setSelectedOperator(null);
+      fetchOperators();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update operator");
     }
   };
 
@@ -390,6 +503,20 @@ const AdminOperators = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem 
+                              onClick={() => handleViewDetails(operator)}
+                              data-testid={`view-details-${operator.id}`}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleOpenEditDialog(operator)}
+                              data-testid={`edit-${operator.id}`}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
                               onClick={() => handleImpersonate(operator)}
                               data-testid={`impersonate-${operator.id}`}
                             >
@@ -527,16 +654,44 @@ const AdminOperators = () => {
                 />
               </div>
 
-              {/* GST Information */}
+              {/* KYC Information */}
               <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm font-medium text-slate-700 mb-3">GST Information</p>
+                <p className="text-sm font-medium text-slate-700 mb-3">KYC Information</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>GST Number</Label>
+                    <Label>Business Type</Label>
+                    <Select
+                      value={createForm.business_type}
+                      onValueChange={(value) => setCreateForm({...createForm, business_type: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select business type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PAN Number</Label>
+                    <Input
+                      value={createForm.pan_number}
+                      onChange={(e) => setCreateForm({...createForm, pan_number: e.target.value})}
+                      placeholder="ABCDE1234F"
+                      className="uppercase"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>GST Number (GSTIN)</Label>
                     <Input
                       value={createForm.gst_number}
                       onChange={(e) => setCreateForm({...createForm, gst_number: e.target.value})}
                       placeholder="22AAAAA0000A1Z5"
+                      className="uppercase"
                     />
                   </div>
                   <div className="flex items-center gap-3 pt-6">
@@ -546,6 +701,14 @@ const AdminOperators = () => {
                     />
                     <Label className="font-normal">Charge GST</Label>
                   </div>
+                </div>
+                <div className="space-y-2 mt-4">
+                  <Label>Business Address</Label>
+                  <Input
+                    value={createForm.address}
+                    onChange={(e) => setCreateForm({...createForm, address: e.target.value})}
+                    placeholder="Complete business address"
+                  />
                 </div>
               </div>
 
@@ -822,6 +985,328 @@ const AdminOperators = () => {
                 className="bg-[#0066B2] hover:bg-[#004080]"
               >
                 {changingPassword ? "Changing..." : "Change Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Details Dialog */}
+        <Dialog open={showViewDetails} onOpenChange={setShowViewDetails}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-[#004080]" />
+                Operator Details
+              </DialogTitle>
+              <DialogDescription>
+                Complete information for {selectedOperator?.company_name}
+              </DialogDescription>
+            </DialogHeader>
+            {selectedOperator && (
+              <div className="space-y-6 py-4">
+                {/* Basic Information */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Basic Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-xs text-slate-500">Company Name</p>
+                      <p className="font-medium">{selectedOperator.company_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Owner Name</p>
+                      <p className="font-medium">{selectedOperator.owner_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Email</p>
+                      <p className="font-medium flex items-center gap-1">
+                        <Mail className="w-3 h-3 text-slate-400" />
+                        {selectedOperator.email}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Phone</p>
+                      <p className="font-medium flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-slate-400" />
+                        {selectedOperator.phone || "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Status</p>
+                      <p>{getStatusBadge(selectedOperator.status)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Subscribers</p>
+                      <p className="font-medium">{selectedOperator.subscriber_count ?? 0}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KYC Information */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    KYC Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-xs text-slate-500">Business Type</p>
+                      <p className="font-medium">{selectedOperator.business_type || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">PAN Number</p>
+                      <p className="font-medium font-mono">{selectedOperator.pan_number || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">GST Number</p>
+                      <p className="font-medium font-mono">{selectedOperator.gst_number || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Charge GST</p>
+                      <p className="font-medium">{selectedOperator.charge_gst ? "Yes" : "No"}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-slate-500">Business Address</p>
+                      <p className="font-medium flex items-start gap-1">
+                        <MapPin className="w-3 h-3 text-slate-400 mt-1" />
+                        {selectedOperator.address || "-"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bank Details */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    Bank Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-xs text-slate-500">Account Holder Name</p>
+                      <p className="font-medium">{selectedOperator.bank_account_name || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Bank Name</p>
+                      <p className="font-medium">{selectedOperator.bank_name || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Account Number</p>
+                      <p className="font-medium font-mono">{selectedOperator.bank_account_number || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">IFSC Code</p>
+                      <p className="font-medium font-mono">{selectedOperator.bank_ifsc || "-"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subscription Information */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Subscription Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-xs text-slate-500">Current Plan</p>
+                      <p className="font-medium">{selectedOperator.saas_plan_name || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Expires On</p>
+                      <p className="font-medium">
+                        {selectedOperator.subscription_ends_at 
+                          ? new Date(selectedOperator.subscription_ends_at).toLocaleDateString()
+                          : selectedOperator.trial_ends_at 
+                            ? new Date(selectedOperator.trial_ends_at).toLocaleDateString()
+                            : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Active Add-ons</p>
+                      <p className="font-medium">
+                        {selectedOperator.active_addons?.length > 0 
+                          ? selectedOperator.active_addons.join(", ")
+                          : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Created At</p>
+                      <p className="font-medium">
+                        {new Date(selectedOperator.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowViewDetails(false)}>
+                Close
+              </Button>
+              <Button 
+                onClick={() => {
+                  setShowViewDetails(false);
+                  handleOpenEditDialog(selectedOperator);
+                }}
+                className="bg-[#0066B2] hover:bg-[#004080]"
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Details
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Operator Dialog */}
+        <Dialog open={showEditOperator} onOpenChange={setShowEditOperator}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Operator</DialogTitle>
+              <DialogDescription>
+                Update operator details for {selectedOperator?.company_name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {/* Basic Information */}
+              <p className="text-sm font-medium text-slate-700">Basic Information</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Company Name *</Label>
+                  <Input
+                    value={editForm.company_name}
+                    onChange={(e) => setEditForm({...editForm, company_name: e.target.value})}
+                    placeholder="Your Company Ltd."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Owner Name *</Label>
+                  <Input
+                    value={editForm.owner_name}
+                    onChange={(e) => setEditForm({...editForm, owner_name: e.target.value})}
+                    placeholder="John Doe"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Phone *</Label>
+                <Input
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                  placeholder="9876543210"
+                />
+              </div>
+
+              {/* KYC Information */}
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-sm font-medium text-slate-700 mb-3">KYC Information</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Business Type</Label>
+                    <Select
+                      value={editForm.business_type}
+                      onValueChange={(value) => setEditForm({...editForm, business_type: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select business type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PAN Number</Label>
+                    <Input
+                      value={editForm.pan_number}
+                      onChange={(e) => setEditForm({...editForm, pan_number: e.target.value})}
+                      placeholder="ABCDE1234F"
+                      className="uppercase"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>GST Number (GSTIN)</Label>
+                    <Input
+                      value={editForm.gst_number}
+                      onChange={(e) => setEditForm({...editForm, gst_number: e.target.value})}
+                      placeholder="22AAAAA0000A1Z5"
+                      className="uppercase"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 pt-6">
+                    <Switch
+                      checked={editForm.charge_gst}
+                      onCheckedChange={(checked) => setEditForm({...editForm, charge_gst: checked})}
+                    />
+                    <Label className="font-normal">Charge GST</Label>
+                  </div>
+                </div>
+                <div className="space-y-2 mt-4">
+                  <Label>Business Address</Label>
+                  <Input
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                    placeholder="Complete business address"
+                  />
+                </div>
+              </div>
+
+              {/* Bank Details */}
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-sm font-medium text-slate-700 mb-3">Bank Details (Optional)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Account Holder Name</Label>
+                    <Input
+                      value={editForm.bank_account_name}
+                      onChange={(e) => setEditForm({...editForm, bank_account_name: e.target.value})}
+                      placeholder="Account holder name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bank Name</Label>
+                    <Input
+                      value={editForm.bank_name}
+                      onChange={(e) => setEditForm({...editForm, bank_name: e.target.value})}
+                      placeholder="State Bank of India"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>Account Number</Label>
+                    <Input
+                      value={editForm.bank_account_number}
+                      onChange={(e) => setEditForm({...editForm, bank_account_number: e.target.value})}
+                      placeholder="1234567890"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>IFSC Code</Label>
+                    <Input
+                      value={editForm.bank_ifsc}
+                      onChange={(e) => setEditForm({...editForm, bank_ifsc: e.target.value})}
+                      placeholder="SBIN0001234"
+                      className="uppercase"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditOperator(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditOperator} className="bg-[#0066B2] hover:bg-[#004080]">
+                Save Changes
               </Button>
             </DialogFooter>
           </DialogContent>

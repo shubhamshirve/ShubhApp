@@ -8,9 +8,25 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Switch } from "../components/ui/switch";
-import { Eye, EyeOff, UserPlus, ArrowLeft, MessageCircle, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Eye, EyeOff, UserPlus, ArrowLeft, MessageCircle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp, Building2, CreditCard, Info } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
+
+const BUSINESS_TYPES = [
+  "Sole Proprietorship",
+  "Partnership",
+  "LLP",
+  "Private Limited",
+  "Public Limited",
+  "Others"
+];
 
 const Register = () => {
   const [step, setStep] = useState(1); // 1: form, 2: OTP verification
@@ -21,10 +37,19 @@ const Register = () => {
     phone: "",
     password: "",
     confirmPassword: "",
+    business_type: "",
     gst_number: "",
+    pan_number: "",
+    address: "",
     charge_gst: false,
+    // Bank details
+    bank_account_name: "",
+    bank_name: "",
+    bank_account_number: "",
+    bank_ifsc: "",
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [showBankDetails, setShowBankDetails] = useState(false);
   const [loading, setLoading] = useState(false);
   const [registrationId, setRegistrationId] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -52,7 +77,7 @@ const Register = () => {
   // Step 1: Submit registration form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const { company_name, owner_name, email, phone, password, confirmPassword, gst_number } = formData;
+    const { company_name, owner_name, email, phone, password, confirmPassword, gst_number, pan_number, bank_ifsc } = formData;
 
     if (!company_name.trim() || company_name.trim().length < 2) {
       toast.error("Company name must be at least 2 characters");
@@ -79,8 +104,16 @@ const Register = () => {
       toast.error("Passwords do not match");
       return;
     }
-    if (gst_number && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}\d{1}[A-Z]{1}\d{1}$/.test(gst_number.trim())) {
-      toast.error("Invalid GST number format");
+    if (gst_number && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/i.test(gst_number.trim())) {
+      toast.error("Invalid GST number format (e.g., 22AAAAA0000A1Z5)");
+      return;
+    }
+    if (pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan_number.trim())) {
+      toast.error("Invalid PAN number format (e.g., ABCDE1234F)");
+      return;
+    }
+    if (bank_ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(bank_ifsc.trim())) {
+      toast.error("Invalid IFSC code format (e.g., SBIN0001234)");
       return;
     }
 
@@ -92,8 +125,15 @@ const Register = () => {
         email: email.trim(),
         phone: phoneDigits.length === 10 ? phoneDigits : phoneDigits,
         password,
+        business_type: formData.business_type || null,
         gst_number: gst_number.trim() || null,
+        pan_number: pan_number.trim().toUpperCase() || null,
+        address: formData.address.trim() || null,
         charge_gst: formData.charge_gst,
+        bank_account_name: formData.bank_account_name.trim() || null,
+        bank_name: formData.bank_name.trim() || null,
+        bank_account_number: formData.bank_account_number.trim() || null,
+        bank_ifsc: formData.bank_ifsc.trim().toUpperCase() || null,
       });
       setRegistrationId(res.data.registration_id);
       setOtpSent(res.data.otp_sent);
@@ -207,7 +247,7 @@ const Register = () => {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="company_name" className="text-[#004080]">Company Name *</Label>
+                    <Label htmlFor="company_name" className="text-[#004080]">Business Name *</Label>
                     <Input
                       id="company_name"
                       name="company_name"
@@ -301,33 +341,164 @@ const Register = () => {
                   </div>
                 </div>
 
+                {/* KYC Information Section */}
                 <div className="border-t border-slate-200 pt-4 mt-4">
-                  <p className="text-sm font-medium text-slate-700 mb-3">GST Information (Optional)</p>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Building2 className="w-4 h-4 text-[#004080]" />
+                    <p className="text-sm font-medium text-slate-700">KYC Information (Optional)</p>
+                  </div>
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="gst_number">GST Number</Label>
-                      <Input
-                        id="gst_number"
-                        name="gst_number"
-                        placeholder="22AAAAA0000A1Z5"
-                        value={formData.gst_number}
-                        onChange={handleChange}
-                        data-testid="register-gst"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div>
-                        <Label htmlFor="charge_gst" className="text-sm font-medium">Charge GST to customers</Label>
-                        <p className="text-xs text-slate-500 mt-0.5">Enable if you want to charge GST on invoices</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="business_type">Business Type</Label>
+                        <Select
+                          value={formData.business_type}
+                          onValueChange={(value) => setFormData((prev) => ({ ...prev, business_type: value }))}
+                        >
+                          <SelectTrigger data-testid="register-business-type">
+                            <SelectValue placeholder="Select business type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {BUSINESS_TYPES.map((type) => (
+                              <SelectItem key={type} value={type}>{type}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Switch
-                        id="charge_gst"
-                        checked={formData.charge_gst}
-                        onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, charge_gst: checked }))}
-                        data-testid="register-charge-gst"
+                      <div className="space-y-2">
+                        <Label htmlFor="pan_number">PAN Number</Label>
+                        <Input
+                          id="pan_number"
+                          name="pan_number"
+                          placeholder="ABCDE1234F"
+                          value={formData.pan_number}
+                          onChange={handleChange}
+                          className="uppercase"
+                          data-testid="register-pan"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="gst_number">GST Number (GSTIN)</Label>
+                        <Input
+                          id="gst_number"
+                          name="gst_number"
+                          placeholder="22AAAAA0000A1Z5"
+                          value={formData.gst_number}
+                          onChange={handleChange}
+                          className="uppercase"
+                          data-testid="register-gst"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg h-[66px]">
+                        <div>
+                          <Label htmlFor="charge_gst" className="text-sm font-medium">Charge GST</Label>
+                          <p className="text-xs text-slate-500">Enable to charge GST on invoices</p>
+                        </div>
+                        <Switch
+                          id="charge_gst"
+                          checked={formData.charge_gst}
+                          onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, charge_gst: checked }))}
+                          data-testid="register-charge-gst"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="address">Business Address</Label>
+                      <Input
+                        id="address"
+                        name="address"
+                        placeholder="Complete business address"
+                        value={formData.address}
+                        onChange={handleChange}
+                        data-testid="register-address"
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Bank Details Section - Collapsible */}
+                <div className="border-t border-slate-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowBankDetails(!showBankDetails)}
+                    className="flex items-center justify-between w-full text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-[#004080]" />
+                      <span className="text-sm font-medium text-slate-700">Bank Account Details (Optional)</span>
+                    </div>
+                    {showBankDetails ? (
+                      <ChevronUp className="w-4 h-4 text-slate-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-slate-500" />
+                    )}
+                  </button>
+                  
+                  {/* Info note */}
+                  <div className="flex items-start gap-2 mt-2 p-2 bg-blue-50 rounded-md">
+                    <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-blue-700">
+                      Bank details are required only if you want to accept payments through payment gateway
+                    </p>
+                  </div>
+
+                  {showBankDetails && (
+                    <div className="space-y-4 mt-4 animate-fade-in">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_account_name">Account Holder Name</Label>
+                          <Input
+                            id="bank_account_name"
+                            name="bank_account_name"
+                            placeholder="Account holder name"
+                            value={formData.bank_account_name}
+                            onChange={handleChange}
+                            data-testid="register-bank-name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_name">Bank Name</Label>
+                          <Input
+                            id="bank_name"
+                            name="bank_name"
+                            placeholder="State Bank of India"
+                            value={formData.bank_name}
+                            onChange={handleChange}
+                            data-testid="register-bank"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_account_number">Account Number</Label>
+                          <Input
+                            id="bank_account_number"
+                            name="bank_account_number"
+                            placeholder="1234567890"
+                            value={formData.bank_account_number}
+                            onChange={handleChange}
+                            data-testid="register-account-number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_ifsc">IFSC Code</Label>
+                          <Input
+                            id="bank_ifsc"
+                            name="bank_ifsc"
+                            placeholder="SBIN0001234"
+                            value={formData.bank_ifsc}
+                            onChange={handleChange}
+                            className="uppercase"
+                            data-testid="register-ifsc"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Button

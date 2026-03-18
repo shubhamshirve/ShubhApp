@@ -16,6 +16,17 @@ def _empty_to_none(v):
 
 GST_PATTERN = re.compile(r"^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
 IFSC_PATTERN = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+PAN_PATTERN = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+
+# Valid business types
+BUSINESS_TYPES = [
+    "Sole Proprietorship",
+    "Partnership",
+    "LLP",
+    "Private Limited",
+    "Public Limited",
+    "Others"
+]
 
 
 def _normalize_phone(value: Optional[str], *, required: bool = False) -> Optional[str]:
@@ -48,6 +59,23 @@ def _normalize_ifsc(value: Optional[str]) -> Optional[str]:
     if not IFSC_PATTERN.fullmatch(ifsc):
         raise ValueError("IFSC code must be a valid 11-character IFSC")
     return ifsc
+
+
+def _normalize_pan(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    pan = value.upper()
+    if not PAN_PATTERN.fullmatch(pan):
+        raise ValueError("PAN must be a valid 10-character PAN (e.g., ABCDE1234F)")
+    return pan
+
+
+def _validate_business_type(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if value not in BUSINESS_TYPES:
+        raise ValueError(f"Business type must be one of: {', '.join(BUSINESS_TYPES)}")
+    return value
 
 
 # ============== USER MODELS ==============
@@ -102,14 +130,17 @@ class OperatorCreate(SanitizedModel):
     email: EmailStr
     phone: str
     password: str
+    business_type: Optional[str] = None
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    address: Optional[str] = None
     charge_gst: bool = False
     bank_account_name: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
 
-    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
     @classmethod
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
@@ -124,17 +155,30 @@ class OperatorCreate(SanitizedModel):
     def normalize_gst(cls, value):
         return _normalize_gst(value)
 
+    @field_validator("pan_number")
+    @classmethod
+    def normalize_pan(cls, value):
+        return _normalize_pan(value)
+
     @field_validator("bank_ifsc")
     @classmethod
     def normalize_ifsc(cls, value):
         return _normalize_ifsc(value)
+
+    @field_validator("business_type")
+    @classmethod
+    def validate_business_type(cls, value):
+        return _validate_business_type(value)
 
 
 class OperatorUpdate(SanitizedModel):
     company_name: Optional[str] = None
     owner_name: Optional[str] = None
     phone: Optional[str] = None
+    business_type: Optional[str] = None
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    address: Optional[str] = None
     charge_gst: Optional[bool] = None
     bank_account_name: Optional[str] = None
     bank_account_number: Optional[str] = None
@@ -142,7 +186,7 @@ class OperatorUpdate(SanitizedModel):
     bank_name: Optional[str] = None
     status: Optional[str] = None
 
-    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
     @classmethod
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
@@ -157,10 +201,20 @@ class OperatorUpdate(SanitizedModel):
     def normalize_gst(cls, value):
         return _normalize_gst(value)
 
+    @field_validator("pan_number")
+    @classmethod
+    def normalize_pan(cls, value):
+        return _normalize_pan(value)
+
     @field_validator("bank_ifsc")
     @classmethod
     def normalize_ifsc(cls, value):
         return _normalize_ifsc(value)
+
+    @field_validator("business_type")
+    @classmethod
+    def validate_business_type(cls, value):
+        return _validate_business_type(value)
 
 
 class OperatorResponse(SanitizedModel):
@@ -170,8 +224,15 @@ class OperatorResponse(SanitizedModel):
     owner_name: str
     email: str
     phone: str
+    business_type: Optional[str] = None
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    address: Optional[str] = None
     charge_gst: bool = False
+    bank_account_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
     status: str
     saas_plan_id: Optional[str] = None
     saas_plan_name: Optional[str] = None
@@ -192,7 +253,10 @@ class AdminOperatorCreate(SanitizedModel):
     email: EmailStr
     phone: str
     password: str
+    business_type: Optional[str] = None
     gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    address: Optional[str] = None
     charge_gst: bool = False
     bank_account_name: Optional[str] = None
     bank_account_number: Optional[str] = None
@@ -202,7 +266,7 @@ class AdminOperatorCreate(SanitizedModel):
     status: str = "active"  # active, trial, suspended
     subscription_months: int = 1
 
-    @field_validator("gst_number", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", mode="before")
+    @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
     @classmethod
     def empty_str_to_none(cls, v):
         return _empty_to_none(v)
@@ -217,10 +281,20 @@ class AdminOperatorCreate(SanitizedModel):
     def normalize_gst(cls, value):
         return _normalize_gst(value)
 
+    @field_validator("pan_number")
+    @classmethod
+    def normalize_pan(cls, value):
+        return _normalize_pan(value)
+
     @field_validator("bank_ifsc")
     @classmethod
     def normalize_ifsc(cls, value):
         return _normalize_ifsc(value)
+
+    @field_validator("business_type")
+    @classmethod
+    def validate_business_type(cls, value):
+        return _validate_business_type(value)
 
 
 class ExtendSubscriptionRequest(SanitizedModel):

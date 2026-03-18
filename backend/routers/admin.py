@@ -149,7 +149,8 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
 
     operator = {
         "id": operator_id, "company_name": data.company_name, "owner_name": data.owner_name,
-        "email": data.email, "phone": data.phone, "gst_number": data.gst_number,
+        "email": data.email, "phone": data.phone, "business_type": data.business_type,
+        "gst_number": data.gst_number, "pan_number": data.pan_number, "address": data.address,
         "charge_gst": data.charge_gst, "bank_account_name": data.bank_account_name,
         "bank_account_number": data.bank_account_number, "bank_ifsc": data.bank_ifsc,
         "bank_name": data.bank_name, "status": data.status, "saas_plan_id": data.saas_plan_id,
