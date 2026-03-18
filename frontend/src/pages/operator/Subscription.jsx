@@ -277,14 +277,20 @@ const OperatorSubscription = () => {
   const selectedPlanDetails = subscription?.available_plans?.find(
     (p) => p.id === selectedPlan
   );
+
+  // Per-customer vs fixed pricing
+  const isPerCustomerPlan = selectedPlanDetails?.plan_type === "basic" || selectedPlanDetails?.plan_type === "pro";
+  const subscriberCount = subscription?.subscriber_count || 0;
   const baseAmount = selectedPlanDetails
-    ? selectedPlanDetails.monthly_price * parseInt(months || "1")
+    ? isPerCustomerPlan
+      ? ((selectedPlanDetails.per_customer_rate || 0) * subscriberCount + (selectedPlanDetails.monthly_base_fee || 0)) * parseInt(months || "1")
+      : (selectedPlanDetails.monthly_price || 0) * parseInt(months || "1")
     : 0;
-  // Owned standalone addons (purchased, not included in plan) – auto-renewed with subscription
-  const ownedPurchasedAddons = addons.filter((a) => a.status === "purchased");
+
+  // For per-customer plans, no addon additions; for custom plans show addons
+  const ownedPurchasedAddons = isPerCustomerPlan ? [] : addons.filter((a) => a.status === "purchased");
   const ownedAddonTotal = ownedPurchasedAddons.reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
-  // Addons available to bundle (not already owned)
-  const purchasableAddons = addons.filter(
+  const purchasableAddons = isPerCustomerPlan ? [] : addons.filter(
     (a) => a.status !== "purchased" && a.status !== "included_in_plan"
   );
   const selectedAddonTotal = purchasableAddons
@@ -508,7 +514,8 @@ const OperatorSubscription = () => {
                     )}
                     <p className="font-semibold text-slate-900">{plan.name}</p>
                     <p className="text-2xl font-bold mt-1">
-                      ₹{plan.monthly_price.toLocaleString("en-IN")}
+                      ₹{plan.plan_type ? `${plan.per_customer_rate}/customer` : plan.monthly_price?.toLocaleString("en-IN")}
+                      {plan.plan_type === "pro" && <span className="text-xs text-purple-700 font-normal ml-1">+₹{plan.monthly_base_fee}/mo</span>}
                       <span className="text-sm font-normal text-slate-500">/month</span>
                     </p>
                   </div>
@@ -742,7 +749,7 @@ const OperatorSubscription = () => {
                 <SelectContent>
                   {(subscription?.available_plans || []).map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} — ₹{plan.monthly_price}/mo
+                      {plan.name} — {plan.plan_type ? `₹${plan.per_customer_rate}/customer${plan.monthly_base_fee ? ` + ₹${plan.monthly_base_fee}/mo` : ""}` : `₹${plan.monthly_price}/mo`}
                     </SelectItem>
                   ))}
                 </SelectContent>

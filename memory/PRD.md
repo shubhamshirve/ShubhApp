@@ -227,6 +227,7 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 | Date | Task | Status |
 |------|------|--------|
 | 2026-03-18 | Task 1: Referral + Wallet System | ✅ DONE (100% tests passed) |
+| 2026-03-18 | Task 2: Basic/Pro Plan Revamp | ✅ DONE |
 
 ## Backlog
 

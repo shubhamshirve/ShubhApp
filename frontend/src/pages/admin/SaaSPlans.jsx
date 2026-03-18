@@ -32,14 +32,17 @@ const AdminSaaSPlans = () => {
 
   const [formData, setFormData] = useState({
     name: "",
+    plan_type: "basic",   // "basic", "pro", or "custom"
     monthly_price: 0,
-    max_subscribers: 100,
-    max_staff: 0,
+    per_customer_rate: 12,
+    monthly_base_fee: 0,
+    max_subscribers: 99999,
+    max_staff: 999,
     trial_enabled: false,
     trial_days: 0,
     gst_applicable: true,
     included_addons: [],
-    platform_fee_percentage: 3.0
+    platform_fee_percentage: 0.0
   });
 
   useEffect(() => {
@@ -105,14 +108,17 @@ const AdminSaaSPlans = () => {
     setEditingPlan(plan);
     setFormData({
       name: plan.name,
-      monthly_price: plan.monthly_price,
+      plan_type: plan.plan_type || "custom",
+      monthly_price: plan.monthly_price || 0,
+      per_customer_rate: plan.per_customer_rate || 12,
+      monthly_base_fee: plan.monthly_base_fee || 0,
       max_subscribers: plan.max_subscribers,
       max_staff: plan.max_staff || 0,
       trial_enabled: plan.trial_enabled,
       trial_days: plan.trial_days,
       gst_applicable: plan.gst_applicable,
       included_addons: plan.included_addons || [],
-      platform_fee_percentage: plan.platform_fee_percentage ?? 3.0
+      platform_fee_percentage: plan.platform_fee_percentage ?? 0.0
     });
     setShowDialog(true);
   };
@@ -121,14 +127,17 @@ const AdminSaaSPlans = () => {
     setEditingPlan(null);
     setFormData({
       name: "",
+      plan_type: "basic",
       monthly_price: 0,
-      max_subscribers: 100,
-      max_staff: 0,
+      per_customer_rate: 12,
+      monthly_base_fee: 0,
+      max_subscribers: 99999,
+      max_staff: 999,
       trial_enabled: false,
       trial_days: 0,
       gst_applicable: true,
       included_addons: [],
-      platform_fee_percentage: 3.0
+      platform_fee_percentage: 0.0
     });
   };
 
@@ -221,33 +230,60 @@ const AdminSaaSPlans = () => {
                 {plan.trial_enabled && (
                   <div className="absolute top-3 right-3 badge-trial">Trial</div>
                 )}
+                {plan.plan_type && (
+                  <div className={`absolute top-3 left-3 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                    plan.plan_type === "pro" ? "bg-purple-100 text-purple-700" :
+                    plan.plan_type === "basic" ? "bg-blue-100 text-blue-700" :
+                    "bg-slate-100 text-slate-600"
+                  }`}>
+                    {plan.plan_type}
+                  </div>
+                )}
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-lg">
+                  <CardTitle className={`flex items-center gap-2 text-lg ${plan.plan_type ? "mt-4" : ""}`}>
                     <Package className="w-5 h-5 text-blue-600" />
                     {plan.name}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-slate-900">
-                      ₹{plan.monthly_price.toLocaleString('en-IN')}
-                    </span>
-                    <span className="text-slate-500">/month</span>
-                  </div>
+                  {plan.plan_type ? (
+                    <div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-slate-900">
+                          ₹{plan.per_customer_rate}
+                        </span>
+                        <span className="text-slate-500 text-sm">/customer/month</span>
+                      </div>
+                      {plan.monthly_base_fee > 0 && (
+                        <p className="text-xs text-purple-700 font-medium mt-0.5">+ ₹{plan.monthly_base_fee}/month base fee → wallet</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold text-slate-900">
+                        ₹{(plan.monthly_price || 0).toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-slate-500">/month</span>
+                    </div>
+                  )}
 
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Max Subscribers</span>
-                      <span className="font-medium">{plan.max_subscribers.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Platform Fee</span>
-                      <span className="font-medium text-indigo-600">{plan.platform_fee_percentage ?? 3}%</span>
-                    </div>
-                    {plan.max_staff > 0 && (
+                    {!plan.plan_type && (
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Max Staff</span>
-                        <span className="font-medium">{plan.max_staff}</span>
+                        <span className="text-slate-500">Platform Fee</span>
+                        <span className="font-medium text-indigo-600">{plan.platform_fee_percentage ?? 0}%</span>
+                      </div>
+                    )}
+                    {plan.plan_type && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Addons</span>
+                        <span className="font-medium text-green-700">{plan.plan_type === "pro" ? "All included" : "None"}</span>
+                      </div>
+                    )}
+                    {plan.plan_type && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Platform Fee</span>
+                        <span className="font-medium text-green-700">None</span>
                       </div>
                     )}
                     {plan.trial_enabled && (
@@ -374,66 +410,79 @@ const AdminSaaSPlans = () => {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Plan Type */}
+              <div className="space-y-2">
+                <Label>Plan Type</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "basic", label: "Basic", desc: "₹12/customer, no addons" },
+                    { value: "pro", label: "Pro", desc: "₹22/customer + ₹1000 base" },
+                    { value: "custom", label: "Custom", desc: "Fixed price, manual config" },
+                  ].map((pt) => (
+                    <button
+                      key={pt.value}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, plan_type: pt.value }))}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        formData.plan_type === pt.value
+                          ? pt.value === "pro" ? "border-purple-500 bg-purple-50"
+                          : pt.value === "basic" ? "border-blue-500 bg-blue-50"
+                          : "border-slate-500 bg-slate-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}
+                      data-testid={`plan-type-${pt.value}`}
+                    >
+                      <p className="text-sm font-bold">{pt.label}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{pt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                {formData.plan_type !== "custom" && (
+                  <div className={`text-xs p-2 rounded-lg ${formData.plan_type === "pro" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>
+                    {formData.plan_type === "basic"
+                      ? "Basic plan: ₹12/customer/month. No addons. No platform fee."
+                      : "Pro plan: ₹22/customer/month + ₹1,000/month base fee (credited to operator wallet). All addons included. No platform fee."}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2">
                   <Label>Plan Name</Label>
                   <Input
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Professional"
+                    placeholder={formData.plan_type === "basic" ? "e.g., Basic Plan" : formData.plan_type === "pro" ? "e.g., Pro Plan" : "e.g., Custom Plan"}
                     required
                     data-testid="plan-name-input"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Monthly Price (₹)</Label>
-                  <Input
-                    type="number"
-                    value={formData.monthly_price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, monthly_price: parseFloat(e.target.value) || 0 }))}
-                    min="0"
-                    required
-                    data-testid="plan-price-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Max Subscribers</Label>
-                  <Input
-                    type="number"
-                    value={formData.max_subscribers}
-                    onChange={(e) => setFormData(prev => ({ ...prev, max_subscribers: parseInt(e.target.value) || 0 }))}
-                    min="1"
-                    required
-                    data-testid="plan-subscribers-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Max Staff</Label>
-                  <Input
-                    type="number"
-                    value={formData.max_staff}
-                    onChange={(e) => setFormData(prev => ({ ...prev, max_staff: parseInt(e.target.value) || 0 }))}
-                    min="0"
-                    data-testid="plan-staff-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Platform Fee (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={formData.platform_fee_percentage}
-                    onChange={(e) => setFormData(prev => ({ ...prev, platform_fee_percentage: parseFloat(e.target.value) || 0 }))}
-                    min="0"
-                    max="50"
-                    data-testid="plan-fee-input"
-                  />
-                  <p className="text-xs text-slate-500">Fee charged on settlements (excluding GST)</p>
-                </div>
+                {formData.plan_type === "custom" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Monthly Price (₹)</Label>
+                      <Input
+                        type="number"
+                        value={formData.monthly_price}
+                        onChange={(e) => setFormData(prev => ({ ...prev, monthly_price: parseFloat(e.target.value) || 0 }))}
+                        min="0"
+                        data-testid="plan-price-input"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Platform Fee (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={formData.platform_fee_percentage}
+                        onChange={(e) => setFormData(prev => ({ ...prev, platform_fee_percentage: parseFloat(e.target.value) || 0 }))}
+                        min="0" max="50"
+                        data-testid="plan-fee-input"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-2">
                   <Label>Trial Days</Label>
@@ -442,6 +491,7 @@ const AdminSaaSPlans = () => {
                     value={formData.trial_days}
                     onChange={(e) => setFormData(prev => ({ ...prev, trial_days: parseInt(e.target.value) || 0 }))}
                     min="0"
+                    data-testid="plan-trial-days-input"
                   />
                 </div>
               </div>
@@ -466,8 +516,8 @@ const AdminSaaSPlans = () => {
                 </div>
               </div>
 
-              {/* Included Add-ons */}
-              {addons.length > 0 && (
+              {/* Included Add-ons — only for custom plans */}
+              {formData.plan_type === "custom" && addons.length > 0 && (
                 <div className="border-t pt-4 space-y-3">
                   <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
                     <Puzzle className="w-4 h-4" /> Included Add-ons

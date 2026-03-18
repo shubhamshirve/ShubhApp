@@ -401,31 +401,51 @@ async def create_checkout_order(
         saas_plan = await db.saas_plans.find_one({"id": target_plan_id, "deleted_at": None}, {"_id": 0})
         if not saas_plan:
             raise HTTPException(status_code=404, detail="Plan not found")
-        base_amount = saas_plan["monthly_price"] * months
-        description = f"{saas_plan['name']} x {months} month(s)"
+
+        plan_type = saas_plan.get("plan_type")
+        if plan_type in ("basic", "pro"):
+            # Per-customer billing
+            subscriber_count = await db.subscribers.count_documents(
+                {"operator_id": operator["id"], "status": "active", "deleted_at": None}
+            )
+            per_customer_rate = saas_plan.get("per_customer_rate", 0)
+            monthly_base_fee = saas_plan.get("monthly_base_fee", 0)
+            base_amount = round((per_customer_rate * subscriber_count + monthly_base_fee) * months, 2)
+            if base_amount <= 0:
+                base_amount = round(monthly_base_fee * months, 2)
+            description = (
+                f"{saas_plan['name']} x {months} month(s) "
+                f"({subscriber_count} subscribers @ ₹{per_customer_rate}/customer"
+                + (f" + ₹{monthly_base_fee} base/month" if monthly_base_fee else "") + ")"
+            )
+            # No addon additions for Basic; Pro already includes all addons
+            selected_addon_codes = []
+        else:
+            # Legacy: fixed monthly_price
+            base_amount = saas_plan["monthly_price"] * months
+            description = f"{saas_plan['name']} x {months} month(s)"
+            included_in_plan = saas_plan.get("included_addons", [])
+            auto_addon_codes = []
+            for code in operator.get("active_addons", []):
+                if code not in included_in_plan:
+                    addon_doc = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+                    if addon_doc:
+                        base_amount += addon_doc["price"] * months
+                        auto_addon_codes.append(code)
+            valid_addon_codes = []
+            for code in selected_addon_codes:
+                if code in auto_addon_codes:
+                    continue
+                addon_doc2 = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
+                if addon_doc2 and code not in operator.get("active_addons", []) and code not in included_in_plan:
+                    base_amount += addon_doc2["price"] * months
+                    valid_addon_codes.append(code)
+            all_addon_codes = auto_addon_codes + valid_addon_codes
+            if all_addon_codes:
+                description += f" + {len(all_addon_codes)} add-on(s)"
+            selected_addon_codes = all_addon_codes
+
         receipt_prefix = "SUB"
-        included_in_plan = saas_plan.get("included_addons", [])
-        # Auto-include prices of operator's standalone purchased addons (not in plan)
-        auto_addon_codes = []
-        for code in operator.get("active_addons", []):
-            if code not in included_in_plan:
-                addon_doc = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
-                if addon_doc:
-                    base_amount += addon_doc["price"] * months
-                    auto_addon_codes.append(code)
-        # Add newly selected addon prices (not already owned)
-        valid_addon_codes = []
-        for code in selected_addon_codes:
-            if code in auto_addon_codes:
-                continue  # Already counted
-            addon_doc2 = await db.addons.find_one({"code": code, "deleted_at": None}, {"_id": 0})
-            if addon_doc2 and code not in operator.get("active_addons", []) and code not in included_in_plan:
-                base_amount += addon_doc2["price"] * months
-                valid_addon_codes.append(code)
-        all_addon_codes = auto_addon_codes + valid_addon_codes
-        if all_addon_codes:
-            description += f" + {len(all_addon_codes)} add-on(s)"
-        selected_addon_codes = all_addon_codes
     else:
         raise HTTPException(status_code=400, detail="Invalid item_type. Use 'addon' or 'subscription'")
 
@@ -504,6 +524,7 @@ async def create_checkout_order(
         "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": rounded_total,
+        "wallet_credit_amount": saas_plan.get("monthly_base_fee", 0) * months if item_type == "subscription" else 0,
         "coupon_code": applied_coupon,
         "description": description, "status": "created",
         "created_at": now.isoformat(), "deleted_at": None
@@ -652,16 +673,18 @@ async def verify_checkout_payment(
     }
     await db.saas_payments.insert_one(payment_record)
 
-    # Credit wallet with subscription amount
+    # Credit wallet with subscription base fee (monthly_base_fee portion only — for Pro plans)
     if order["item_type"] == "subscription":
         try:
             from routers.wallet import credit_wallet, apply_referral_reward
-            await credit_wallet(
-                operator["id"], order["total_amount"],
-                f"Subscription payment credited to wallet ({order.get('description', '')})",
-                reference_id=razorpay_payment_id,
-                tx_type="subscription_credit",
-            )
+            wallet_credit_amount = order.get("wallet_credit_amount", 0)
+            if wallet_credit_amount > 0:
+                await credit_wallet(
+                    operator["id"], wallet_credit_amount,
+                    f"Monthly base fee credited to wallet ({order.get('description', '')})",
+                    reference_id=razorpay_payment_id,
+                    tx_type="subscription_credit",
+                )
             # Mark referral discount as used (first transaction)
             if operator.get("referral_discount_eligible") and not operator.get("referral_discount_used"):
                 await db.operators.update_one(
@@ -693,16 +716,34 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
     if operator.get("saas_plan_id"):
         saas_plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
     available_plans = await db.saas_plans.find({"deleted_at": None, "trial_enabled": False}, {"_id": 0}).to_list(50)
+    subscriber_count = await db.subscribers.count_documents(
+        {"operator_id": operator["id"], "status": "active", "deleted_at": None}
+    )
     return {
         "operator_id": operator["id"], "company_name": operator.get("company_name", ""),
         "status": operator.get("status", "unknown"),
         "saas_plan_id": operator.get("saas_plan_id"),
         "saas_plan_name": operator.get("saas_plan_name") or (saas_plan["name"] if saas_plan else None),
         "saas_plan_price": saas_plan.get("monthly_price") if saas_plan else None,
+        "saas_plan_type": saas_plan.get("plan_type") if saas_plan else None,
+        "per_customer_rate": saas_plan.get("per_customer_rate") if saas_plan else None,
+        "monthly_base_fee": saas_plan.get("monthly_base_fee", 0) if saas_plan else None,
+        "subscriber_count": subscriber_count,
         "subscription_ends_at": operator.get("subscription_ends_at"),
         "trial_ends_at": operator.get("trial_ends_at"),
         "is_read_only": operator.get("is_read_only", False),
-        "available_plans": [{"id": p["id"], "name": p["name"], "monthly_price": p["monthly_price"]} for p in available_plans]
+        "available_plans": [
+            {
+                "id": p["id"], "name": p["name"],
+                "monthly_price": p.get("monthly_price", 0),
+                "plan_type": p.get("plan_type"),
+                "per_customer_rate": p.get("per_customer_rate"),
+                "monthly_base_fee": p.get("monthly_base_fee", 0),
+                "included_addons": p.get("included_addons", []),
+                "gst_applicable": p.get("gst_applicable", True),
+            }
+            for p in available_plans
+        ]
     }
 
 
