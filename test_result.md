@@ -1937,7 +1937,7 @@ frontend:
     - agent: "main"
       message: |
         Please test the frontend UI of this Multi-Tenant SaaS Billing Platform.
-        App URL: https://settlement-analyzer-2.preview.emergentagent.com
+        App URL: https://kyc-details-editor.preview.emergentagent.com
 
         CREDENTIALS:
         - Admin: admin@saas.com / admin123
@@ -2065,7 +2065,7 @@ frontend:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Verify Recent Subscriptions table on Admin Reports → SaaS Revenue tab
-        **URL:** https://settlement-analyzer-2.preview.emergentagent.com/admin/reports
+        **URL:** https://kyc-details-editor.preview.emergentagent.com/admin/reports
         **LOGIN:** admin@saas.com / admin123
         
         **COMPREHENSIVE UI TESTS - ALL REQUIREMENTS VERIFIED:**
@@ -2226,7 +2226,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test WhatsApp Templates page in admin panel with comprehensive CRUD and filter functionality
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/admin/whatsapp-templates
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/admin/whatsapp-templates
       **TEST CREDENTIALS:** admin@saas.com / admin123
       
       **COMPREHENSIVE TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
@@ -2560,7 +2560,7 @@ agent_communication:
       - **Security:** Proper password verification, secure hashing, input validation ✅
 
       **TESTING METHODOLOGY:**
-      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
+      - Used production backend URL: https://kyc-details-editor.preview.emergentagent.com/api
       - Seeded admin user via POST /api/seed (admin@saas.com/admin123)
       - Bearer token authentication for all protected endpoints
       - Verified exact HTTP status codes and error messages
@@ -2588,7 +2588,7 @@ agent_communication:
       
       **TEST DATE:** March 11, 2026
       **TEST REQUEST:** Test Security tab and Download button in admin Settings panel
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com (credentials: admin@saas.com/admin123)
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com (credentials: admin@saas.com/admin123)
       
       **COMPREHENSIVE UI TESTING RESULTS:**
       
@@ -2711,7 +2711,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Execute comprehensive frontend UI testing for Multi-Tenant SaaS Billing Platform OTP registration flow
-      **FRONTEND URL:** https://settlement-analyzer-2.preview.emergentagent.com
+      **FRONTEND URL:** https://kyc-details-editor.preview.emergentagent.com
       **TEST CREDENTIALS:** admin@saas.com / admin123, Test OTP: 200796
       
       **═══════════════════════════════════════════════════════════════════**
@@ -3092,7 +3092,7 @@ agent_communication:
         
         **TEST DATE:** March 11, 2026
         **TEST REQUEST:** Test audit logs with comprehensive filters and auto invoice cron endpoint
-        **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+        **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
         
         **COMPREHENSIVE TESTING RESULTS - 9/9 TESTS PASSED (100% SUCCESS RATE):**
         
@@ -3152,7 +3152,7 @@ agent_communication:
         - ✅ No 500 errors encountered ✓
         
         **TESTING METHODOLOGY:**
-        - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
+        - Used production backend URL: https://kyc-details-editor.preview.emergentagent.com/api
         - Bearer token authentication for all protected endpoints
         - Verified exact HTTP status codes and response structures
         - Tested both individual and combined filter parameters
@@ -3453,7 +3453,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new OTP registration flow and uniqueness validation system
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123 (for seed data)
       
       **COMPREHENSIVE OTP TESTING RESULTS - 8/8 TESTS PASSED (100% SUCCESS RATE):**
@@ -3529,7 +3529,7 @@ agent_communication:
       
       **📋 TESTING METHODOLOGY:**
       - Created automated test suite (/app/otp_test.py) with 8 comprehensive test scenarios
-      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
+      - Used production backend URL: https://kyc-details-editor.preview.emergentagent.com/api
       - Tested complete registration flow from init through verification
       - Verified uniqueness constraints both before and after registration completion
       - Tested both new OTP endpoints and legacy compatibility
@@ -3588,7 +3588,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test Error Logs CRUD and WhatsApp integration with fixed language code  
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123
       
       **COMPREHENSIVE TESTING RESULTS - 9/9 TESTS PASSED (100% SUCCESS RATE):**
@@ -3668,7 +3668,7 @@ agent_communication:
       - **Search/Filter Performance:** Both search and filter operations working efficiently
       
       **TESTING METHODOLOGY:**
-      - Used production backend URL: https://settlement-analyzer-2.preview.emergentagent.com/api
+      - Used production backend URL: https://kyc-details-editor.preview.emergentagent.com/api
       - Bearer token authentication for all protected admin endpoints
       - Verified exact HTTP status codes and response structures
       - Generated real errors to test logging integration
@@ -3702,7 +3702,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new WhatsApp backend changes (global config refactor)
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
       
       **COMPREHENSIVE WHATSAPP TESTING RESULTS - 10/10 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -3792,7 +3792,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test backend registration change to assign lowest plan for 3-day trial
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
       
       **COMPREHENSIVE TESTING RESULTS - 4/4 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -3881,7 +3881,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026  
       **TEST REQUEST:** Test backend changes for Multi-Tenant SaaS Billing Platform
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **TEST CREDENTIALS:** admin@saas.com/admin123
       
       **COMPREHENSIVE TESTING RESULTS - 6/6 SUB-TESTS PASSED (100% SUCCESS RATE):**
@@ -4037,8 +4037,8 @@ agent_communication:
     message: |
       Please execute comprehensive FRONTEND UI testing for the following scenarios.
       
-      **Frontend URL:** https://settlement-analyzer-2.preview.emergentagent.com
-      **Backend API URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **Frontend URL:** https://kyc-details-editor.preview.emergentagent.com
+      **Backend API URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **Admin credentials:** admin@saas.com / admin123
       **Test OTP code:** 200796
       
@@ -4105,7 +4105,7 @@ agent_communication:
       🚨 **COMPREHENSIVE FRONTEND UI TESTING COMPLETED - CRITICAL FAILURES DETECTED**
       
       **TEST DATE:** March 13, 2026
-      **TEST URL:** https://settlement-analyzer-2.preview.emergentagent.com
+      **TEST URL:** https://kyc-details-editor.preview.emergentagent.com
       **TEST OTP:** 200796
       **ADMIN CREDENTIALS:** admin@saas.com / admin123
       
@@ -4498,7 +4498,7 @@ agent_communication:
       
       **TEST DATE:** March 12, 2026
       **TEST REQUEST:** Test new public invoice API endpoints (no authentication required)
-      **BACKEND URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **BACKEND URL:** https://kyc-details-editor.preview.emergentagent.com/api
       
       **COMPREHENSIVE TESTING RESULTS - 8/8 TESTS PASSED (100% SUCCESS RATE):**
       
@@ -5112,8 +5112,8 @@ agent_communication:
     message: |
       Please execute comprehensive FRONTEND UI testing for Settlements page and Public Invoice page.
       
-      **Frontend URL:** https://settlement-analyzer-2.preview.emergentagent.com
-      **Backend API URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **Frontend URL:** https://kyc-details-editor.preview.emergentagent.com
+      **Backend API URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **Admin credentials:** admin@saas.com / admin123
       
       ## IMPORTANT SELECTOR INFO:
@@ -5204,7 +5204,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Execute comprehensive frontend UI testing for Settlements page and Public Invoice page
-      **FRONTEND URL:** https://settlement-analyzer-2.preview.emergentagent.com
+      **FRONTEND URL:** https://kyc-details-editor.preview.emergentagent.com
       **TEST CREDENTIALS:** admin@saas.com / admin123
       
       **═══════════════════════════════════════════════════════════════════**
@@ -5442,7 +5442,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Test Settlement and Plan features as described in review request
-      **BACKEND URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **BACKEND URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **ADMIN CREDENTIALS:** admin@saas.com / admin123 (verified working)
       
       **═══════════════════════════════════════════════════════════════════**
@@ -5628,7 +5628,7 @@ agent_communication:
       
       **TEST DATE:** March 13, 2026
       **TEST REQUEST:** Test 5 new features implemented for the E-Bill billing platform
-      **BACKEND URL:** https://settlement-analyzer-2.preview.emergentagent.com/api
+      **BACKEND URL:** https://kyc-details-editor.preview.emergentagent.com/api
       **CREDENTIALS USED:** 
       - Admin: admin@saas.com / admin123
       - Operator1: venkat@krishnacable.in / operator123 (Pro plan, has whatsapp_notifications addon)
