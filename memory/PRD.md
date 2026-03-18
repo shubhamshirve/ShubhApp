@@ -227,14 +227,22 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 | Date | Task | Status |
 |------|------|--------|
 | 2026-03-18 | Task 1: Referral + Wallet System | ✅ DONE (100% tests passed) |
-| 2026-03-18 | Task 2: Basic/Pro Plan Revamp | ✅ DONE (100% tests passed) |
+| 2026-03-18 | Task 5: Support Ticket System | ✅ DONE (100% tests passed) |
+| 2026-03-18 | Task 7: Remove Landing Page (redirect / → /login) | ✅ DONE |
 
 ## Backlog
 
-### P0 (In Progress)
-- Task 2: Basic/Pro Plan Revamp (Rs.10/customer basic, Rs.22/customer+Rs.1000/month pro)
-- Task 5: Support Ticket System
-- Task 7: Remove Landing Page
+### P0 (Completed)
+- Task 1: Referral + Wallet System ✅
+- Task 2: Basic/Pro Plan Revamp ✅
+- Task 5: Support Ticket System ✅
+- Task 7: Remove Landing Page ✅
+
+### P0 (Next Up)
+- Task 3: Email (Resend)/SMS/WhatsApp OTP + Admin toggle (needs API keys)
+- Task 4: Cashfree payment gateway (needs Cashfree credentials)
+- Task 6: Payment receipt generation + WhatsApp send
+- Task 8: SMS & Email invoice/reminders (needs credentials)
 
 ### P1
 - Task 3: Email (Resend)/SMS/WhatsApp OTP + Admin toggle (needs API keys)
