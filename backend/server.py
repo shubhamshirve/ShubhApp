@@ -196,61 +196,6 @@ async def health_check():
     return {"status": "healthy", "service": "E-Bill - ISP & Cable Billing Solutions"}
 
 
-@app.get("/api/landing-page")
-async def get_landing_page_public():
-    """Public endpoint for landing page settings (no auth required)."""
-    DEFAULT_LANDING_PAGE_SETTINGS = {
-        "brand": {
-            "name": "E-Bill",
-            "tagline": "ISP & Cable Billing Solutions",
-            "business_name": "Teasy Services",
-            "logo_url": "/ebill-logo.svg",
-        },
-        "colors": {
-            "primary": "#0066B2",
-            "secondary": "#44AB62",
-            "background": "#EFEFEF",
-            "accent": "#004080",
-        },
-        "hero": {
-            "badge": "India's GST-Ready Billing Platform",
-            "title": "Automate Your",
-            "title_highlight": "Recurring Billing",
-            "subtitle": "Multi-tenant billing platform for subscription businesses in India. Auto-generate invoices, send WhatsApp reminders, and collect payments through your own payment gateway.",
-            "cta_primary": "Start Free Trial",
-            "cta_secondary": "Watch Demo",
-            "features": ["No credit card required", "GST compliant invoices", "WhatsApp integration"],
-        },
-        "stats": {
-            "stat1_value": "10K+",
-            "stat1_label": "Active Subscribers",
-            "stat2_value": "₹5Cr+",
-            "stat2_label": "Processed Monthly",
-            "stat3_value": "500+",
-            "stat3_label": "Businesses Trust Us",
-            "stat4_value": "99.9%",
-            "stat4_label": "Uptime",
-        },
-        "features": {
-            "title": "Everything You Need to Manage Billing",
-            "subtitle": "A complete solution for subscription businesses with GST compliance, automated workflows, and seamless payment collection.",
-        },
-        "contact": {
-            "email": "support@teasyservices.com",
-            "phone": "+91 98765 43210",
-            "whatsapp": "+91 98765 43210",
-        },
-        "footer": {
-            "copyright": "© 2026 E-Bill by Teasy Services. All rights reserved.",
-            "tagline": "Made in India 🇮🇳",
-        },
-    }
-    settings = await db.global_settings.find_one({"type": "landing_page"}, {"_id": 0})
-    if not settings:
-        return DEFAULT_LANDING_PAGE_SETTINGS
-    return settings.get("settings", DEFAULT_LANDING_PAGE_SETTINGS)
-
-
 @app.post("/api/seed")
 async def seed_data():
     """Seed initial admin, addons, and default SaaS plans (idempotent)."""
@@ -296,12 +241,10 @@ async def seed_data():
             {"id": generate_id(), "name": "Basic", "monthly_price": 500,
              "max_subscribers": 200, "max_staff": 0, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
-             "platform_fee_percentage": 3.5,
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
             {"id": generate_id(), "name": "Pro", "monthly_price": 2500,
              "max_subscribers": 1000, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
-             "platform_fee_percentage": 3.0,
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
         ]
         await db.saas_plans.insert_many(plans)
@@ -348,7 +291,6 @@ async def startup_event():
         run_daily_invoice_generation,
         run_daily_reminder_processing,
         run_daily_expiry_check,
-        run_daily_settlement_processing,
         run_daily_wallet_check,
     )
 
@@ -378,12 +320,6 @@ async def startup_event():
         "cron", hour=1, minute=0, id="daily_expiry"
     )
 
-    # Daily settlement processing at 03:00 UTC
-    scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_settlement_processing(db)),
-        "cron", hour=3, minute=0, id="daily_settlements"
-    )
-
     # Daily wallet balance check at 08:00 UTC
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(run_daily_wallet_check(db)),
@@ -392,7 +328,7 @@ async def startup_event():
 
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), settlements(03:00), wallet_check(08:00) UTC")
+    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), wallet_check(08:00) UTC")
 
 
 @app.on_event("shutdown")

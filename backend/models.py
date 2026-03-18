@@ -308,20 +308,6 @@ class ExtendSubscriptionRequest(SanitizedModel):
 
 # ============== SAAS PLAN MODELS ==============
 
-# Subscriber tier: count → base monthly price
-SUBSCRIBER_TIERS = {250: 500, 500: 1000, 750: 1500, 1000: 2000, 1500: 3000, 2000: 4000, 3000: 5500}
-# Staff tier: count → additional monthly price
-STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
-
-VALID_SUBSCRIBER_COUNTS = sorted(SUBSCRIBER_TIERS.keys())
-VALID_STAFF_COUNTS = sorted(STAFF_TIERS.keys())
-
-
-def calc_plan_price(max_subscribers: int, max_staff: int, addon_prices: List[float]) -> float:
-    base = SUBSCRIBER_TIERS.get(max_subscribers, 0)
-    staff = STAFF_TIERS.get(max_staff, 0)
-    return base + staff + sum(addon_prices)
-
 
 class SaaSPlanCreate(SanitizedModel):
     name: str
@@ -341,7 +327,6 @@ class SaaSPlanResponse(SanitizedModel):
     max_subscribers: int
     max_staff: int
     included_addons: List[str] = []
-    platform_fee_percentage: Optional[float] = 0.0
     status: str
     created_at: datetime
 

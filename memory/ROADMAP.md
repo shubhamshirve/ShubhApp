@@ -5,6 +5,7 @@
 - [x] Task 2: Basic/Pro Plan Revamp (₹12 basic, ₹22+₹1000 pro)
 - [x] Task 5: Support Ticket System
 - [x] Task 7: Remove Landing Page → redirect to /login
+- [x] Task 8: Codebase Cleanup — Settlement system, Platform fee logic, Dead files & code
 
 ---
 

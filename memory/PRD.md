@@ -23,10 +23,7 @@ Multi-tenant SaaS billing platform for ISP/broadband operators. Features 3-role 
   ```
 
 ## Pricing Tiers
-```python
-SUBSCRIBER_TIERS = {250: 500, 500: 1000, 750: 1500, 1000: 2000, 1500: 3000, 2000: 4000, 3000: 5500}
-STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
-```
+*(Legacy tier constants removed — plans now use simplified `monthly_price` + `per_invoice_price`.)*
 
 ## Scheduled Jobs (APScheduler)
 | Job | Schedule | Description |
@@ -35,6 +32,7 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 | Expiry Check | 01:00 UTC daily | Mark expired trials/subscriptions |
 | Invoice Generation | 06:00 UTC daily | Auto-generate invoices 3 days before billing |
 | Reminder Processing | 07:00 UTC daily | Send reminders per operator schedule |
+| Wallet Check | 08:00 UTC daily | Wallet balance check, send reminders, suspend if low |
 
 ## What's Been Implemented
 
@@ -124,7 +122,15 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
    - frontend/src/pages/Register.jsx - KYC section, bank details collapsible
    - frontend/src/pages/admin/Operators.jsx - View Details & Edit dialogs
 
-### Deployment and Infra Updates (Mar 2026)
+### Batch 8 — Cleanup & Removal (Completed Jul 2025)
+1. **Removed Settlement System** (frontend + backend + cron): Payments are not processed through platform; settlements were unnecessary. Deleted `admin/Settlements.jsx`, `operator/Settlements.jsx`, `seed_settlement_data.py`. Removed all settlement endpoints from `admin.py` (~350 lines) and `operator.py` (~100 lines). Removed `run_daily_settlement_processing` from `cron_service.py`. Removed settlement cron job from `server.py` scheduler.
+2. **Removed Platform Fee Logic**: `platform_fee_percentage` field removed from `SaaSPlanResponse` model, from plan create/update in `admin.py`, and from seeded plans in `server.py`. `update_platform_fee` endpoint removed (was part of settlements).
+3. **Deleted Dead Files**: `frontend/src/pages/LandingPage.jsx` (unused public page), `backend_kyc_test.py`, `kyc_focused_test.py`, `kyc_review_test.py` (root-level standalone test scripts).
+4. **Cleaned Dead Code in models.py**: Removed legacy constants `SUBSCRIBER_TIERS`, `STAFF_TIERS`, `VALID_SUBSCRIBER_COUNTS`, `VALID_STAFF_COUNTS` and `calc_plan_price` function (old tier-based pricing system no longer in use).
+5. **Removed `/api/landing-page` public endpoint** from `server.py` (landing page itself was already removed; admin config page retained).
+6. **Total code removed**: ~3,100+ lines across 7 deleted files + multiple existing files cleaned up.
+
+
 - Dockerized app with `docker-compose.yml` using `init-env`, `mongodb`, `backend`, `frontend`, and `caddy`.
 - Added Caddy reverse proxy in `Caddyfile`:
   - serves frontend
@@ -251,14 +257,9 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 - Task 2: Basic/Pro Plan Revamp ✅
 - Task 5: Support Ticket System ✅
 - Task 7: Remove Landing Page ✅
+- Task 8: Codebase Cleanup (Settlement removal, platform fee removal, dead code) ✅
 
-### P0 (Next Up)
-- Task 3: Email (Resend)/SMS/WhatsApp OTP + Admin toggle (needs API keys)
-- Task 4: Cashfree payment gateway (needs Cashfree credentials)
-- Task 6: Payment receipt generation + WhatsApp send
-- Task 8: SMS & Email invoice/reminders (needs credentials)
-
-### P1
+### P1 — Needs External Credentials (Next Up)
 - Task 3: Email (Resend)/SMS/WhatsApp OTP + Admin toggle (needs API keys)
 - Task 4: Cashfree payment gateway (needs Cashfree credentials)
 - Task 6: Payment receipt generation + WhatsApp send

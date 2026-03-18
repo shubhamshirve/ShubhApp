@@ -42,11 +42,16 @@ A production-grade billing platform for ISP/broadband operators. Built with Reac
 - Auto invoice generation (daily cron at 06:00 UTC)
 - Payment reminder scheduling (daily cron at 07:00 UTC)
 - Subscription expiry checks (daily at 01:00 UTC)
+- Wallet balance check & auto-suspend (daily at 08:00 UTC)
 - WhatsApp Business API integration
 - PDF invoice generation (Classic & Modern templates)
 - Admin impersonation for operator support
 - Audit logging with search/filter/pagination
 - Backup & restore system
+- KYC management (business type, PAN, GST, bank details)
+- Support ticket system (operator ↔ admin threaded conversations)
+- Referral & wallet system
+- Discount codes for subscription checkout
 
 ## Credentials
 

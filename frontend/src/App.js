@@ -26,11 +26,9 @@ import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
 import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
-import AdminSettlements from "./pages/admin/Settlements";
 import AdminLandingPage from "./pages/admin/LandingPage";
 import AdminWallets from "./pages/admin/Wallets";
 import AdminSupport from "./pages/admin/Support";
-import OperatorSettlements from "./pages/operator/Settlements";
 import OperatorWallet from "./pages/operator/Wallet";
 import OperatorSupport from "./pages/operator/Support";
 import PublicInvoice from "./pages/PublicInvoice";
@@ -216,11 +214,6 @@ function App() {
               <AdminErrorLogs />
             </ProtectedRoute>
           } />
-          <Route path="/admin/settlements" element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminSettlements />
-            </ProtectedRoute>
-          } />
           <Route path="/admin/wallets" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminWallets />
@@ -286,11 +279,6 @@ function App() {
           <Route path="/operator/audit-logs" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorAuditLogs />
-            </ProtectedRoute>
-          } />
-          <Route path="/operator/settlements" element={
-            <ProtectedRoute allowedRoles={["operator", "staff"]}>
-              <OperatorSettlements />
             </ProtectedRoute>
           } />
           <Route path="/operator/wallet" element={

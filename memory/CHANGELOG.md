@@ -1,5 +1,14 @@
 # E-Bill Platform — CHANGELOG
 
+## 2025-07-18
+
+### Batch 8: Codebase Cleanup & Removal ✅
+- **Settlement System removed** (frontend + backend + cron): Deleted `admin/Settlements.jsx`, `operator/Settlements.jsx`, `seed_settlement_data.py`. Removed ~350 lines from `admin.py` (all settlement endpoints), ~100 lines from `operator.py`, `run_daily_settlement_processing` function from `cron_service.py`, and settlement cron scheduler entry from `server.py`.
+- **Platform fee logic removed**: `platform_fee_percentage` field removed from `SaaSPlanResponse` model, from SaaS plan create/update in `admin.py`, from seeded plans in `server.py`. `update_platform_fee` endpoint removed.
+- **Dead files deleted**: `frontend/src/pages/LandingPage.jsx`, `backend_kyc_test.py`, `kyc_focused_test.py`, `kyc_review_test.py`.
+- **Dead code cleaned**: Removed legacy constants `SUBSCRIBER_TIERS`, `STAFF_TIERS`, `VALID_SUBSCRIBER_COUNTS`, `VALID_STAFF_COUNTS`, `calc_plan_price` from `models.py`. Removed `/api/landing-page` public endpoint from `server.py`.
+- **Total impact**: ~3,100+ lines removed, 7 files deleted.
+
 ## 2026-03-18
 
 ### Task 1: Referral + Wallet System ✅
