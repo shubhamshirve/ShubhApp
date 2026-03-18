@@ -432,6 +432,11 @@ async def create_checkout_order(
     if base_amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
+    # Apply referral discount (10% up to Rs.500, only first transaction)
+    referral_discount_amount = 0.0
+    if operator.get("referral_discount_eligible") and not operator.get("referral_discount_used"):
+        referral_discount_amount = min(round(base_amount * 0.10, 2), 500.0)
+
     # Apply coupon discount (before GST)
     discount_amount = 0.0
     applied_coupon = None
@@ -459,7 +464,7 @@ async def create_checkout_order(
                 else:
                     discount_amount = min(coupon_doc["discount_value"], base_amount)
                 applied_coupon = coupon_code.upper()
-    discounted_base = round(base_amount - discount_amount, 2)
+    discounted_base = round(base_amount - discount_amount - referral_discount_amount, 2)
 
     gst_amount = round(discounted_base * gst_rate / 100, 2)
     exact_total = round(discounted_base + gst_amount, 2)
@@ -494,6 +499,7 @@ async def create_checkout_order(
         "item_code": item_code, "plan_id": plan_id, "months": months,
         "addon_codes": selected_addon_codes,
         "base_amount": base_amount, "discount_amount": discount_amount,
+        "referral_discount_amount": referral_discount_amount,
         "discounted_base": discounted_base,
         "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
@@ -509,6 +515,7 @@ async def create_checkout_order(
         "amount": rounded_total * 100, "currency": "INR",
         "name": platform_name, "description": description,
         "base_amount": base_amount, "discount_amount": discount_amount,
+        "referral_discount_amount": referral_discount_amount,
         "discounted_base": discounted_base,
         "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
@@ -637,12 +644,35 @@ async def verify_checkout_payment(
         "item_type": order["item_type"], "item_code": order.get("item_code", ""),
         "base_amount": order["base_amount"],
         "discount_amount": order.get("discount_amount", 0),
+        "referral_discount_amount": order.get("referral_discount_amount", 0),
         "coupon_code": order.get("coupon_code"),
         "gst_amount": order["gst_amount"],
         "total_amount": order["total_amount"], "status": "completed",
         "created_at": now.isoformat(), "deleted_at": None
     }
     await db.saas_payments.insert_one(payment_record)
+
+    # Credit wallet with subscription amount
+    if order["item_type"] == "subscription":
+        try:
+            from routers.wallet import credit_wallet, apply_referral_reward
+            await credit_wallet(
+                operator["id"], order["total_amount"],
+                f"Subscription payment credited to wallet ({order.get('description', '')})",
+                reference_id=razorpay_payment_id,
+                tx_type="subscription_credit",
+            )
+            # Mark referral discount as used (first transaction)
+            if operator.get("referral_discount_eligible") and not operator.get("referral_discount_used"):
+                await db.operators.update_one(
+                    {"id": operator["id"]},
+                    {"$set": {"referral_discount_used": True, "updated_at": now.isoformat()}}
+                )
+            # Give 5% referral reward to referrer
+            await apply_referral_reward(operator["id"], order["total_amount"], razorpay_payment_id)
+        except Exception as e:
+            logger.warning(f"Wallet credit after subscription failed: {e}")
+
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "payment", "checkout", None, {"type": order["item_type"], "amount": order["total_amount"]},
@@ -1293,6 +1323,13 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.invoices.insert_one(invoice)
+
+    # Deduct Rs.10 from operator wallet for invoice generation
+    try:
+        from routers.wallet import deduct_wallet_for_invoice
+        await deduct_wallet_for_invoice(current_user["operator_id"], invoice["id"])
+    except Exception as e:
+        logger.warning(f"Wallet deduction failed for invoice {invoice['id']}: {e}")
 
     # Auto-send WhatsApp if whatsapp_notifications addon is active (uses platform WhatsApp config)
     auto_wa_sent = False

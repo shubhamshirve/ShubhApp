@@ -2,6 +2,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone, timedelta
 import random
+import secrets
+import string
 import logging
 
 from database import db
@@ -15,6 +17,20 @@ logger = logging.getLogger(__name__)
 
 # Test OTP that always works
 TEST_OTP = "200796"
+
+
+async def _generate_unique_referral_code(company_name: str) -> str:
+    """Generate a unique referral code like REF-ABC123."""
+    prefix = "REF"
+    alphabet = string.ascii_uppercase + string.digits
+    for _ in range(20):
+        suffix = ''.join(secrets.choice(alphabet) for _ in range(6))
+        code = f"{prefix}-{suffix}"
+        existing = await db.operators.find_one({"referral_code": code, "deleted_at": None})
+        if not existing:
+            return code
+    # Fallback with timestamp
+    return f"REF-{''.join(secrets.choice(alphabet) for _ in range(8))}"
 
 
 class OTPVerifyRequest(SanitizedModel):
@@ -71,6 +87,7 @@ async def register_init(data: OperatorCreate):
         "bank_account_number": data.bank_account_number,
         "bank_ifsc": data.bank_ifsc,
         "bank_name": data.bank_name,
+        "referred_by_code": data.referral_code.upper().strip() if data.referral_code else None,
         "otp": otp,
         "otp_attempts": 0,
         "created_at": now.isoformat(),
@@ -151,6 +168,19 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
     user_id = generate_id()
     trial_end = (now + timedelta(days=3)).isoformat()
 
+    # Validate referral code if provided
+    referred_by_code = pending.get("referred_by_code")
+    referral_discount_eligible = False
+    if referred_by_code:
+        referrer = await db.operators.find_one({"referral_code": referred_by_code, "deleted_at": None})
+        if referrer:
+            referral_discount_eligible = True
+        else:
+            referred_by_code = None  # Invalid code, ignore
+
+    # Generate unique referral code for the new operator
+    new_referral_code = await _generate_unique_referral_code(pending["company_name"])
+
     operator = {
         "id": operator_id,
         "company_name": pending["company_name"],
@@ -172,6 +202,11 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
         "trial_ends_at": trial_end,
         "subscription_ends_at": trial_end,
         "is_read_only": False,
+        "referral_code": new_referral_code,
+        "referred_by_code": referred_by_code,
+        "referral_discount_eligible": referral_discount_eligible,
+        "referral_discount_used": False,
+        "wallet_suspended": False,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
         "deleted_at": None
@@ -287,6 +322,18 @@ async def register_operator(data: OperatorCreate):
     # Set subscription to expire in 3 days
     trial_end = (now + timedelta(days=3)).isoformat()
 
+    # Validate referral code
+    referred_by_code = data.referral_code.upper().strip() if data.referral_code else None
+    referral_discount_eligible = False
+    if referred_by_code:
+        referrer = await db.operators.find_one({"referral_code": referred_by_code, "deleted_at": None})
+        if referrer:
+            referral_discount_eligible = True
+        else:
+            referred_by_code = None
+
+    new_referral_code = await _generate_unique_referral_code(data.company_name)
+
     operator = {
         "id": operator_id,
         "company_name": data.company_name,
@@ -308,6 +355,11 @@ async def register_operator(data: OperatorCreate):
         "trial_ends_at": trial_end,
         "subscription_ends_at": trial_end,
         "is_read_only": False,
+        "referral_code": new_referral_code,
+        "referred_by_code": referred_by_code,
+        "referral_discount_eligible": referral_discount_eligible,
+        "referral_discount_used": False,
+        "wallet_suspended": False,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
         "deleted_at": None

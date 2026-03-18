@@ -30,7 +30,9 @@ import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
 import AdminSettlements from "./pages/admin/Settlements";
 import AdminLandingPage from "./pages/admin/LandingPage";
+import AdminWallets from "./pages/admin/Wallets";
 import OperatorSettlements from "./pages/operator/Settlements";
+import OperatorWallet from "./pages/operator/Wallet";
 import PublicInvoice from "./pages/PublicInvoice";
 
 // Theme Context
@@ -219,6 +221,11 @@ function App() {
               <AdminSettlements />
             </ProtectedRoute>
           } />
+          <Route path="/admin/wallets" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminWallets />
+            </ProtectedRoute>
+          } />
           <Route path="/admin/landing-page" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminLandingPage />
@@ -279,6 +286,11 @@ function App() {
           <Route path="/operator/settlements" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorSettlements />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/wallet" element={
+            <ProtectedRoute allowedRoles={["operator"]}>
+              <OperatorWallet />
             </ProtectedRoute>
           } />
           {/* Default Route */}

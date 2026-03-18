@@ -42,6 +42,7 @@ const Register = () => {
     pan_number: "",
     address: "",
     charge_gst: false,
+    referral_code: "",
     // Bank details
     bank_account_name: "",
     bank_name: "",
@@ -134,6 +135,7 @@ const Register = () => {
         bank_name: formData.bank_name.trim() || null,
         bank_account_number: formData.bank_account_number.trim() || null,
         bank_ifsc: formData.bank_ifsc.trim().toUpperCase() || null,
+        referral_code: formData.referral_code.trim().toUpperCase() || null,
       });
       setRegistrationId(res.data.registration_id);
       setOtpSent(res.data.otp_sent);
@@ -499,6 +501,23 @@ const Register = () => {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Referral Code */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">
+                    Referral Code <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <Input
+                    id="referral_code"
+                    name="referral_code"
+                    placeholder="e.g. REF-ABC123"
+                    value={formData.referral_code}
+                    onChange={handleChange}
+                    className="uppercase"
+                    data-testid="register-referral-code"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Enter a referral code to get 10% off your first payment (up to Rs.500)</p>
                 </div>
 
                 <Button

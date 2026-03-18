@@ -139,6 +139,7 @@ class OperatorCreate(SanitizedModel):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    referral_code: Optional[str] = None  # code used during registration
 
     @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
     @classmethod
@@ -243,6 +244,9 @@ class OperatorResponse(SanitizedModel):
     subscriber_count: Optional[int] = 0
     active_addons: Optional[List[str]] = None
     addon_expiry: Optional[Dict[str, str]] = None
+    referral_code: Optional[str] = None
+    referred_by_code: Optional[str] = None
+    wallet_suspended: bool = False
     created_at: datetime
 
 

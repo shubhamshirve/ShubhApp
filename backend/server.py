@@ -35,6 +35,7 @@ from routers.operator import router as operator_router
 from routers.webhooks import router as webhooks_router
 from routers.backup import router as backup_router, _do_backup
 from routers.public import router as public_router
+from routers.wallet import router as wallet_router
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -86,6 +87,7 @@ app.include_router(operator_router,  prefix="/api")
 app.include_router(webhooks_router,  prefix="/api")
 app.include_router(backup_router,    prefix="/api")
 app.include_router(public_router,    prefix="/api")
+app.include_router(wallet_router,    prefix="/api")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -345,6 +347,7 @@ async def startup_event():
         run_daily_reminder_processing,
         run_daily_expiry_check,
         run_daily_settlement_processing,
+        run_daily_wallet_check,
     )
 
     scheduler = AsyncIOScheduler()
@@ -379,9 +382,15 @@ async def startup_event():
         "cron", hour=3, minute=0, id="daily_settlements"
     )
 
+    # Daily wallet balance check at 08:00 UTC
+    scheduler.add_job(
+        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_wallet_check(db)),
+        "cron", hour=8, minute=0, id="daily_wallet_check"
+    )
+
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), settlements(03:00) UTC")
+    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), settlements(03:00), wallet_check(08:00) UTC")
 
 
 @app.on_event("shutdown")

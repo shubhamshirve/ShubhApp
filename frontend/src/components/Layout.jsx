@@ -20,7 +20,8 @@ import {
   Tag,
   MessageSquare,
   Banknote,
-  Layout
+  Layout,
+  Wallet
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -37,6 +38,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/discount-codes", label: "Discount Codes", icon: Tag },
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/settlements", label: "Settlements", icon: Banknote },
+    { href: "/admin/wallets", label: "Wallets", icon: Wallet },
     { href: "/admin/landing-page", label: "Landing Page", icon: Layout },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
@@ -139,6 +141,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/subscribers",  label: "Subscribers",  icon: Users,           always: true },
     { href: "/operator/plans",        label: "Plans",        icon: Package,         always: true },
     { href: "/operator/invoices",     label: "Invoices",     icon: FileText,        always: true },
+    { href: "/operator/wallet",       label: "Wallet",       icon: Wallet,          always: true, operatorOnly: true },
     { href: "/operator/settlements",  label: "Settlements",  icon: Banknote,        always: true },
     { href: "/operator/announcements",label: "Announcements",icon: Bell,            feature: "announcement" },
     { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },

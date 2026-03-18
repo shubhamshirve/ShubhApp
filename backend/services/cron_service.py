@@ -36,9 +36,10 @@ class CronJobService:
         now = datetime.now(timezone.utc)
         target_day = (now + timedelta(days=days_before)).day
         
-        # Get all active operators
+        # Get all active operators (skip wallet-suspended ones for automation)
         operators = await self.db.operators.find({
             "status": {"$in": ["active", "trial"]},
+            "wallet_suspended": {"$ne": True},
             "deleted_at": None
         }, {"_id": 0}).to_list(1000)
         
@@ -352,6 +353,13 @@ class CronJobService:
         
         await self.db.invoices.insert_one(invoice)
         
+        # Deduct Rs.10 from operator wallet for invoice generation
+        try:
+            from routers.wallet import deduct_wallet_for_invoice
+            await deduct_wallet_for_invoice(operator["id"], invoice["id"])
+        except Exception as e:
+            logger.warning(f"Wallet deduction failed for auto-invoice {invoice['id']}: {e}")
+
         # Send notification if WhatsApp is available
         if self.whatsapp:
             try:
@@ -589,7 +597,7 @@ async def run_daily_expiry_check(db):
 
 async def run_daily_settlement_processing(db):
     """Daily cron job for processing operator settlements.
-    
+
     Finds all paid invoices from the previous day that haven't been settled,
     groups them by operator, applies platform fee, and creates settlement records.
     """
@@ -692,4 +700,55 @@ async def run_daily_settlement_processing(db):
         results["errors"].append(f"Settlement processing error: {str(e)}")
 
     logger.info(f"Daily settlement processing: {results}")
+    return results
+
+
+async def run_daily_wallet_check(db):
+    """Daily cron: check operator wallet balances, send reminders, suspend if < 100."""
+    now = datetime.now(timezone.utc)
+    results = {"checked": 0, "reminders_sent": 0, "suspended": 0, "errors": []}
+
+    operators = await db.operators.find(
+        {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
+    ).to_list(5000)
+
+    for op in operators:
+        try:
+            wallet = await db.operator_wallets.find_one({"operator_id": op["id"]}, {"_id": 0})
+            balance = (wallet or {}).get("balance", 0)
+            results["checked"] += 1
+
+            if balance < 100 and not op.get("wallet_suspended"):
+                # Suspend operator
+                await db.operators.update_one(
+                    {"id": op["id"]},
+                    {"$set": {"wallet_suspended": True, "is_read_only": True, "updated_at": now.isoformat()}}
+                )
+                results["suspended"] += 1
+                logger.warning(f"Operator {op['company_name']} suspended due to low wallet balance: Rs.{balance}")
+
+            elif balance < 500 and not op.get("wallet_suspended"):
+                # Send reminder via WhatsApp if configured
+                results["reminders_sent"] += 1
+                try:
+                    wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+                    if wa_config and wa_config.get("access_token"):
+                        from services.whatsapp_service import WhatsAppService
+                        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                        await wa_service.send_text_message(
+                            recipient_phone=op.get("phone", ""),
+                            message=(
+                                f"Dear {op.get('company_name', 'Operator')},\n\n"
+                                f"Your E-Bill wallet balance is low (Rs.{balance:.2f}).\n"
+                                f"Please topup your wallet to keep services active.\n"
+                                f"Balance below Rs.100 will suspend your account.\n\nLogin to topup: E-Bill Dashboard"
+                            )
+                        )
+                except Exception as wa_err:
+                    logger.warning(f"Wallet reminder WhatsApp failed for {op['id']}: {wa_err}")
+
+        except Exception as e:
+            results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")
+
+    logger.info(f"Daily wallet check: {results}")
     return results
