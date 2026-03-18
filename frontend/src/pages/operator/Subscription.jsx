@@ -32,6 +32,11 @@ import {
   Zap,
   Loader2,
   History,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownLeft,
+  RefreshCw,
+  Plus,
 } from "lucide-react";
 
 const OperatorSubscription = () => {
@@ -43,11 +48,9 @@ const OperatorSubscription = () => {
   const [activeTab, setActiveTab] = useState("subscription");
   const [showRenewDialog, setShowRenewDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("");
-  const [months, setMonths] = useState("1");
   const [processing, setProcessing] = useState(false);
   const [purchasing, setPurchasing] = useState(null);
   const [showAddonConfirm, setShowAddonConfirm] = useState(null);
-  // Addons to bundle with subscription renewal
   const [selectedAddonCodes, setSelectedAddonCodes] = useState([]);
   // Coupon state for Renew Dialog
   const [renewCoupon, setRenewCoupon] = useState("");
@@ -57,6 +60,11 @@ const OperatorSubscription = () => {
   const [addonCoupon, setAddonCoupon] = useState("");
   const [addonCouponResult, setAddonCouponResult] = useState(null);
   const [addonCouponLoading, setAddonCouponLoading] = useState(false);
+  // Wallet top-up state
+  const [wallet, setWallet] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [topupAmount, setTopupAmount] = useState("");
+  const [topupLoading, setTopupLoading] = useState(false);
 
   const fetchSubscription = useCallback(async () => {
     try {
@@ -86,11 +94,29 @@ const OperatorSubscription = () => {
     }
   }, [authAxios]);
 
+  const fetchWallet = useCallback(async () => {
+    setWalletLoading(true);
+    try {
+      const res = await authAxios.get("/operator/wallet");
+      setWallet(res.data);
+    } catch {
+      toast.error("Failed to load wallet");
+    } finally {
+      setWalletLoading(false);
+    }
+  }, [authAxios]);
+
   useEffect(() => {
     Promise.all([fetchSubscription(), fetchAddons(), fetchPaymentHistory()]).finally(() =>
       setLoading(false)
     );
   }, [fetchSubscription, fetchAddons, fetchPaymentHistory]);
+
+  useEffect(() => {
+    if (activeTab === "topup") {
+      fetchWallet();
+    }
+  }, [activeTab, fetchWallet]);
 
   const openRazorpay = (orderData, onSuccess) => {
     if (!window.Razorpay) {
@@ -134,8 +160,9 @@ const OperatorSubscription = () => {
     try {
       const addonParam = selectedAddonCodes.length > 0 ? `&addon_codes=${selectedAddonCodes.join(",")}` : "";
       const couponParam = renewCouponResult?.valid ? `&coupon_code=${renewCouponResult.code}` : "";
+      // Always 1 month (backend enforces this for subscriptions)
       const res = await authAxios.post(
-        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=${months}${addonParam}${couponParam}`
+        `/operator/checkout/create-order?item_type=subscription&plan_id=${selectedPlan}&months=1${addonParam}${couponParam}`
       );
       setShowRenewDialog(false);
       setSelectedAddonCodes([]);
@@ -210,6 +237,57 @@ const OperatorSubscription = () => {
     }
   };
 
+  const handleTopup = async () => {
+    const amt = parseFloat(topupAmount);
+    if (!amt || amt < 100) {
+      toast.error("Minimum top-up amount is ₹100");
+      return;
+    }
+    if (amt > 50000) {
+      toast.error("Maximum top-up amount is ₹50,000");
+      return;
+    }
+    setTopupLoading(true);
+    try {
+      const res = await authAxios.post(`/operator/wallet/topup/create-order?amount=${amt}`);
+      const orderData = res.data;
+      if (!window.Razorpay) {
+        toast.error("Payment gateway not loaded. Please refresh the page.");
+        setTopupLoading(false);
+        return;
+      }
+      const rzp = new window.Razorpay({
+        key: orderData.razorpay_key,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: orderData.name,
+        description: orderData.description,
+        order_id: orderData.razorpay_order_id,
+        prefill: orderData.prefill,
+        theme: { color: "#0066B2" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await authAxios.post(
+              `/operator/wallet/topup/verify?razorpay_order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
+            );
+            toast.success(`Wallet topped up! New balance: ₹${verifyRes.data.new_balance}`);
+            setTopupAmount("");
+            fetchWallet();
+          } catch (err) {
+            toast.error(err.response?.data?.detail || "Payment verification failed");
+          } finally {
+            setTopupLoading(false);
+          }
+        },
+        modal: { ondismiss: () => setTopupLoading(false) },
+      });
+      rzp.open();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to create top-up order");
+      setTopupLoading(false);
+    }
+  };
+
   const getStatusInfo = () => {
     if (!subscription) return { color: "slate", label: "Unknown", icon: Clock };
     switch (subscription.status) {
@@ -278,35 +356,26 @@ const OperatorSubscription = () => {
     (p) => p.id === selectedPlan
   );
 
-  // Per-customer vs fixed pricing
-  const isPerCustomerPlan = selectedPlanDetails?.plan_type === "basic" || selectedPlanDetails?.plan_type === "pro";
-  const subscriberCount = subscription?.subscriber_count || 0;
-  const baseAmount = selectedPlanDetails
-    ? isPerCustomerPlan
-      ? ((selectedPlanDetails.per_customer_rate || 0) * subscriberCount + (selectedPlanDetails.monthly_base_fee || 0)) * parseInt(months || "1")
-      : (selectedPlanDetails.monthly_price || 0) * parseInt(months || "1")
-    : 0;
-
-  // For per-customer plans, no addon additions; for custom plans show addons
-  const ownedPurchasedAddons = isPerCustomerPlan ? [] : addons.filter((a) => a.status === "purchased");
-  const ownedAddonTotal = ownedPurchasedAddons.reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
-  const purchasableAddons = isPerCustomerPlan ? [] : addons.filter(
+  // All pricing is GST inclusive, fixed 1-month term
+  const baseAmount = selectedPlanDetails?.monthly_price || 0;
+  const ownedPurchasedAddons = addons.filter((a) => a.status === "purchased");
+  const ownedAddonTotal = ownedPurchasedAddons.reduce((sum, a) => sum + a.price, 0);
+  const purchasableAddons = addons.filter(
     (a) => a.status !== "purchased" && a.status !== "included_in_plan"
   );
   const selectedAddonTotal = purchasableAddons
     .filter((a) => selectedAddonCodes.includes(a.code))
-    .reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
+    .reduce((sum, a) => sum + a.price, 0);
   const combinedBase = baseAmount + ownedAddonTotal + selectedAddonTotal;
-  // Coupon discount (applied before GST)
+
+  // Coupon discount
   const renewDiscount = renewCouponResult?.valid
     ? parseFloat((renewCouponResult.discount_type === "percentage"
         ? combinedBase * renewCouponResult.discount_value / 100
         : Math.min(renewCouponResult.discount_value, combinedBase)).toFixed(2))
     : 0;
-  const discountedBase = parseFloat((combinedBase - renewDiscount).toFixed(2));
-  // Rounding: compute exact (discountedBase + GST) then round to integer
-  const gstAmount = parseFloat((discountedBase * 0.18).toFixed(2));
-  const exactTotal = parseFloat((discountedBase + gstAmount).toFixed(2));
+  // GST inclusive — no separate GST calculation
+  const exactTotal = parseFloat((combinedBase - renewDiscount).toFixed(2));
   const totalAmount = Math.round(exactTotal);
   const roundingDiff = parseFloat((totalAmount - exactTotal).toFixed(2));
 
@@ -315,6 +384,11 @@ const OperatorSubscription = () => {
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
     );
   };
+
+  // Wallet helpers
+  const balance = wallet?.balance ?? 0;
+  const isLow = balance < 500;
+  const isCritical = balance < 100;
 
   return (
     <OperatorLayout title="Subscription" isReadOnly={subscription?.is_read_only}>
@@ -333,6 +407,18 @@ const OperatorSubscription = () => {
           >
             <CreditCard className="w-4 h-4 inline mr-1.5 -mt-0.5" />
             Subscription & Add-ons
+          </button>
+          <button
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === "topup"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+            onClick={() => setActiveTab("topup")}
+            data-testid="tab-topup"
+          >
+            <Wallet className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+            Wallet Top-up
           </button>
           <button
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
@@ -383,7 +469,7 @@ const OperatorSubscription = () => {
                 </p>
                 {subscription?.saas_plan_price && (
                   <p className="text-sm text-slate-500">
-                    ₹{subscription.saas_plan_price}/month
+                    ₹{subscription.saas_plan_price?.toLocaleString("en-IN")}/month <span className="text-xs text-slate-400">(GST incl.)</span>
                   </p>
                 )}
               </div>
@@ -514,10 +600,13 @@ const OperatorSubscription = () => {
                     )}
                     <p className="font-semibold text-slate-900">{plan.name}</p>
                     <p className="text-2xl font-bold mt-1">
-                      ₹{plan.plan_type ? `${plan.per_customer_rate}/customer` : plan.monthly_price?.toLocaleString("en-IN")}
-                      {plan.plan_type === "pro" && <span className="text-xs text-purple-700 font-normal ml-1">+₹{plan.monthly_base_fee}/mo</span>}
+                      ₹{plan.monthly_price?.toLocaleString("en-IN")}
                       <span className="text-sm font-normal text-slate-500">/month</span>
                     </p>
+                    <p className="text-xs text-slate-400 mt-0.5">GST inclusive · ₹{plan.per_invoice_price ?? 10}/invoice</p>
+                    {(plan.included_addons || []).length > 0 && (
+                      <p className="text-xs text-blue-600 mt-1 font-medium">{(plan.included_addons || []).length} add-on(s) included</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -653,6 +742,135 @@ const OperatorSubscription = () => {
         </>
         )}
 
+        {/* ─── Wallet Top-up Tab ─────────────────────────────── */}
+        {activeTab === "topup" && (
+          <div className="space-y-6">
+            {walletLoading ? (
+              <div className="flex items-center justify-center h-40">
+                <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
+              </div>
+            ) : (
+              <>
+                {/* Balance card */}
+                {wallet && (
+                  <>
+                    {/* Suspension / low balance alerts */}
+                    {wallet.wallet_suspended && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-suspended-banner">
+                        <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-red-800">Account Suspended — Low Wallet Balance</p>
+                          <p className="text-sm text-red-700 mt-1">
+                            Your wallet balance is critically low. All automation has been stopped.
+                            Top-up at least ₹100 to resume service.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {isCritical && !wallet.wallet_suspended && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-critical-banner">
+                        <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-red-800">Critical: Wallet Balance Below ₹100</p>
+                          <p className="text-sm text-red-700 mt-1">
+                            Please top-up immediately to prevent account suspension.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {isLow && !isCritical && !wallet.wallet_suspended && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-low-banner">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-amber-800">Low Wallet Balance</p>
+                          <p className="text-sm text-amber-700 mt-1">
+                            Balance below ₹500. Top-up to keep invoice automation active.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <Card className="sm:col-span-1">
+                        <CardContent className="pt-6">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCritical ? "bg-red-100" : isLow ? "bg-amber-100" : "bg-emerald-100"}`}>
+                              <Wallet className={`w-5 h-5 ${isCritical ? "text-red-600" : isLow ? "text-amber-600" : "text-emerald-600"}`} />
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">Wallet Balance</p>
+                              <p className={`text-2xl font-bold ${isCritical ? "text-red-700" : isLow ? "text-amber-700" : "text-slate-900"}`} data-testid="wallet-balance-display">
+                                ₹{balance.toLocaleString("en-IN")}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            ₹{subscription?.per_invoice_price ?? 10} deducted per invoice generated
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="sm:col-span-2">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Plus className="w-4 h-4" />
+                            Top-up Wallet
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex gap-3 mb-3">
+                            {[500, 1000, 2000, 5000].map((preset) => (
+                              <button
+                                key={preset}
+                                onClick={() => setTopupAmount(String(preset))}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                                  topupAmount === String(preset)
+                                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                                    : "border-slate-200 text-slate-600 hover:border-slate-300"
+                                }`}
+                                data-testid={`topup-preset-${preset}`}
+                              >
+                                ₹{preset.toLocaleString("en-IN")}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1 relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                              <Input
+                                type="number"
+                                placeholder="Enter amount"
+                                value={topupAmount}
+                                onChange={(e) => setTopupAmount(e.target.value)}
+                                className="pl-7"
+                                min="100"
+                                max="50000"
+                                data-testid="topup-amount-input"
+                              />
+                            </div>
+                            <Button
+                              onClick={handleTopup}
+                              disabled={topupLoading || !topupAmount}
+                              data-testid="topup-pay-btn"
+                            >
+                              {topupLoading ? (
+                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
+                              ) : (
+                                <><CreditCard className="w-4 h-4 mr-2" /> Pay via Razorpay</>
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-2">Min ₹100 · Max ₹50,000 · Secure payment via Razorpay</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {activeTab === "history" && (
           <Card>
             <CardHeader>
@@ -676,9 +894,7 @@ const OperatorSubscription = () => {
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Type</th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Description</th>
-                        <th className="text-right px-4 py-3 font-medium text-slate-600">Base</th>
-                        <th className="text-right px-4 py-3 font-medium text-slate-600">GST</th>
-                        <th className="text-right px-4 py-3 font-medium text-slate-600">Total</th>
+                        <th className="text-right px-4 py-3 font-medium text-slate-600">Amount</th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
                       </tr>
                     </thead>
@@ -697,8 +913,6 @@ const OperatorSubscription = () => {
                           <td className="px-4 py-3 text-slate-700">
                             {p.item_type === "addon" ? p.item_code : "Plan Renewal"}
                           </td>
-                          <td className="px-4 py-3 text-right text-slate-700">₹{p.base_amount?.toLocaleString("en-IN")}</td>
-                          <td className="px-4 py-3 text-right text-slate-500">₹{p.gst_amount?.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total_amount?.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3 text-slate-500">
                             {p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
@@ -708,7 +922,7 @@ const OperatorSubscription = () => {
                     </tbody>
                     <tfoot>
                       <tr className="bg-slate-50 border-t-2 border-slate-200">
-                        <td colSpan={4} className="px-4 py-3 font-semibold text-slate-700 text-right">Total Paid</td>
+                        <td colSpan={2} className="px-4 py-3 font-semibold text-slate-700 text-right">Total Paid</td>
                         <td className="px-4 py-3 text-right font-bold text-slate-900">
                           ₹{paymentHistory.reduce((s, p) => s + (p.total_amount || 0), 0).toLocaleString("en-IN")}
                         </td>
@@ -736,7 +950,7 @@ const OperatorSubscription = () => {
           <DialogHeader>
             <DialogTitle>Renew / Purchase Subscription</DialogTitle>
             <DialogDescription>
-              Choose a plan and duration. Existing add-ons are auto-renewed. You can also bundle new add-ons.
+              1-month renewal. All prices are GST inclusive. Existing add-ons are auto-renewed.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -749,23 +963,9 @@ const OperatorSubscription = () => {
                 <SelectContent>
                   {(subscription?.available_plans || []).map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} — {plan.plan_type ? `₹${plan.per_customer_rate}/customer${plan.monthly_base_fee ? ` + ₹${plan.monthly_base_fee}/mo` : ""}` : `₹${plan.monthly_price}/mo`}
+                      {plan.name} — ₹{plan.monthly_price?.toLocaleString("en-IN")}/mo
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <Select value={months} onValueChange={(v) => { setMonths(v); setRenewCouponResult(null); }}>
-                <SelectTrigger data-testid="renew-months-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 Month</SelectItem>
-                  <SelectItem value="3">3 Months</SelectItem>
-                  <SelectItem value="6">6 Months</SelectItem>
-                  <SelectItem value="12">12 Months</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -781,7 +981,7 @@ const OperatorSubscription = () => {
                         <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block"></span>
                         {addon.name}
                       </span>
-                      <span className="text-slate-500">₹{addon.price} × {months} mo = ₹{addon.price * parseInt(months)}</span>
+                      <span className="text-slate-500">₹{addon.price}/mo</span>
                     </div>
                   ))}
                 </div>
@@ -793,9 +993,7 @@ const OperatorSubscription = () => {
               <Label>Add New Add-ons (optional)</Label>
               {purchasableAddons.length === 0 ? (
                 <p className="text-sm text-slate-400 italic px-1">
-                  {isPerCustomerPlan
-                    ? "Add-ons are not individually purchasable for Basic/Pro plans. Pro plan includes all add-ons."
-                    : "All available add-ons are already active on your account."}
+                  All available add-ons are already active on your account.
                 </p>
               ) : (
                 <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto">
@@ -848,7 +1046,7 @@ const OperatorSubscription = () => {
               <div className="p-4 bg-slate-50 rounded-lg space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">
-                    {selectedPlanDetails.name} × {months} month(s)
+                    {selectedPlanDetails.name} × 1 month
                   </span>
                   <span>₹{baseAmount.toLocaleString("en-IN")}</span>
                 </div>
@@ -874,9 +1072,8 @@ const OperatorSubscription = () => {
                     <span>-₹{renewDiscount.toLocaleString("en-IN")}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">GST (18%)</span>
-                  <span>₹{gstAmount.toLocaleString("en-IN")}</span>
+                <div className="flex justify-between text-xs text-slate-400 border-t pt-2 mt-1">
+                  <span>All prices are GST inclusive</span>
                 </div>
                 {roundingDiff !== 0 && (
                   <div className="flex justify-between text-sm">
@@ -889,7 +1086,7 @@ const OperatorSubscription = () => {
                   </div>
                 )}
                 <div className="flex justify-between font-semibold border-t pt-2 mt-2">
-                  <span>Total (Rounded)</span>
+                  <span>Total</span>
                   <span data-testid="renew-total">
                     ₹{totalAmount.toLocaleString("en-IN")}
                   </span>
@@ -941,10 +1138,8 @@ const OperatorSubscription = () => {
                     : Math.min(addonCouponResult.discount_value, base)).toFixed(2))
                 : 0;
               const discBase = parseFloat((base - addonDiscount).toFixed(2));
-              const gst = parseFloat((discBase * 0.18).toFixed(2));
-              const exact = parseFloat((discBase + gst).toFixed(2));
-              const rounded = Math.round(exact);
-              const diff = parseFloat((rounded - exact).toFixed(2));
+              const rounded = Math.round(discBase);
+              const diff = parseFloat((rounded - discBase).toFixed(2));
               return (
                 <div className="space-y-3 py-4">
                   <p className="text-sm text-slate-600">
@@ -952,7 +1147,7 @@ const OperatorSubscription = () => {
                   </p>
                   <div className="p-4 bg-slate-50 rounded-lg space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Base Price</span>
+                      <span className="text-slate-500">Price (GST inclusive)</span>
                       <span>₹{base.toLocaleString("en-IN")}</span>
                     </div>
                     {addonDiscount > 0 && (
@@ -961,10 +1156,6 @@ const OperatorSubscription = () => {
                         <span>-₹{addonDiscount.toLocaleString("en-IN")}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">GST (18%)</span>
-                      <span>₹{gst.toLocaleString("en-IN")}</span>
-                    </div>
                     {diff !== 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Rounding</span>
@@ -974,7 +1165,7 @@ const OperatorSubscription = () => {
                       </div>
                     )}
                     <div className="flex justify-between font-semibold border-t pt-2 mt-1">
-                      <span>Total (Rounded)</span>
+                      <span>Total</span>
                       <span data-testid="addon-purchase-total">
                         ₹{rounded.toLocaleString("en-IN")}
                       </span>
