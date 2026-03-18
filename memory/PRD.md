@@ -81,7 +81,21 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 - Admin audit log search, filter, pagination
 - Auto-invoice generation logic fixes (4 bugs fixed)
 
-### Batch 5 — Payment Reminder Scheduling (Completed Mar 2026, Tested 100%)
+### Batch 7 — SaaS Plan & Billing Refactor (Completed Mar 2026, Tested 100%)
+1. **Simplified SaaS Plan model**: Plans now have only `name`, `monthly_price` (GST inclusive), `per_invoice_price`
+2. **GST Inclusive pricing**: All plan/addon prices are GST inclusive — no additional GST computed at checkout
+3. **Fixed 1-month term**: Subscription renewal locked to 1 month — no tenure selector in UI
+4. **Wallet Top-up tab**: Added "Wallet Top-up" tab to Operator Subscription page with preset buttons (₹500/1K/2K/5K) and Razorpay payment
+5. **Removed legacy fields**: Removed `saas_plan_type`, `per_customer_rate`, `monthly_base_fee` from `/operator/subscription` response
+6. **Admin SaaS Plans UI**: Updated to create/edit plans with only `monthly_price` + `per_invoice_price` + `included_addons`
+7. **Files Modified**:
+   - backend/models.py — SaaSPlanCreate/Response simplified
+   - backend/routers/admin.py — SaaS plans CRUD updated
+   - backend/routers/operator.py — checkout (GST=0, 1 month fixed), subscription endpoint cleaned
+   - frontend/src/pages/admin/SaaSPlans.jsx — simplified form
+   - frontend/src/pages/operator/Subscription.jsx — complete rewrite: 3 tabs, no tenure, GST inclusive, wallet topup
+
+
 1. **Reminder Settings API**: GET/PUT /api/operator/reminder-settings (addon-gated)
 2. **Schedule Configuration**: Before due (1,2,3,5,7 days), on due date, after due (1,3,5,7,14,30 days)
 3. **Max reminders per invoice**: Configurable limit (1-20)
