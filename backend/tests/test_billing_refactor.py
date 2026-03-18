@@ -12,7 +12,7 @@ import os
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    BASE_URL = "https://invoice-pricing.preview.emergentagent.com"
+    BASE_URL = "https://addon-system.preview.emergentagent.com"
 
 
 @pytest.fixture(scope="module")
