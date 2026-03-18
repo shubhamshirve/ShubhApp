@@ -293,6 +293,8 @@ const OperatorSubscription = () => {
   const purchasableAddons = isPerCustomerPlan ? [] : addons.filter(
     (a) => a.status !== "purchased" && a.status !== "included_in_plan"
   );
+    (a) => a.status !== "purchased" && a.status !== "included_in_plan"
+  );
   const selectedAddonTotal = purchasableAddons
     .filter((a) => selectedAddonCodes.includes(a.code))
     .reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
@@ -792,7 +794,11 @@ const OperatorSubscription = () => {
             <div className="space-y-2">
               <Label>Add New Add-ons (optional)</Label>
               {purchasableAddons.length === 0 ? (
-                <p className="text-sm text-slate-400 italic px-1">All available add-ons are already active on your account.</p>
+                <p className="text-sm text-slate-400 italic px-1">
+                  {isPerCustomerPlan
+                    ? "Add-ons are not individually purchasable for Basic/Pro plans. Pro plan includes all add-ons."
+                    : "All available add-ons are already active on your account."}
+                </p>
               ) : (
                 <div className="space-y-2 border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto">
                   {purchasableAddons.map((addon) => (
