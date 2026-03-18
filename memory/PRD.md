@@ -91,6 +91,25 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 7. **Frontend Reminders Tab**: In operator Settings, gated by payment_reminder feature
 8. **File Cleanup**: Removed stale root-level test files, updated README
 
+### Batch 6 — KYC Management (Completed Mar 2026, Tested 100%)
+1. **KYC Fields in Registration**: Added business_type dropdown (6 options), pan_number (with validation), address, bank details section
+2. **Registration Form UI**: Collapsible bank details section with info note "Bank details required only for payment gateway users"
+3. **Admin View Details**: New dialog showing complete operator info (Basic Info, KYC Info, Bank Details, Subscription Info)
+4. **Admin Edit Operator**: New dialog to edit all operator fields including KYC and bank details
+5. **Create Operator KYC**: Admin can create operators with full KYC details
+6. **Backend Validation**: PAN format (ABCDE1234F), Business type enum validation
+7. **API Updates**:
+   - POST /api/auth/register-init - Accepts business_type, pan_number, address, bank_*
+   - POST /api/admin/operators/create - Full KYC support
+   - PUT /api/admin/operators/{id} - Updates KYC fields
+   - GET /api/admin/operators - Returns all KYC fields
+8. **Files Modified**:
+   - backend/models.py - Added PAN_PATTERN, BUSINESS_TYPES, updated OperatorCreate/Update/Response
+   - backend/routers/auth.py - Registration flow with KYC fields
+   - backend/routers/admin.py - Operator create with KYC fields
+   - frontend/src/pages/Register.jsx - KYC section, bank details collapsible
+   - frontend/src/pages/admin/Operators.jsx - View Details & Edit dialogs
+
 ### Deployment and Infra Updates (Mar 2026)
 - Dockerized app with `docker-compose.yml` using `init-env`, `mongodb`, `backend`, `frontend`, and `caddy`.
 - Added Caddy reverse proxy in `Caddyfile`:
@@ -186,6 +205,10 @@ STAFF_TIERS = {0: 0, 5: 100, 10: 200, 20: 300}
 - `GET /api/admin/audit-logs` — Filterable audit logs
 - `PUT /api/auth/change-password` — Change password
 - `GET /api/admin/backup/download/{id}` — Download backup
+- `POST /api/auth/register-init` — Registration with KYC (business_type, pan_number, address, bank details)
+- `POST /api/admin/operators/create` — Create operator with full KYC support
+- `PUT /api/admin/operators/{id}` — Update operator KYC fields
+- `GET /api/admin/operators` — List operators with KYC fields in response
 
 ## Test Credentials
 - **Admin**: admin@saas.com / admin123

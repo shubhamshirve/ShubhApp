@@ -1203,14 +1203,44 @@ frontend:
         agent: "testing"
         comment: "✅ PASSED - Tested subscription renewal with addon bundling feature. Renew dialog successfully displays 'Bundle Add-ons (optional)' section with checkboxes for available addons. When operator owns addons, they are correctly excluded from the bundling list (tested with 7 total addons, 1 owned, correctly shows 6 for bundling). Price calculation works correctly (base + addons + 18% GST). Expiry dates are properly displayed on owned addons on the subscription page with format 'Expires: 11 Mar 2026' with calendar icon. The Addons.jsx page also has the same expiry date display code implemented (lines 212-227). All requirements verified working."
 
+  - task: "KYC Details in Registration Form"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Register.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added KYC section with Business Type dropdown (6 options), PAN Number, GST Number, Charge GST toggle, Business Address. Added collapsible Bank Details section with info note. Backend models updated with PAN validation, business_type validation."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Backend: All 5/5 KYC tests passed (registration, admin create, update, validation, response fields). Frontend: All 4/4 tests passed (registration form, view details dialog, edit dialog, create operator dialog)."
+
+  - task: "View Details & Edit Operator in Admin"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/admin/Operators.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added View Details and Edit menu items in operator dropdown. View Details dialog shows all operator info (Basic, KYC, Bank, Subscription). Edit dialog allows updating all fields."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - View Details dialog displays all 4 sections (Basic Information, KYC Information, Bank Details, Subscription Information). Edit dialog shows editable fields for company name, owner name, phone, business type, PAN, GST, charge GST, address, and bank details with Save Changes functionality."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 10
+  test_sequence: 11
   run_ui: true
 
 test_plan:
-  current_focus: ["KYC Details in Registration", "View Details & Edit Operator"]
+  current_focus: []
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"

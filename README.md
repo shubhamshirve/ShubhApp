@@ -101,7 +101,8 @@ The backend now applies shared sanitization and stricter validation for common r
 - trims and sanitizes incoming text through a shared Pydantic base model
 - preserves sensitive fields like passwords, tokens, and secrets without destructive trimming
 - validates Indian phone and WhatsApp numbers
-- validates GSTIN and IFSC formats
+- validates GSTIN, IFSC, and PAN number formats
+- validates business type (Sole Proprietorship, Partnership, LLP, Private Limited, Public Limited, Others)
 - constrains invoice prefixes to a safe format
 - sanitizes uploaded filenames before writing them to disk
 
@@ -112,3 +113,30 @@ Main files involved:
 - `backend/routers/admin.py`
 - `backend/routers/operator.py`
 - `backend/routers/backup.py`
+
+## KYC Features (Added Mar 2026)
+
+### Operator KYC Details
+Operators can now provide complete KYC (Know Your Customer) information:
+
+**Registration Form** (`/register`):
+- Business Type dropdown (Sole Proprietorship, Partnership, LLP, Private Limited, Public Limited, Others)
+- PAN Number with validation (format: ABCDE1234F)
+- GST Number (GSTIN) with validation
+- Business Address
+- Collapsible Bank Details section (optional, for payment gateway users):
+  - Account Holder Name
+  - Bank Name
+  - Account Number
+  - IFSC Code with validation
+
+**Admin Operator Management** (`/admin/operators`):
+- **View Details**: Shows complete operator information including KYC, bank details, and subscription info
+- **Edit Operator**: Allows updating all operator details including KYC and bank information
+- **Create Operator**: Supports all KYC fields when creating operators manually
+
+**Backend API Changes**:
+- `POST /api/auth/register-init` - Accepts KYC fields (business_type, pan_number, address, bank details)
+- `POST /api/admin/operators/create` - Supports full KYC details
+- `PUT /api/admin/operators/{id}` - Updates KYC fields
+- `GET /api/admin/operators` - Returns all KYC fields in response
