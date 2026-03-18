@@ -36,6 +36,7 @@ from routers.webhooks import router as webhooks_router
 from routers.backup import router as backup_router, _do_backup
 from routers.public import router as public_router
 from routers.wallet import router as wallet_router
+from routers.support import router as support_router
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -88,6 +89,7 @@ app.include_router(webhooks_router,  prefix="/api")
 app.include_router(backup_router,    prefix="/api")
 app.include_router(public_router,    prefix="/api")
 app.include_router(wallet_router,    prefix="/api")
+app.include_router(support_router,   prefix="/api")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(

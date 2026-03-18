@@ -31,8 +31,10 @@ import AdminErrorLogs from "./pages/admin/ErrorLogs";
 import AdminSettlements from "./pages/admin/Settlements";
 import AdminLandingPage from "./pages/admin/LandingPage";
 import AdminWallets from "./pages/admin/Wallets";
+import AdminSupport from "./pages/admin/Support";
 import OperatorSettlements from "./pages/operator/Settlements";
 import OperatorWallet from "./pages/operator/Wallet";
+import OperatorSupport from "./pages/operator/Support";
 import PublicInvoice from "./pages/PublicInvoice";
 
 // Theme Context
@@ -226,6 +228,11 @@ function App() {
               <AdminWallets />
             </ProtectedRoute>
           } />
+          <Route path="/admin/support" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminSupport />
+            </ProtectedRoute>
+          } />
           <Route path="/admin/landing-page" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminLandingPage />
@@ -291,6 +298,11 @@ function App() {
           <Route path="/operator/wallet" element={
             <ProtectedRoute allowedRoles={["operator"]}>
               <OperatorWallet />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/support" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorSupport />
             </ProtectedRoute>
           } />
           {/* Default Route */}

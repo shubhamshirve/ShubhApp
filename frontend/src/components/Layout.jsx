@@ -39,6 +39,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/settlements", label: "Settlements", icon: Banknote },
     { href: "/admin/wallets", label: "Wallets", icon: Wallet },
+    { href: "/admin/support", label: "Support", icon: MessageSquare },
     { href: "/admin/landing-page", label: "Landing Page", icon: Layout },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
@@ -147,6 +148,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },
     { href: "/operator/staff",        label: "Staff",        icon: UserCog,         feature: "staff_management", operatorOnly: true },
     { href: "/operator/reports",      label: "Reports",      icon: BarChart3,       always: true },
+    { href: "/operator/support",      label: "Support",      icon: MessageSquare,   always: true },
     { href: "/operator/subscription", label: "Subscription", icon: CreditCard,      always: true },
     { href: "/operator/settings",     label: "Settings",     icon: Settings,        always: true, operatorOnly: true },
   ];

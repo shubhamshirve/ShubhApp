@@ -293,8 +293,6 @@ const OperatorSubscription = () => {
   const purchasableAddons = isPerCustomerPlan ? [] : addons.filter(
     (a) => a.status !== "purchased" && a.status !== "included_in_plan"
   );
-    (a) => a.status !== "purchased" && a.status !== "included_in_plan"
-  );
   const selectedAddonTotal = purchasableAddons
     .filter((a) => selectedAddonCodes.includes(a.code))
     .reduce((sum, a) => sum + a.price * parseInt(months || "1"), 0);
