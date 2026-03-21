@@ -77,7 +77,13 @@ async def get_invoice_view_context(invoice_ref: str, operator_id: Optional[str] 
     subscriber = await db.subscribers.find_one(
         {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
     )
-    plan = await db.operator_plans.find_one({"id": invoice["plan_id"], "deleted_at": None}, {"_id": 0})
+    plan_id = invoice.get("plan_id")
+    if not plan_id and invoice.get("line_items"):
+        plan_id = invoice["line_items"][0].get("plan_id")
+    
+    plan = None
+    if plan_id:
+        plan = await db.operator_plans.find_one({"id": plan_id, "deleted_at": None}, {"_id": 0})
     raw_settings = await db.invoice_settings.find_one({"operator_id": invoice["operator_id"]}, {"_id": 0}) or {}
     invoice_settings = normalize_invoice_settings(raw_settings, operator)
     return {
