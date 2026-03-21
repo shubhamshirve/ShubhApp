@@ -547,14 +547,14 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-2">
                   <Label>Due Date *</Label>
-                  <Popover modal={true}>
+                  <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start text-left font-normal">
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {format(formData.due_date, "PPP")}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0 z-[100]" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.due_date}
@@ -633,14 +633,14 @@ const OperatorInvoices = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Service Period Start *</Label>
-                          <Popover modal={true}>
+                          <Popover>
                             <PopoverTrigger asChild>
                               <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {format(item.service_start_date, "PPP")}
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
+                            <PopoverContent className="w-auto p-0 z-[100]" align="start">
                               <Calendar
                                 mode="single"
                                 selected={item.service_start_date}
@@ -652,14 +652,14 @@ const OperatorInvoices = () => {
 
                         <div className="space-y-2">
                           <Label>Service Period End *</Label>
-                          <Popover modal={true}>
+                          <Popover>
                             <PopoverTrigger asChild>
                               <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {format(item.service_end_date, "PPP")}
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
+                            <PopoverContent className="w-auto p-0 z-[100]" align="start">
                               <Calendar
                                 mode="single"
                                 selected={item.service_end_date}

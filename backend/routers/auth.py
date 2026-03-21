@@ -11,7 +11,7 @@ from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
 from utils import generate_id, hash_password, verify_password, create_token
 from dependencies import get_current_user, get_platform_maintenance_state, get_operator_access_state
 from sanitization import SanitizedModel, sanitize_text
-from services.email_service import get_email_service, EmailServiceError
+from services.email_service import get_email_service_async, EmailServiceError
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def _mask_email(email: str) -> str:
 
 
 async def _send_registration_otp_email(email: str, otp: str):
-    service = get_email_service()
+    service = await get_email_service_async()
     await service.send_email(
         to_email=email,
         subject="Your E-Bill registration OTP",
@@ -74,7 +74,7 @@ async def _send_registration_otp_email(email: str, otp: str):
 
 
 async def _send_recovery_otp_email(email: str, otp: str):
-    service = get_email_service()
+    service = await get_email_service_async()
     await service.send_email(
         to_email=email,
         subject="Your E-Bill password recovery OTP",
