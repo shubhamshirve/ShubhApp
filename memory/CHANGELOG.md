@@ -123,3 +123,41 @@
 ### Task 7: Remove Landing Page
 - Root `/` now redirects to `/login`.
 - Admin landing-page builder remains available for future use.
+
+## 2026-03-22
+
+### Bug Fixes & Feature Additions (Branch V7.14-4)
+
+#### Fix 1: Invoice Add-Row Crash & Calendar Popover
+- Missing `Trash2` lucide icon import in `Invoices.jsx` was crashing React when a second line item was added.
+- Added `modal={true}` to all three `<Popover>` date pickers (due date, service start, service end) inside the invoice Dialog so they no longer close immediately.
+- Fixed `Select` value to use `undefined` instead of `""` for empty plan_id so the placeholder renders.
+
+#### Fix 2 & 3: PDF Invoice Logo Visibility
+- `pdf_service.py` `_build_logo()` now has a dedicated `/uploads/` path branch.
+- Resolves logo filename against both the local dev path (`../../frontend/public/uploads/`) and the Docker path (`/app/frontend/public/uploads/`) with clear fallback.
+
+#### Fix 4: SaaS Plans GST Text (Admin Panel)
+- `SaaSPlans.jsx` header subtitle changed from "GST inclusive" → "exclusive of GST — 18% GST will be added at checkout".
+- Per-plan card badge changed from "GST Inclusive" → "Excl. GST".
+- Form helper text updated to reflect exclusive pricing.
+
+#### Fix 5: Remove Landing Page from Admin Navbar
+- Removed `Landing Page` link entry from `AdminSidebar` in `Layout.jsx`.
+- Removed unused `Layout` icon import.
+
+#### Feature: Global Email API Keys in Admin Panel
+- Added `GET /admin/email-settings` — returns configured Resend from-email and masked API key preview.
+- Added `PUT /admin/email-settings` — stores `resend_api_key` + `resend_from_email` in `global_settings` collection in MongoDB.
+- Added `get_email_service_async()` to `email_service.py` — checks DB first, falls back to OS env vars.
+- Added `Email API` tab to Admin → Settings with:
+  - Masked Resend API Key field with show/hide toggle.
+  - From Email input.
+  - Green "configured" badge when a key exists.
+  - Link to resend.com/api-keys.
+
+#### Subscription GST & Wallet Credit (Previous Session)
+- SaaS subscription checkout now adds 18% GST to the plan price (exclusive, not inclusive).
+- On successful payment verification, the pre-GST plan amount is credited to the operator wallet.
+- Operator Settings page crash bug fixed — removed leftover Reminders tab state/JSX that caused crashes during admin impersonation.
+

@@ -37,3 +37,29 @@
 - Force expiration of token and verify frontend Axios interceptor logs the user out gracefully
 - Attempt to delete a subscriber/staff using a staff account to verify 403 Forbidden
 - Verify `backend/tests/test_task6_roles_session.py` executes successfully in a stable environment
+
+## 2026-03-22: Invoice & Admin Fixes
+
+### Invoice Add-Row / Calendar
+- Open the Create Invoice dialog, add a second line item, verify no crash occurs.
+- Verify due date and service period date pickers open and stay open inside the dialog.
+
+### PDF Invoice Logo
+- Upload a company logo in Operator → Settings → Invoice.
+- Download a generated PDF invoice and verify the logo appears.
+
+### Subscription GST & Wallet Credit
+- Create a SaaS checkout order; verify the Razorpay amount is base_price + 18%.
+- Complete the payment flow; verify the operator wallet is credited with pre-GST amount only.
+
+### Admin SaaS Plans GST Text
+- Navigate to Admin → SaaS Plans; verify all price labels say "Excl. GST" not "GST Inclusive".
+
+### Admin Email Settings
+- Navigate to Admin → Settings → Email API tab.
+- Save a Resend API key and from-email; verify it persists on reload.
+- Trigger an OTP flow and verify the email uses DB credentials (not ENV if DB key is set).
+
+### Admin Sidebar Landing Page Removal
+- Log in as admin; verify "Landing Page" is no longer in the sidebar navigation.
+

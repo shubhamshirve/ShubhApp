@@ -1,14 +1,14 @@
 # Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2026-03-21  
+**Last Updated:** 2026-03-22  
 **Active Branch:** `V7.14-4`  
-**Status:** Tasks 1-8 implemented in code; live verification still pending
+**Status:** All Tasks 1-8 and ongoing bug fixes implemented; pending live verification.
 
 ---
 
 ## Current Snapshot
 
-The branch now includes working code changes for the first six prioritized tasks:
+The branch now includes working code changes for all prioritized tasks and recent bug fixes:
 
 - Task 1: Wallet accounting and billing integrity
 - Task 2: Auth and OTP production hardening
@@ -18,6 +18,8 @@ The branch now includes working code changes for the first six prioritized tasks
 - Task 6: Session timeout and strong role validation
 - Task 7: Global reminders and IST scheduling
 - Task 8: Admin wallet operations (credit, debit, suspend)
+- Add-on: Bug fixes for multi-line invoice crash, calendar modal behavior, PDF logo paths, SaaS plans GST text, Admin nav cleanup, and Global Email Settings.
+
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
 - [.env](/d:/eBill/.env)
