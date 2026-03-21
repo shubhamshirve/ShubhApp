@@ -297,10 +297,13 @@ async def impersonate_operator(operator_id: str, current_user: dict = Depends(re
     user = await db.users.find_one({"operator_id": operator_id, "role": "operator", "deleted_at": None}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Operator user not found")
+        
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
     token = create_token({
         "id": user["id"], "email": user["email"], "role": "operator",
         "operator_id": operator_id, "impersonated_by": current_user["id"]
-    })
+    }, expiration_hours=timeout)
     return {
         "access_token": token, "token_type": "bearer",
         "operator": {"id": operator_id, "company_name": operator["company_name"], "owner_name": operator["owner_name"]}
@@ -315,7 +318,10 @@ async def return_from_impersonate(current_user: dict = Depends(get_current_user)
     admin_user = await db.users.find_one({"id": impersonated_by, "role": "admin", "deleted_at": None}, {"_id": 0})
     if not admin_user:
         raise HTTPException(status_code=404, detail="Admin user not found")
-    token = create_token({"id": admin_user["id"], "email": admin_user["email"], "role": "admin"})
+        
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
+    token = create_token({"id": admin_user["id"], "email": admin_user["email"], "role": "admin"}, expiration_hours=timeout)
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -452,6 +458,7 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
             "auto_invoice_days_before": 3, "late_fee_percentage": 0, "gst_rate": 18,
             "maintenance_mode": False,
             "maintenance_message": "The app is under maintenance. Updates and automation are temporarily paused.",
+            "session_timeout_hours": 24.0,
         }
     return settings
 

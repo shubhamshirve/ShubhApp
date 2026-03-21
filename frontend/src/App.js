@@ -117,6 +117,17 @@ const AuthProvider = ({ children }) => {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
 
+  authAxios.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401 && token) {
+        toast.error("Session expired. Please log in again.");
+        logout();
+      }
+      return Promise.reject(error);
+    }
+  );
+
   return (
     <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features }}>
       {children}

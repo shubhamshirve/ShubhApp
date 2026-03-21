@@ -185,19 +185,35 @@ class InvoicePDFService:
     def _classic_items(self, invoice, plan):
         elems = []
         elems.append(Paragraph("INVOICE DETAILS", self.styles["SectionHeader"]))
-        period = f"{self._fmt(invoice.get('service_start_date'))} – {self._fmt(invoice.get('service_end_date'))}"
-        rows = [
-            ["Description", "Service Period", "Amount"],
-            [invoice.get("plan_name", plan.get("name", "Service")), period,
-             f"₹{invoice.get('base_amount', 0):,.2f}"],
-        ]
+        
+        rows = [["Description", "Service Period", "Amount"]]
+        
+        line_items = invoice.get("line_items", [])
+        if not line_items:
+            # Fallback for old invoices
+            period = f"{self._fmt(invoice.get('service_start_date'))} – {self._fmt(invoice.get('service_end_date'))}"
+            rows.append([
+                invoice.get("plan_name", plan.get("name", "Service")),
+                period,
+                f"₹{invoice.get('base_amount', 0):,.2f}"
+            ])
+        else:
+            for item in line_items:
+                period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
+                rows.append([
+                    item.get("plan_name", "Service"),
+                    period,
+                    f"₹{item.get('base_amount', 0):,.2f}"
+                ])
+
         disc = invoice.get("discount", 0)
         if disc > 0:
             rows.append(["Discount", "", f"-₹{disc:,.2f}"])
+        
         tax = invoice.get("tax_amount", 0)
         if tax > 0:
             rows.append([
-                f"{plan.get('tax_type', 'GST').upper()} ({plan.get('tax_percentage', 18)}%)",
+                "GST / Taxes",
                 "", f"₹{tax:,.2f}"
             ])
 
@@ -409,19 +425,37 @@ class InvoicePDFService:
         elems.append(Paragraph("SERVICES", self.styles["ModernSection"]))
         elems.append(HRFlowable(width="100%", thickness=1.5,
                                 color=MODERN_PRIMARY, spaceAfter=6))
-        period = f"{self._fmt(invoice.get('service_start_date'))} – {self._fmt(invoice.get('service_end_date'))}"
-        rows = [
-            ["#", "Description", "Period", "Amount"],
-            ["1", invoice.get("plan_name", plan.get("name", "Service")),
-             period, f"₹{invoice.get('base_amount', 0):,.2f}"],
-        ]
+        
+        rows = [["#", "Description", "Period", "Amount"]]
+        
+        line_items = invoice.get("line_items", [])
+        if not line_items:
+            # Fallback for old invoices
+            period = f"{self._fmt(invoice.get('service_start_date'))} – {self._fmt(invoice.get('service_end_date'))}"
+            rows.append([
+                "1",
+                invoice.get("plan_name", plan.get("name", "Service")),
+                period,
+                f"₹{invoice.get('base_amount', 0):,.2f}"
+            ])
+        else:
+            for idx, item in enumerate(line_items):
+                period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
+                rows.append([
+                    str(idx + 1),
+                    item.get("plan_name", "Service"),
+                    period,
+                    f"₹{item.get('base_amount', 0):,.2f}"
+                ])
+
         disc = invoice.get("discount", 0)
         if disc > 0:
             rows.append(["", "Discount", "", f"-₹{disc:,.2f}"])
+        
         tax = invoice.get("tax_amount", 0)
         if tax > 0:
             rows.append([
-                "", f"{plan.get('tax_type', 'GST').upper()} ({plan.get('tax_percentage', 18)}%)",
+                "", "GST / Taxes",
                 "", f"₹{tax:,.2f}"
             ])
 

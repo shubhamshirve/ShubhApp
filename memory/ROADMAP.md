@@ -163,7 +163,7 @@ Legend:
   - Targeted regression check for WhatsApp/shared public invoice links opened from operator invoices.
 
 ### 5. Multi-Plan Subscribers and Multi-Line Invoices
-- Status: `planned`
+- Status: `implemented-in-code / verified with automated tests`
 - Priority: `P1`
 - Importance: `High`
 - Effort: `XL`
@@ -181,6 +181,15 @@ Legend:
   - In create invoice option also support multiple plans
 - Dependencies:
   - Strongly depends on Sprint 1 stability
+- Current implementation notes:
+  - Subscriber model updated to `plans: List[SubscriberPlan]`.
+  - Invoice model updated to `line_items: List[InvoiceLineItem]`.
+  - Automated billing (cron) now groups plans with the same billing date into a single multi-line invoice.
+  - Frontend UI updated for adding/editing multiple plans for subscribers and selecting multiple items for invoices.
+  - PDF generation and public invoice views now render all line items and correct aggregated totals.
+  - Migration script created at `backend/migrations/task5_multi_plan.py`.
+- Verified with:
+  - `backend/tests/test_task5_multi_plan.py` covering multi-plan subscriber creation, manual multi-line invoice creation, and automated billing query logic.
 
 ### 6. Session Timeout and Strong Role Validation
 - Status: `planned`

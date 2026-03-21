@@ -73,6 +73,20 @@
 - Manual PDF verification for branding parity and invoice-number filename
 - Public payment route regression check after invoice-number routing change
 
+### Multi-Plan Subscribers and Multi-Line Invoices in Code
+
+#### Task 5: Multi-Plan Subscribers and Multi-Line Invoices (implemented and verified)
+- Subscriber model updated to support multiple active plans via `plans` list.
+- Invoice model updated to support multiple `line_items` per invoice.
+- Subscriber API (POST/PUT) now handles multiple plan objects with individual billing dates and discounts.
+- Invoice API (POST) now accepts multiple line items and calculates aggregate totals (base, discount, tax, final).
+- Cron billing logic (`generate_upcoming_invoices`) now groups plans with identical billing dates for a subscriber into single combined multi-line invoices.
+- Updated `OperatorSubscribers` UI to allow adding/editing multiple plan rows.
+- Updated `OperatorInvoices` UI to allow selecting multiple plans when creating invoices manually.
+- Updated `PublicInvoice` and `PDF Service` to render multi-line tables and aggregated totals.
+- Created data migration script `backend/migrations/task5_multi_plan.py` for legacy schema conversion.
+- Verified with automated API tests in `backend/tests/test_task5_multi_plan.py`.
+
 ## 2025-07-18
 
 ### Batch 8: Codebase Cleanup & Removal

@@ -292,7 +292,9 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
     # Clean up pending registration
     await db.pending_registrations.delete_one({"id": data.registration_id})
 
-    token = create_token({"id": user_id, "email": pending["email"], "role": "operator", "operator_id": operator_id})
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
+    token = create_token({"id": user_id, "email": pending["email"], "role": "operator", "operator_id": operator_id}, expiration_hours=timeout)
 
     return TokenResponse(
         access_token=token,
@@ -435,7 +437,9 @@ async def register_operator(data: OperatorCreate):
     }
     await db.users.insert_one(user)
 
-    token = create_token({"id": user_id, "email": data.email, "role": "operator", "operator_id": operator_id})
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
+    token = create_token({"id": user_id, "email": data.email, "role": "operator", "operator_id": operator_id}, expiration_hours=timeout)
 
     return TokenResponse(
         access_token=token,
@@ -460,10 +464,12 @@ async def login(data: UserLogin):
     if user["status"] != "active":
         raise HTTPException(status_code=401, detail="Account is not active")
 
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
     token = create_token({
         "id": user["id"], "email": user["email"],
         "role": user["role"], "operator_id": user.get("operator_id")
-    })
+    }, expiration_hours=timeout)
 
     return TokenResponse(
         access_token=token,

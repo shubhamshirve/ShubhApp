@@ -59,9 +59,11 @@ const OperatorSubscribers = () => {
     whatsapp_number: "",
     email: "",
     address: "",
-    plan_id: "",
-    billing_date: 1,
-    discount: 0
+    plans: [{
+      plan_id: "",
+      billing_date: 1,
+      discount: 0
+    }]
   });
 
   useEffect(() => {
@@ -113,8 +115,17 @@ const OperatorSubscribers = () => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast.error("Please enter a valid email address"); return;
     }
-    if (!formData.plan_id) { toast.error("Please select a plan"); return; }
-    if (formData.discount < 0) { toast.error("Discount cannot be negative"); return; }
+    
+    if (formData.plans.length === 0) {
+      toast.error("Please add at least one plan");
+      return;
+    }
+
+    for (const p of formData.plans) {
+      if (!p.plan_id) { toast.error("Please select a plan for all entries"); return; }
+      if (p.discount < 0) { toast.error("Discount cannot be negative"); return; }
+    }
+
     try {
       if (editingSubscriber) {
         await authAxios.put(`/operator/subscribers/${editingSubscriber.id}`, formData);
@@ -178,9 +189,11 @@ const OperatorSubscribers = () => {
       whatsapp_number: subscriber.whatsapp_number,
       email: subscriber.email || "",
       address: subscriber.address || "",
-      plan_id: subscriber.plan_id,
-      billing_date: subscriber.billing_date,
-      discount: subscriber.discount
+      plans: subscriber.plans.map(p => ({
+        plan_id: p.plan_id,
+        billing_date: p.billing_date,
+        discount: p.discount
+      }))
     });
     setShowDialog(true);
   };
@@ -192,10 +205,33 @@ const OperatorSubscribers = () => {
       whatsapp_number: "",
       email: "",
       address: "",
-      plan_id: "",
-      billing_date: 1,
-      discount: 0
+      plans: [{
+        plan_id: "",
+        billing_date: 1,
+        discount: 0
+      }]
     });
+  };
+
+  const addPlanRow = () => {
+    setFormData(prev => ({
+      ...prev,
+      plans: [...prev.plans, { plan_id: "", billing_date: 1, discount: 0 }]
+    }));
+  };
+
+  const removePlanRow = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      plans: prev.plans.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updatePlanRow = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      plans: prev.plans.map((p, i) => i === index ? { ...p, [field]: value } : p)
+    }));
   };
 
   const filteredSubscribers = subscribers.filter(sub =>
@@ -341,9 +377,7 @@ const OperatorSubscribers = () => {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>WhatsApp</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Billing Date</TableHead>
-                  <TableHead>Discount</TableHead>
+                  <TableHead>Active Plans</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -351,7 +385,7 @@ const OperatorSubscribers = () => {
               <TableBody>
                 {filteredSubscribers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={5} className="text-center py-8 text-slate-500">
                       <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                       No subscribers found
                     </TableCell>
@@ -380,9 +414,22 @@ const OperatorSubscribers = () => {
                           <span className="font-mono text-sm">{subscriber.whatsapp_number}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{subscriber.plan_name || "-"}</TableCell>
-                      <TableCell>Day {subscriber.billing_date}</TableCell>
-                      <TableCell>₹{subscriber.discount}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {subscriber.plans?.map((p, idx) => (
+                            <div key={idx} className="text-xs border-b border-slate-50 last:border-0 pb-1 last:pb-0">
+                              <span className="font-medium text-slate-700">{p.plan_name}</span>
+                              <div className="flex gap-2 text-slate-500 mt-0.5">
+                                <span>Day {p.billing_date}</span>
+                                {p.discount > 0 && <span>-₹{p.discount}</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {(!subscriber.plans || subscriber.plans.length === 0) && (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{getStatusBadge(subscriber.status)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -452,102 +499,135 @@ const OperatorSubscribers = () => {
 
         {/* Create/Edit Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingSubscriber ? "Edit Subscriber" : "Add New Subscriber"}</DialogTitle>
               <DialogDescription>
                 {editingSubscriber ? "Update subscriber details" : "Add a new subscriber to your list"}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-2">
-                  <Label>Name *</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Subscriber name"
-                    required
-                    data-testid="subscriber-name-input"
-                  />
-                </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-slate-900 border-b pb-2">Basic Information</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 space-y-2">
+                    <Label>Name *</Label>
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Subscriber name"
+                      required
+                      data-testid="subscriber-name-input"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>WhatsApp Number *</Label>
-                  <Input
-                    value={formData.whatsapp_number}
-                    onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_number: e.target.value }))}
-                    placeholder="9876543210"
-                    required
-                    data-testid="subscriber-phone-input"
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label>WhatsApp Number *</Label>
+                    <Input
+                      value={formData.whatsapp_number}
+                      onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_number: e.target.value }))}
+                      placeholder="9876543210"
+                      required
+                      data-testid="subscriber-phone-input"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="email@example.com"
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="email@example.com"
+                    />
+                  </div>
 
-                <div className="col-span-2 space-y-2">
-                  <Label>Address</Label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                    placeholder="Full address"
-                  />
+                  <div className="col-span-2 space-y-2">
+                    <Label>Address</Label>
+                    <Input
+                      value={formData.address}
+                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="Full address"
+                    />
+                  </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Plan *</Label>
-                  <Select 
-                    value={formData.plan_id} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, plan_id: value }))}
-                  >
-                    <SelectTrigger data-testid="subscriber-plan-select">
-                      <SelectValue placeholder="Select plan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plans.map((plan) => (
-                        <SelectItem key={plan.id} value={plan.id}>
-                          {plan.name} - ₹{plan.price}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h4 className="text-sm font-semibold text-slate-900">Active Plans</h4>
+                  <Button type="button" variant="outline" size="sm" onClick={addPlanRow}>
+                    <Plus className="w-3 h-3 mr-1" /> Add Plan
+                  </Button>
                 </div>
+                
+                <div className="space-y-4">
+                  {formData.plans.map((plan, index) => (
+                    <div key={index} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100">
+                      {formData.plans.length > 1 && (
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border shadow-sm text-red-500"
+                          onClick={() => removePlanRow(index)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label>Plan *</Label>
+                          <Select 
+                            value={plan.plan_id} 
+                            onValueChange={(value) => updatePlanRow(index, "plan_id", value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select plan" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {plans.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name} - ₹{p.price}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                <div className="space-y-2">
-                  <Label>Billing Date (Day of Month) *</Label>
-                  <Select 
-                    value={formData.billing_date.toString()} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, billing_date: parseInt(value) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select day" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                        <SelectItem key={day} value={day.toString()}>
-                          Day {day}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                        <div className="space-y-2">
+                          <Label>Billing Date *</Label>
+                          <Select 
+                            value={plan.billing_date.toString()} 
+                            onValueChange={(value) => updatePlanRow(index, "billing_date", parseInt(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select day" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                                <SelectItem key={day} value={day.toString()}>
+                                  Day {day}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                <div className="space-y-2">
-                  <Label>Discount (₹)</Label>
-                  <Input
-                    type="number"
-                    value={formData.discount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                    min="0"
-                  />
+                        <div className="space-y-2">
+                          <Label>Discount (₹)</Label>
+                          <Input
+                            type="number"
+                            value={plan.discount}
+                            onChange={(e) => updatePlanRow(index, "discount", parseFloat(e.target.value) || 0)}
+                            min="0"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -556,7 +636,7 @@ const OperatorSubscribers = () => {
                   Cancel
                 </Button>
                 <Button type="submit" data-testid="save-subscriber-btn">
-                  {editingSubscriber ? "Update" : "Add Subscriber"}
+                  {editingSubscriber ? "Update Subscriber" : "Create Subscriber"}
                 </Button>
               </div>
             </form>

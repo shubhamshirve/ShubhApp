@@ -22,13 +22,13 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 
-def create_token(user_data: dict) -> str:
+def create_token(user_data: dict, expiration_hours: float = JWT_EXPIRATION_HOURS) -> str:
     payload = {
         "sub": user_data["id"],
         "email": user_data["email"],
         "role": user_data["role"],
         "operator_id": user_data.get("operator_id"),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+        "exp": datetime.now(timezone.utc) + timedelta(hours=expiration_hours)
     }
     if user_data.get("impersonated_by"):
         payload["impersonated_by"] = user_data["impersonated_by"]

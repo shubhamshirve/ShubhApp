@@ -72,11 +72,13 @@ const OperatorInvoices = () => {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [formData, setFormData] = useState({
     subscriber_id: "",
-    plan_id: "",
-    base_amount: 0,
-    discount: 0,
-    service_start_date: new Date(),
-    service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    line_items: [{
+      plan_id: "",
+      base_amount: 0,
+      discount: 0,
+      service_start_date: new Date(),
+      service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    }],
     due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
   });
 
@@ -129,23 +131,34 @@ const OperatorInvoices = () => {
     e.preventDefault();
     // Validation
     if (!formData.subscriber_id) { toast.error("Please select a subscriber"); return; }
-    if (!formData.plan_id) { toast.error("Please select a plan"); return; }
-    if (formData.base_amount <= 0) { toast.error("Base amount must be greater than 0"); return; }
-    if (formData.discount < 0) { toast.error("Discount cannot be negative"); return; }
-    if (formData.discount > formData.base_amount) { toast.error("Discount cannot exceed base amount"); return; }
-    if (!formData.service_start_date) { toast.error("Please select a service start date"); return; }
-    if (!formData.service_end_date) { toast.error("Please select a service end date"); return; }
-    if (formData.service_end_date <= formData.service_start_date) {
-      toast.error("Service end date must be after start date"); return;
+    if (formData.line_items.length === 0) { toast.error("Please add at least one line item"); return; }
+    
+    for (const item of formData.line_items) {
+      if (!item.plan_id) { toast.error("Please select a plan for all items"); return; }
+      if (item.base_amount <= 0) { toast.error("Base amount must be greater than 0"); return; }
+      if (item.discount < 0) { toast.error("Discount cannot be negative"); return; }
+      if (item.discount > item.base_amount) { toast.error("Discount cannot exceed base amount"); return; }
+      if (!item.service_start_date) { toast.error("Please select a service start date"); return; }
+      if (!item.service_end_date) { toast.error("Please select a service end date"); return; }
+      if (item.service_end_date <= item.service_start_date) {
+        toast.error("Service end date must be after start date"); return;
+      }
     }
+    
     if (!formData.due_date) { toast.error("Please select a due date"); return; }
+    
     try {
-      await authAxios.post("/operator/invoices", {
-        ...formData,
-        service_start_date: formData.service_start_date.toISOString(),
-        service_end_date: formData.service_end_date.toISOString(),
-        due_date: formData.due_date.toISOString()
-      });
+      const payload = {
+        subscriber_id: formData.subscriber_id,
+        due_date: formData.due_date.toISOString(),
+        line_items: formData.line_items.map(item => ({
+          ...item,
+          service_start_date: item.service_start_date.toISOString(),
+          service_end_date: item.service_end_date.toISOString()
+        }))
+      };
+      
+      await authAxios.post("/operator/invoices", payload);
       toast.success("Invoice created successfully");
       setShowDialog(false);
       resetForm();
@@ -153,6 +166,55 @@ const OperatorInvoices = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to create invoice");
     }
+  };
+
+  const addLineItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      line_items: [...prev.line_items, {
+        plan_id: "",
+        base_amount: 0,
+        discount: 0,
+        service_start_date: new Date(),
+        service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      }]
+    }));
+  };
+
+  const removeLineItem = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      line_items: prev.line_items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateLineItem = (index, field, value) => {
+    const updatedItems = [...formData.line_items];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    
+    // Auto-fill price if plan is selected
+    if (field === "plan_id") {
+      const plan = plans.find(p => p.id === value);
+      if (plan) {
+        updatedItems[index].base_amount = plan.price;
+      }
+    }
+    
+    setFormData(prev => ({ ...prev, line_items: updatedItems }));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      subscriber_id: "",
+      line_items: [{
+        plan_id: "",
+        base_amount: 0,
+        discount: 0,
+        service_start_date: new Date(),
+        service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      }],
+      due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+    });
   };
 
   const handleStatusUpdate = async (invoiceId, status) => {
@@ -339,6 +401,7 @@ const OperatorInvoices = () => {
                 <TableRow>
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Subscriber</TableHead>
+                  <TableHead>Items</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -348,7 +411,7 @@ const OperatorInvoices = () => {
               <TableBody>
                 {filteredInvoices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                       <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                       No invoices found
                     </TableCell>
@@ -360,9 +423,18 @@ const OperatorInvoices = () => {
                         <span className="font-mono text-sm font-medium">{invoice.invoice_number}</span>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <span className="font-medium block">{invoice.subscriber_name}</span>
-                          <span className="text-xs text-slate-500">{invoice.plan_name}</span>
+                        <span className="font-medium block">{invoice.subscriber_name}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {invoice.line_items?.map((item, idx) => (
+                            <span key={idx} className="text-xs bg-slate-100 px-1.5 py-0.5 rounded block w-fit">
+                              {item.plan_name}
+                            </span>
+                          ))}
+                          {(!invoice.line_items || invoice.line_items.length === 0) && (
+                            <span className="text-xs text-slate-400">{invoice.plan_name}</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -458,129 +530,159 @@ const OperatorInvoices = () => {
 
         {/* Create Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Invoice</DialogTitle>
-              <DialogDescription>Generate a new invoice for a subscriber</DialogDescription>
+              <DialogDescription>Generate a new invoice with multiple line items</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Subscriber *</Label>
-                <Select 
-                  value={formData.subscriber_id} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, subscriber_id: value }))}
-                >
-                  <SelectTrigger data-testid="invoice-subscriber-select">
-                    <SelectValue placeholder="Select subscriber" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subscribers.map((sub) => (
-                      <SelectItem key={sub.id} value={sub.id}>
-                        {sub.name} - {sub.whatsapp_number}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Plan *</Label>
-                <Select 
-                  value={formData.plan_id} 
-                  onValueChange={handlePlanSelect}
-                >
-                  <SelectTrigger data-testid="invoice-plan-select">
-                    <SelectValue placeholder="Select plan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {plans.map((plan) => (
-                      <SelectItem key={plan.id} value={plan.id}>
-                        {plan.name} - ₹{plan.price}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-4">
                 <div className="space-y-2">
-                  <Label>Base Amount (₹) *</Label>
-                  <Input
-                    type="number"
-                    value={formData.base_amount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, base_amount: parseFloat(e.target.value) }))}
-                    min="0"
-                    required
-                    data-testid="invoice-amount-input"
-                  />
+                  <Label>Subscriber *</Label>
+                  <Select 
+                    value={formData.subscriber_id} 
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, subscriber_id: value }))}
+                  >
+                    <SelectTrigger data-testid="invoice-subscriber-select">
+                      <SelectValue placeholder="Select subscriber" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subscribers.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name} - {sub.whatsapp_number}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Discount (₹)</Label>
-                  <Input
-                    type="number"
-                    value={formData.discount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                    min="0"
-                  />
+                  <Label>Due Date *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(formData.due_date, "PPP")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.due_date}
+                        onSelect={(date) => date && setFormData(prev => ({ ...prev, due_date: date }))}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Service Period Start *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(formData.service_start_date, "PPP")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.service_start_date}
-                      onSelect={(date) => date && setFormData(prev => ({ ...prev, service_start_date: date }))}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-900">Line Items</h4>
+                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+                    <Plus className="w-3 h-3 mr-1" /> Add Item
+                  </Button>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Service Period End *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(formData.service_end_date, "PPP")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.service_end_date}
-                      onSelect={(date) => date && setFormData(prev => ({ ...prev, service_end_date: date }))}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                <div className="space-y-4">
+                  {formData.line_items.map((item, index) => (
+                    <div key={index} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100 space-y-4">
+                      {formData.line_items.length > 1 && (
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border shadow-sm text-red-500"
+                          onClick={() => removeLineItem(index)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
 
-              <div className="space-y-2">
-                <Label>Due Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(formData.due_date, "PPP")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.due_date}
-                      onSelect={(date) => date && setFormData(prev => ({ ...prev, due_date: date }))}
-                    />
-                  </PopoverContent>
-                </Popover>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label>Plan *</Label>
+                          <Select 
+                            value={item.plan_id} 
+                            onValueChange={(val) => updateLineItem(index, "plan_id", val)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select plan" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {plans.map((plan) => (
+                                <SelectItem key={plan.id} value={plan.id}>
+                                  {plan.name} - ₹{plan.price}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Base Amount (₹) *</Label>
+                          <Input
+                            type="number"
+                            value={item.base_amount}
+                            onChange={(e) => updateLineItem(index, "base_amount", parseFloat(e.target.value) || 0)}
+                            min="0"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Discount (₹)</Label>
+                          <Input
+                            type="number"
+                            value={item.discount}
+                            onChange={(e) => updateLineItem(index, "discount", parseFloat(e.target.value) || 0)}
+                            min="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Service Period Start *</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {format(item.service_start_date, "PPP")}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={item.service_start_date}
+                                onSelect={(date) => date && updateLineItem(index, "service_start_date", date)}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Service Period End *</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {format(item.service_end_date, "PPP")}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={item.service_end_date}
+                                onSelect={(date) => date && updateLineItem(index, "service_end_date", date)}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">

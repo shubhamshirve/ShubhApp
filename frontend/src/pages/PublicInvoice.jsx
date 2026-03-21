@@ -361,14 +361,14 @@ export default function PublicInvoice() {
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Service Period</p>
-                <p className="text-sm font-medium text-slate-700 mt-0.5">
-                  {formatDate(invoice.service_start_date)} — {formatDate(invoice.service_end_date)}
-                </p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</p>
+                <p className="text-sm font-medium text-slate-700 mt-0.5 capitalize">{invoice.status}</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Plan</p>
-                <p className="text-sm font-medium text-slate-700 mt-0.5">{invoice.plan_name}</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Items</p>
+                <p className="text-sm font-medium text-slate-700 mt-0.5">
+                  {(invoice.line_items?.length || 1)} {invoice.line_items?.length === 1 ? 'Plan' : 'Plans'}
+                </p>
               </div>
             </div>
           </div>
@@ -383,19 +383,33 @@ export default function PublicInvoice() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4">
-                    <p className="font-medium text-slate-800">{invoice.plan_name}</p>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      {plan?.validity ? `${plan.validity.charAt(0).toUpperCase() + plan.validity.slice(1)} subscription` : "Subscription"}
-                      {" • "}
-                      {formatDate(invoice.service_start_date)} to {formatDate(invoice.service_end_date)}
-                    </p>
-                  </td>
-                  <td className="py-4 text-right font-medium text-slate-800">
-                    {formatCurrency(invoice.base_amount)}
-                  </td>
-                </tr>
+                {invoice.line_items && invoice.line_items.length > 0 ? (
+                  invoice.line_items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-slate-100 last:border-0">
+                      <td className="py-4">
+                        <p className="font-medium text-slate-800">{item.plan_name}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          {formatDate(item.service_start_date)} to {formatDate(item.service_end_date)}
+                        </p>
+                      </td>
+                      <td className="py-4 text-right font-medium text-slate-800">
+                        {formatCurrency(item.base_amount)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-b border-slate-100 last:border-0">
+                    <td className="py-4">
+                      <p className="font-medium text-slate-800">{invoice.plan_name}</p>
+                      <p className="text-sm text-slate-500 mt-0.5">
+                        {formatDate(invoice.service_start_date)} to {formatDate(invoice.service_end_date)}
+                      </p>
+                    </td>
+                    <td className="py-4 text-right font-medium text-slate-800">
+                      {formatCurrency(invoice.base_amount)}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

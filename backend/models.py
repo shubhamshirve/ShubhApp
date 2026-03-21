@@ -333,14 +333,20 @@ class SaaSPlanResponse(SanitizedModel):
 
 # ============== SUBSCRIBER MODELS ==============
 
+class SubscriberPlan(SanitizedModel):
+    plan_id: str
+    plan_name: Optional[str] = None
+    billing_date: int  # Day of month (1-28)
+    discount: float = 0
+    status: str = "active"  # active, inactive
+
+
 class SubscriberCreate(SanitizedModel):
     name: str
     whatsapp_number: str
     email: Optional[EmailStr] = None
     address: Optional[str] = None
-    plan_id: str
-    billing_date: int  # Day of month (1-28)
-    discount: float = 0
+    plans: List[SubscriberPlan]
 
     @field_validator("email", "address", mode="before")
     @classmethod
@@ -360,10 +366,7 @@ class SubscriberResponse(SanitizedModel):
     whatsapp_number: str
     email: Optional[str] = None
     address: Optional[str] = None
-    plan_id: str
-    plan_name: Optional[str] = None
-    billing_date: int
-    discount: float
+    plans: List[SubscriberPlan]
     status: str
     operator_id: str
     created_at: datetime
@@ -386,8 +389,8 @@ class OperatorPlanResponse(SanitizedModel):
     name: str
     price: float
     validity: str
-    tax_percentage: float
-    tax_type: str
+    tax_percentage: float = 0
+    tax_type: str = "none"
     description: Optional[str] = None
     status: str
     operator_id: str
@@ -396,13 +399,20 @@ class OperatorPlanResponse(SanitizedModel):
 
 # ============== INVOICE MODELS ==============
 
-class InvoiceCreate(SanitizedModel):
-    subscriber_id: str
+class InvoiceLineItem(SanitizedModel):
     plan_id: str
+    plan_name: Optional[str] = None
     base_amount: float
     discount: float = 0
+    tax_amount: float = 0
+    final_amount: Optional[float] = None
     service_start_date: datetime
     service_end_date: datetime
+
+
+class InvoiceCreate(SanitizedModel):
+    subscriber_id: str
+    line_items: List[InvoiceLineItem]
     due_date: datetime
 
 
@@ -412,14 +422,11 @@ class InvoiceResponse(SanitizedModel):
     invoice_number: str
     subscriber_id: str
     subscriber_name: Optional[str] = None
-    plan_id: str
-    plan_name: Optional[str] = None
+    line_items: List[InvoiceLineItem]
     base_amount: float
     discount: float
     tax_amount: float
     final_amount: float
-    service_start_date: datetime
-    service_end_date: datetime
     due_date: datetime
     status: str  # pending, paid, overdue, cancelled
     payment_id: Optional[str] = None
@@ -499,6 +506,7 @@ class GlobalSettingsUpdate(SanitizedModel):
     gst_rate: float = 18
     maintenance_mode: bool = False
     maintenance_message: Optional[str] = "The app is under maintenance. Updates and automation are temporarily paused."
+    session_timeout_hours: float = 24.0
 
 
 class AdminPaymentGatewayConfig(SanitizedModel):

@@ -56,11 +56,16 @@ class CronJobService:
         
         for operator in operators:
             try:
-                # Get subscribers with matching billing date
+                # Get subscribers with at least one plan matching the target billing date
                 subscribers = await self.db.subscribers.find({
                     "operator_id": operator["id"],
                     "status": "active",
-                    "billing_date": target_day,
+                    "plans": {
+                        "$elemMatch": {
+                            "billing_date": target_day,
+                            "status": "active"
+                        }
+                    },
                     "deleted_at": None
                 }, {"_id": 0}).to_list(1000)
                 
@@ -68,27 +73,34 @@ class CronJobService:
                 
                 for subscriber in subscribers:
                     try:
-                        # Get subscriber's plan to know validity for duplicate check
-                        plan_for_check = await self.db.operator_plans.find_one(
-                            {"id": subscriber.get("plan_id"), "deleted_at": None}, {"_id": 0}
-                        )
-                        plan_validity = (plan_for_check or {}).get("validity", "monthly")
+                        # Identify which plans are due today
+                        plans_to_bill = [
+                            p for p in subscriber.get("plans", [])
+                            if p.get("billing_date") == target_day and p.get("status") == "active"
+                        ]
+                        
+                        if not plans_to_bill:
+                            continue
 
-                        # Check if invoice already exists for this period
+                        # Check if invoice already exists for this period (for any of the plans)
+                        # To keep it simple, we check if ANY invoice was generated for this subscriber 
+                        # in the last 25 days (lookback window). 
+                        # In a more advanced version, we'd check per plan_id.
                         existing = await self._check_existing_invoice(
                             operator["id"],
                             subscriber["id"],
                             now,
-                            validity=plan_validity,
+                            validity="monthly", # Default to monthly for check
                         )
                         
                         if existing:
                             continue
                         
-                        # Generate new invoice
+                        # Generate new invoice with all plans due today
                         invoice = await self._create_auto_invoice(
                             operator,
-                            subscriber
+                            subscriber,
+                            plans_to_bill
                         )
                         
                         if invoice:
@@ -252,64 +264,85 @@ class CronJobService:
     async def _create_auto_invoice(
         self,
         operator: Dict,
-        subscriber: Dict
+        subscriber: Dict,
+        plans_to_bill: List[Dict]
     ) -> Dict[str, Any]:
-        """Create an auto-generated invoice"""
+        """Create an auto-generated invoice with multiple line items"""
         import uuid
         
         now = datetime.now(timezone.utc)
+        can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
         
-        # Get subscriber's plan
-        plan = await self.db.operator_plans.find_one(
-            {"id": subscriber["plan_id"], "deleted_at": None},
-            {"_id": 0}
-        )
-        
-        if not plan:
-            return None
-        
+        line_items = []
+        total_base = 0
+        total_discount = 0
+        total_tax = 0
+        total_final = 0
+
         # Calculate dates based on validity
-        validity_days = {
+        validity_days_map = {
             "monthly": 30,
             "quarterly": 90,
             "half_yearly": 180,
             "yearly": 365
         }
-        
-        service_days = validity_days.get(plan.get("validity", "monthly"), 30)
-        # Set service_start to the subscriber's actual billing date this month
-        billing_day = subscriber.get("billing_date", now.day)
-        try:
-            service_start = now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0)
-        except ValueError:
-            # billing_day > days in current month (e.g., 31 in Feb) — use last day
-            import calendar
-            last_day = calendar.monthrange(now.year, now.month)[1]
-            service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0)
-        service_end = service_start + timedelta(days=service_days)
-        due_date = service_start + timedelta(days=5)  # 5 days from billing date to pay
-        
-        # Calculate amounts
-        base_amount = plan.get("price", 0)
-        discount = subscriber.get("discount", 0)
-        
-        tax_amount = 0
-        if operator.get("charge_gst") and plan.get("tax_percentage", 0) > 0:
-            taxable = base_amount - discount
-            if plan.get("tax_type") == "exclusive":
-                tax_amount = taxable * (plan["tax_percentage"] / 100)
-            elif plan.get("tax_type") == "inclusive":
-                tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
-        
-        if plan.get("tax_type") == "exclusive":
-            final_amount = base_amount - discount + tax_amount
-        else:
-            final_amount = base_amount - discount
-        
-        # Use operator's configured invoice prefix from invoice_settings
-        inv_settings = await self.db.invoice_settings.find_one(
-            {"operator_id": operator["id"]}, {"_id": 0}
-        )
+
+        for p_info in plans_to_bill:
+            plan = await self.db.operator_plans.find_one(
+                {"id": p_info["plan_id"], "deleted_at": None},
+                {"_id": 0}
+            )
+            if not plan:
+                continue
+
+            service_days = validity_days_map.get(plan.get("validity", "monthly"), 30)
+            billing_day = p_info.get("billing_date", now.day)
+            try:
+                service_start = now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0)
+            except ValueError:
+                import calendar
+                last_day = calendar.monthrange(now.year, now.month)[1]
+                service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0)
+            
+            service_end = service_start + timedelta(days=service_days)
+            
+            # Calculate amounts
+            base_amount = plan.get("price", 0)
+            discount = p_info.get("discount", 0)
+            
+            tax_amount = 0
+            if can_charge_gst and plan.get("tax_percentage", 0) > 0:
+                taxable = base_amount - discount
+                if plan.get("tax_type") == "exclusive":
+                    tax_amount = taxable * (plan["tax_percentage"] / 100)
+                elif plan.get("tax_type") == "inclusive":
+                    tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
+            
+            final_amount = base_amount - discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+            
+            line_items.append({
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "base_amount": base_amount,
+                "discount": discount,
+                "tax_amount": round(tax_amount, 2),
+                "final_amount": round(final_amount, 2),
+                "service_start_date": service_start.isoformat(),
+                "service_end_date": service_end.isoformat()
+            })
+            
+            total_base += base_amount
+            total_discount += discount
+            total_tax += tax_amount
+            total_final += final_amount
+
+        if not line_items:
+            return None
+
+        # Due date is 5 days from the (first) service start date
+        first_service_start = datetime.fromisoformat(line_items[0]["service_start_date"])
+        due_date = first_service_start + timedelta(days=5)
+
         # Generate globally unique invoice number using atomic counter
         from utils import generate_invoice_number_atomic
         invoice_number = await generate_invoice_number_atomic(self.db)
@@ -320,14 +353,11 @@ class CronJobService:
             "invoice_number": invoice_number,
             "subscriber_id": subscriber["id"],
             "subscriber_name": subscriber["name"],
-            "plan_id": plan["id"],
-            "plan_name": plan["name"],
-            "base_amount": base_amount,
-            "discount": discount,
-            "tax_amount": round(tax_amount, 2),
-            "final_amount": round(final_amount, 2),
-            "service_start_date": service_start.isoformat(),
-            "service_end_date": service_end.isoformat(),
+            "line_items": line_items,
+            "base_amount": round(total_base, 2),
+            "discount": round(total_discount, 2),
+            "tax_amount": round(total_tax, 2),
+            "final_amount": round(total_final, 2),
             "due_date": due_date.isoformat(),
             "status": "pending",
             "payment_id": None,
@@ -349,13 +379,16 @@ class CronJobService:
                 )
                 
                 if gateway and gateway.get("is_active"):
-                    # Use operator's Razorpay credentials
                     from services.razorpay_service import RazorpayService
                     op_razorpay = RazorpayService(gateway["api_key"], gateway["api_secret"])
                     
+                    desc = f"Invoice {invoice_number} - {subscriber['name']}"
+                    if len(line_items) == 1:
+                        desc = f"Invoice {invoice_number} - {line_items[0]['plan_name']}"
+                    
                     payment_link = op_razorpay.create_payment_link(
-                        amount=final_amount,
-                        description=f"Invoice {invoice_number} - {plan['name']}",
+                        amount=invoice["final_amount"],
+                        description=desc,
                         customer_name=subscriber["name"],
                         customer_email=subscriber.get("email", ""),
                         customer_phone=subscriber.get("whatsapp_number", ""),
@@ -384,7 +417,7 @@ class CronJobService:
                     recipient_phone=subscriber["whatsapp_number"],
                     customer_name=subscriber["name"],
                     invoice_number=invoice_number,
-                    amount=f"₹{final_amount:,.2f}",
+                    amount=f"₹{invoice['final_amount']:,.2f}",
                     due_date=due_date.strftime("%d %b %Y"),
                     payment_link=invoice.get("payment_link")
                 )

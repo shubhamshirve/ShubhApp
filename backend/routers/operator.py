@@ -888,15 +888,17 @@ async def get_operator_plans(current_user: dict = Depends(require_operator)):
         for p in plans:
             try:
                 created_at = p["created_at"]
-                # Handle both string and datetime formats
                 if isinstance(created_at, str):
                     created_at = datetime.fromisoformat(created_at)
                 elif not isinstance(created_at, datetime):
                     created_at = datetime.now(timezone.utc)
-                parsed_plans.append(OperatorPlanResponse(**{**p, "created_at": created_at}))
+                
+                # Use Pydantic model for validation
+                plan_data = {**p, "created_at": created_at}
+                parsed_plans.append(OperatorPlanResponse(**plan_data))
             except Exception as e:
-                logger.error(f"Error parsing plan {p.get('id', 'unknown')}: {e}")
-                # Skip this plan if parsing fails
+                logger.error(f"Error parsing plan {p.get('id', 'unknown')}: {str(e)}")
+                # Continue to next plan
                 continue
         return parsed_plans
     except Exception as e:
@@ -1060,16 +1062,25 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
                     status_code=403,
                     detail=f"Subscriber limit reached ({current_count}/{plan['max_subscribers']}). Please upgrade your plan to add more subscribers."
                 )
-    op_plan = await db.operator_plans.find_one(
-        {"id": data.plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-    )
-    if not op_plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
+
+    # Validate all plans exist and enrich names
+    enriched_plans = []
+    for p in data.plans:
+        op_plan = await db.operator_plans.find_one(
+            {"id": p.plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+        )
+        if not op_plan:
+            raise HTTPException(status_code=404, detail=f"Plan {p.plan_id} not found")
+        
+        plan_dict = p.model_dump()
+        plan_dict["plan_name"] = op_plan["name"]
+        enriched_plans.append(plan_dict)
+
     now = datetime.now(timezone.utc)
     subscriber = {
         "id": generate_id(), "name": data.name, "whatsapp_number": data.whatsapp_number,
-        "email": data.email, "address": data.address, "plan_id": data.plan_id,
-        "plan_name": op_plan["name"], "billing_date": data.billing_date, "discount": data.discount,
+        "email": data.email, "address": data.address,
+        "plans": enriched_plans,
         "status": "active", "operator_id": current_user["operator_id"],
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
@@ -1088,7 +1099,7 @@ async def get_subscribers(
     if status:
         query["status"] = status
     if plan_id:
-        query["plan_id"] = plan_id
+        query["plans.plan_id"] = plan_id
     subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
     return [SubscriberResponse(**{**s, "created_at": datetime.fromisoformat(s["created_at"])}) for s in subscribers]
 
@@ -1112,9 +1123,22 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
     )
     if not existing:
         raise HTTPException(status_code=404, detail="Subscriber not found")
-    op_plan = await db.operator_plans.find_one({"id": data.plan_id, "deleted_at": None}, {"_id": 0})
+    
+    # Validate all plans exist and enrich names
+    enriched_plans = []
+    for p in data.plans:
+        op_plan = await db.operator_plans.find_one(
+            {"id": p.plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+        )
+        if not op_plan:
+            raise HTTPException(status_code=404, detail=f"Plan {p.plan_id} not found")
+        
+        plan_dict = p.model_dump()
+        plan_dict["plan_name"] = op_plan["name"]
+        enriched_plans.append(plan_dict)
+
     update_data = data.model_dump()
-    update_data["plan_name"] = op_plan["name"] if op_plan else None
+    update_data["plans"] = enriched_plans
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.subscribers.update_one({"id": subscriber_id}, {"$set": update_data})
     updated = await db.subscribers.find_one({"id": subscriber_id}, {"_id": 0})
@@ -1303,8 +1327,13 @@ async def bulk_upload_subscribers(
             "id": generate_id(), "name": name, "whatsapp_number": whatsapp,
             "email": row.get("email", "") or None,
             "address": row.get("address", "") or None,
-            "plan_id": plan["id"], "plan_name": plan["name"],
-            "billing_date": billing_date, "discount": discount,
+            "plans": [{
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "billing_date": billing_date,
+                "discount": discount,
+                "status": "active"
+            }],
             "status": "active", "operator_id": current_user["operator_id"],
             "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
         }
@@ -1325,34 +1354,60 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         raise HTTPException(status_code=400, detail="Admin cannot create invoices")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    
     subscriber = await db.subscribers.find_one(
         {"id": data.subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
     )
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
-    plan = await db.operator_plans.find_one({"id": data.plan_id, "deleted_at": None}, {"_id": 0})
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
+    
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    tax_amount = 0
-    # GST can only be applied if operator has a valid GSTIN
     can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
-    if can_charge_gst and plan.get("tax_percentage", 0) > 0:
-        if plan.get("tax_type") == "exclusive":
-            tax_amount = (data.base_amount - data.discount) * (plan["tax_percentage"] / 100)
-        elif plan.get("tax_type") == "inclusive":
-            tax_amount = (data.base_amount - data.discount) - ((data.base_amount - data.discount) / (1 + plan["tax_percentage"] / 100))
-    final_amount = data.base_amount - data.discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+    
+    total_base = 0
+    total_discount = 0
+    total_tax = 0
+    total_final = 0
+    line_items = []
+
+    for item in data.line_items:
+        plan = await db.operator_plans.find_one({"id": item.plan_id, "deleted_at": None}, {"_id": 0})
+        if not plan:
+            raise HTTPException(status_code=404, detail=f"Plan {item.plan_id} not found")
+        
+        tax_amount = 0
+        if can_charge_gst and plan.get("tax_percentage", 0) > 0:
+            taxable = item.base_amount - item.discount
+            if plan.get("tax_type") == "exclusive":
+                tax_amount = taxable * (plan["tax_percentage"] / 100)
+            elif plan.get("tax_type") == "inclusive":
+                tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
+        
+        final_amount = item.base_amount - item.discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+        
+        enriched_item = item.model_dump()
+        enriched_item["plan_name"] = plan["name"]
+        enriched_item["tax_amount"] = round(tax_amount, 2)
+        enriched_item["final_amount"] = round(final_amount, 2)
+        enriched_item["service_start_date"] = item.service_start_date.isoformat()
+        enriched_item["service_end_date"] = item.service_end_date.isoformat()
+        line_items.append(enriched_item)
+        
+        total_base += item.base_amount
+        total_discount += item.discount
+        total_tax += tax_amount
+        total_final += final_amount
+
     now = datetime.now(timezone.utc)
     invoice = {
         "id": generate_id(),
         "invoice_number": await generate_invoice_number_atomic(db),
         "subscriber_id": data.subscriber_id, "subscriber_name": subscriber["name"],
-        "plan_id": data.plan_id, "plan_name": plan["name"],
-        "base_amount": data.base_amount, "discount": data.discount,
-        "tax_amount": round(tax_amount, 2), "final_amount": round(final_amount, 2),
-        "service_start_date": data.service_start_date.isoformat(),
-        "service_end_date": data.service_end_date.isoformat(),
+        "line_items": line_items,
+        "base_amount": round(total_base, 2),
+        "discount": round(total_discount, 2),
+        "tax_amount": round(total_tax, 2),
+        "final_amount": round(total_final, 2),
         "due_date": data.due_date.isoformat(), "status": "pending", "payment_id": None,
         "operator_id": current_user["operator_id"],
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
@@ -1368,7 +1423,6 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
 
     # Auto-send WhatsApp if whatsapp_notifications addon is active (uses platform WhatsApp config)
     auto_wa_sent = False
-    # Build public invoice URL from request origin
     public_invoice_url = build_public_invoice_url(request, invoice)
 
     if await _has_addon(current_user["operator_id"], "whatsapp_notifications"):
@@ -1392,13 +1446,14 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         except Exception as e:
             logger.warning(f"Auto WhatsApp send failed: {e}")
 
-    response = InvoiceResponse(**{
-        **invoice, "created_at": now,
-        "service_start_date": data.service_start_date,
-        "service_end_date": data.service_end_date,
-        "due_date": data.due_date
-    })
-    # Return extra meta for frontend to decide WhatsApp Web button visibility
+    # Convert back to InvoiceResponse compatible dict
+    response_data = {**invoice}
+    response_data["due_date"] = data.due_date
+    for item in response_data["line_items"]:
+        item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
+        item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
+    
+    response = InvoiceResponse(**response_data)
     result = response.model_dump()
     result["auto_wa_sent"] = auto_wa_sent
     result["has_whatsapp_addon"] = await _has_addon(current_user["operator_id"], "whatsapp_notifications")
@@ -1420,15 +1475,18 @@ async def get_invoices(
     if subscriber_id:
         query["subscriber_id"] = subscriber_id
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [
-        InvoiceResponse(**{
-            **inv, "created_at": datetime.fromisoformat(inv["created_at"]),
-            "service_start_date": datetime.fromisoformat(inv["service_start_date"]),
-            "service_end_date": datetime.fromisoformat(inv["service_end_date"]),
-            "due_date": datetime.fromisoformat(inv["due_date"])
-        })
-        for inv in invoices
-    ]
+    
+    parsed_invoices = []
+    for inv in invoices:
+        inv_data = {**inv}
+        inv_data["due_date"] = datetime.fromisoformat(inv["due_date"])
+        if "line_items" in inv_data:
+            for item in inv_data["line_items"]:
+                item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
+                item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
+        parsed_invoices.append(InvoiceResponse(**inv_data))
+    
+    return parsed_invoices
 
 
 @router.put("/invoices/{invoice_id}/status")

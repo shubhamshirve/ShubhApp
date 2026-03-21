@@ -1,6 +1,7 @@
 """FastAPI dependency functions for authentication and authorization."""
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from datetime import datetime, timezone
 from database import db
 from utils import decode_token
 
@@ -18,6 +19,7 @@ async def get_current_user(
     user = await db.users.find_one({"id": payload["sub"], "deleted_at": None}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    
     # Carry impersonated_by from JWT payload if present
     if payload.get("impersonated_by"):
         user["impersonated_by"] = payload["impersonated_by"]

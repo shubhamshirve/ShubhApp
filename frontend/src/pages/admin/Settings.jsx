@@ -383,6 +383,16 @@ const AdminSettings = () => {
                       onChange={(e) => setSettings(s => ({ ...s, late_fee_percentage: parseFloat(e.target.value) }))}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Session/Idle Timeout (Hours)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={settings?.session_timeout_hours || 24}
+                      onChange={(e) => setSettings(s => ({ ...s, session_timeout_hours: parseFloat(e.target.value) || 24 }))}
+                    />
+                  </div>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
                   <div className="flex items-start justify-between gap-4">
