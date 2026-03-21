@@ -295,18 +295,6 @@ const OperatorInvoices = () => {
     toast.success("WhatsApp Web opened");
   };
 
-  const resetForm = () => {
-    setFormData({
-      subscriber_id: "",
-      plan_id: "",
-      base_amount: 0,
-      discount: 0,
-      service_start_date: new Date(),
-      service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-    });
-  };
-
   const handlePlanSelect = (planId) => {
     const plan = plans.find(p => p.id === planId);
     if (plan) {
