@@ -55,6 +55,24 @@
 - Manual cron skip verification while maintenance is enabled
 - Frontend runtime smoke test for `/auth/app-state` and disabled-action states
 
+### Invoice Branding and Public Invoice Consistency in Code
+
+#### Task 4: Invoice Branding and Public Invoice Consistency (implemented, pending live verification)
+- Public invoice endpoints now resolve by `invoice_number` first with legacy internal-id fallback.
+- Operator-created public invoice links now use `/invoice/{invoice_number}`.
+- Added shared invoice-view helpers so public invoice payloads and PDF payloads come from the same merged invoice settings object.
+- Invoice settings now support field-visibility toggles and operator logo upload.
+- Public invoice page now shows operator logo/address and respects selected visibility rules.
+- PDF generation now uses the same branding data and includes logo rendering when available.
+- Added a dedicated pending-test tracker in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
+
+#### Task 4 tests still pending
+- Manual invoice-number URL verification with legacy link fallback
+- Manual operator logo upload and visibility-toggle persistence verification
+- Manual public invoice verification for branding, hidden fields, and payment status
+- Manual PDF verification for branding parity and invoice-number filename
+- Public payment route regression check after invoice-number routing change
+
 ## 2025-07-18
 
 ### Batch 8: Codebase Cleanup & Removal

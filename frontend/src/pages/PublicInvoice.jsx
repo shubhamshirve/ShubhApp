@@ -48,7 +48,7 @@ const StatusBadge = ({ status }) => {
 };
 
 export default function PublicInvoice() {
-  const { id } = useParams();
+  const { invoiceRef } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -58,7 +58,7 @@ export default function PublicInvoice() {
   const fetchInvoice = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API}/public/invoice/${id}`);
+      const res = await axios.get(`${API}/public/invoice/${invoiceRef}`);
       setData(res.data);
     } catch (err) {
       if (err.response?.status === 404) {
@@ -69,7 +69,7 @@ export default function PublicInvoice() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [invoiceRef]);
 
   useEffect(() => {
     fetchInvoice();
@@ -79,13 +79,13 @@ export default function PublicInvoice() {
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
     try {
-      const res = await axios.get(`${API}/public/invoice/${id}/pdf`, {
+      const res = await axios.get(`${API}/public/invoice/${invoiceRef}/pdf`, {
         responseType: "blob",
       });
       const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Invoice_${data?.invoice?.invoice_number || id}.pdf`;
+      a.download = `Invoice_${data?.invoice?.invoice_number || invoiceRef}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -125,7 +125,7 @@ export default function PublicInvoice() {
       }
 
       // Create order
-      const orderRes = await axios.post(`${API}/public/invoice/${id}/create-payment-order`);
+      const orderRes = await axios.post(`${API}/public/invoice/${invoiceRef}/create-payment-order`);
       const orderData = orderRes.data;
 
       const options = {
@@ -144,7 +144,7 @@ export default function PublicInvoice() {
         handler: async function (response) {
           try {
             await axios.post(
-              `${API}/public/invoice/${id}/verify-payment?razorpay_order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
+              `${API}/public/invoice/${invoiceRef}/verify-payment?razorpay_order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
             );
             toast.success("Payment successful! Invoice has been marked as paid.");
             fetchInvoice(); // Refresh invoice data
@@ -205,6 +205,7 @@ export default function PublicInvoice() {
   const isUnpaid = invoice.status === "pending" || invoice.status === "overdue";
   const showPayButton = isUnpaid && payment?.enabled;
   const showGst = invoice_settings?.show_gst !== false;
+  const visibleFields = invoice_settings?.visible_fields || {};
   const taxPercentage = plan?.tax_percentage || 0;
   const taxType = plan?.tax_type || "none";
   const subtotalAfterDiscount = invoice.base_amount - (invoice.discount || 0);
@@ -255,8 +256,19 @@ export default function PublicInvoice() {
           <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 sm:px-8 py-6 sm:py-8">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
-                <h1 className="text-white text-2xl sm:text-3xl font-bold tracking-tight">INVOICE</h1>
-                <p className="text-indigo-200 text-sm mt-1">#{invoice.invoice_number}</p>
+                <div className="flex items-center gap-3">
+                  {visibleFields.show_logo !== false && operator.logo_url && (
+                    <img
+                      src={operator.logo_url}
+                      alt={`${invoice_settings?.company_name || operator.company_name} logo`}
+                      className="h-10 w-auto rounded bg-white/95 p-1"
+                    />
+                  )}
+                  <div>
+                    <h1 className="text-white text-2xl sm:text-3xl font-bold tracking-tight">INVOICE</h1>
+                    <p className="text-indigo-200 text-sm mt-1">#{invoice.invoice_number}</p>
+                  </div>
+                </div>
               </div>
               <div className="text-left sm:text-right">
                 <StatusBadge status={isOverdue ? "overdue" : invoice.status} />
@@ -277,16 +289,22 @@ export default function PublicInvoice() {
                   <Building2 className="w-4 h-4 text-indigo-500" />
                   {invoice_settings?.company_name || operator.company_name}
                 </p>
-                {operator.phone && (
+                {operator.phone && visibleFields.show_company_phone !== false && (
                   <p className="text-sm text-slate-500 flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-slate-400" />
                     {operator.phone}
                   </p>
                 )}
-                {operator.email && (
+                {operator.email && visibleFields.show_company_email !== false && (
                   <p className="text-sm text-slate-500 flex items-center gap-2">
                     <Mail className="w-3.5 h-3.5 text-slate-400" />
                     {operator.email}
+                  </p>
+                )}
+                {operator.company_address && visibleFields.show_company_address !== false && (
+                  <p className="text-sm text-slate-500 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    {operator.company_address}
                   </p>
                 )}
                 {showGst && operator.gst_number && (
@@ -306,19 +324,19 @@ export default function PublicInvoice() {
                     <User className="w-4 h-4 text-indigo-500" />
                     {subscriber.name}
                   </p>
-                  {subscriber.phone && (
+                  {subscriber.phone && visibleFields.show_subscriber_phone !== false && (
                     <p className="text-sm text-slate-500 flex items-center gap-2">
                       <Phone className="w-3.5 h-3.5 text-slate-400" />
                       {subscriber.phone}
                     </p>
                   )}
-                  {subscriber.email && (
+                  {subscriber.email && visibleFields.show_subscriber_email !== false && (
                     <p className="text-sm text-slate-500 flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5 text-slate-400" />
                       {subscriber.email}
                     </p>
                   )}
-                  {subscriber.address && (
+                  {subscriber.address && visibleFields.show_subscriber_address !== false && (
                     <p className="text-sm text-slate-500 flex items-center gap-2">
                       <MapPin className="w-3.5 h-3.5 text-slate-400" />
                       {subscriber.address}
@@ -465,7 +483,7 @@ export default function PublicInvoice() {
           </div>
 
           {/* Bank Details (if available) */}
-          {(operator.bank_account_name || operator.bank_account_number) && (
+          {visibleFields.show_bank_details !== false && (operator.bank_account_name || operator.bank_account_number) && (
             <div className="px-6 sm:px-8 py-5 bg-slate-50 border-t border-slate-200">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Bank Details for Payment</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -509,7 +527,9 @@ export default function PublicInvoice() {
               <p className="text-xs text-slate-400 text-center">{invoice_settings.invoice_footer}</p>
             )}
             {!invoice_settings?.invoice_footer && (
-              <p className="text-xs text-slate-400 text-center">This is a computer-generated invoice and does not require a signature.</p>
+              <p className="text-xs text-slate-400 text-center">
+                This is a computer-generated invoice and does not require a signature. Payment status: {invoice.status}.
+              </p>
             )}
           </div>
         </div>

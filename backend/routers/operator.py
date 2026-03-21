@@ -7,6 +7,7 @@ import os
 import csv
 import io
 import logging
+import uuid
 
 from database import db
 from models import (
@@ -27,9 +28,12 @@ from dependencies import (
 )
 from audit import log_audit
 from sanitization import sanitize_filename, sanitize_text
+from services.invoice_view_service import normalize_invoice_settings, build_public_invoice_url, build_public_invoice_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "uploads"))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 # ── Addon helper ──────────────────────────────────────────────────────────────
@@ -158,21 +162,10 @@ async def update_operator_profile(data: OperatorUpdate, current_user: dict = Dep
 @router.get("/invoice-settings")
 async def get_invoice_settings(current_user: dict = Depends(require_operator)):
     settings = await db.invoice_settings.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
+    operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
     if not settings:
-        operator = await db.operators.find_one({"id": current_user["operator_id"]}, {"_id": 0})
-        return {
-            "company_name": operator.get("company_name", ""),
-            "company_address": "", "company_phone": operator.get("phone", ""),
-            "company_email": operator.get("email", ""), "logo_url": None,
-            "invoice_prefix": "INV", "invoice_footer": None, "show_gst": True, "terms_conditions": None,
-            "invoice_template": "classic"  # Default value for new invoice template feature
-        }
-    
-    # Ensure invoice_template field is present in existing records
-    if "invoice_template" not in settings:
-        settings["invoice_template"] = "classic"
-    
-    return settings
+        return normalize_invoice_settings({}, operator)
+    return normalize_invoice_settings(settings, operator)
 
 
 @router.put("/invoice-settings")
@@ -185,6 +178,45 @@ async def update_invoice_settings(data: InvoiceCustomization, current_user: dict
         {"operator_id": current_user["operator_id"]}, {"$set": settings}, upsert=True
     )
     return {"message": "Invoice settings updated"}
+
+
+@router.post("/invoice-settings/upload-logo")
+async def upload_invoice_logo(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_operator),
+):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, and SVG images are allowed")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 5MB")
+
+    safe_original = sanitize_filename(file.filename or "invoice-logo.png", default="invoice-logo")
+    ext = safe_original.split(".")[-1].lower() if "." in safe_original else "png"
+    filename = f"invoice_logo_{current_user['operator_id']}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    public_url = f"/uploads/{filename}"
+    await log_audit(
+        current_user["id"],
+        current_user["name"],
+        current_user["role"],
+        "upload",
+        "invoice_logo",
+        None,
+        {"filename": filename, "url": public_url},
+        ip_address=current_user.get("_ip_address"),
+        operator_id=current_user["operator_id"],
+    )
+    return {"message": "Logo uploaded successfully", "url": public_url, "filename": filename}
 
 
 # ─── Theme Settings ─────────────────────────────────────────────────────────
@@ -1337,22 +1369,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     # Auto-send WhatsApp if whatsapp_notifications addon is active (uses platform WhatsApp config)
     auto_wa_sent = False
     # Build public invoice URL from request origin
-    public_invoice_url = None
-    try:
-        # Get the origin from the request headers (set by browser)
-        origin = request.headers.get("origin") or request.headers.get("referer", "")
-        if origin:
-            # Strip trailing slash and any path
-            from urllib.parse import urlparse
-            parsed = urlparse(origin)
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
-        else:
-            # Fallback: use request base URL (strips /api prefix)
-            base_url = str(request.base_url).rstrip("/")
-        if base_url:
-            public_invoice_url = f"{base_url}/invoice/{invoice['id']}"
-    except Exception:
-        pass
+    public_invoice_url = build_public_invoice_url(request, invoice)
 
     if await _has_addon(current_user["operator_id"], "whatsapp_notifications"):
         try:
@@ -1386,6 +1403,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     result["auto_wa_sent"] = auto_wa_sent
     result["has_whatsapp_addon"] = await _has_addon(current_user["operator_id"], "whatsapp_notifications")
     result["public_url"] = public_invoice_url
+    result["public_path"] = build_public_invoice_path(invoice)
     return result
 
 
@@ -1512,9 +1530,10 @@ async def get_invoice_pdf(invoice_id: str, current_user: dict = Depends(require_
     inv_settings = await db.invoice_settings.find_one(
         {"operator_id": current_user["operator_id"]}, {"_id": 0}
     )
-    template = (inv_settings or {}).get("invoice_template", "classic")
+    invoice_settings = normalize_invoice_settings(inv_settings, operator)
+    template = invoice_settings.get("invoice_template", "classic")
     pdf_bytes = pdf_service.generate_invoice_pdf(
-        invoice_data=invoice, operator_data={**(operator or {}), **(inv_settings or {})},
+        invoice_data=invoice, operator_data={**(operator or {}), **invoice_settings},
         subscriber_data=subscriber or {}, plan_data=plan or {}, qr_code_base64=qr_code,
         template=template,
     )

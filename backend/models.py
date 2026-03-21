@@ -524,6 +524,16 @@ class InvoiceCustomization(SanitizedModel):
     show_gst: bool = True
     terms_conditions: Optional[str] = None
     invoice_template: str = "classic"  # "classic" or "modern"
+    visible_fields: Dict[str, bool] = Field(default_factory=lambda: {
+        "show_logo": True,
+        "show_company_address": True,
+        "show_company_phone": True,
+        "show_company_email": True,
+        "show_bank_details": True,
+        "show_subscriber_phone": True,
+        "show_subscriber_email": True,
+        "show_subscriber_address": True,
+    })
 
     @field_validator("company_phone")
     @classmethod

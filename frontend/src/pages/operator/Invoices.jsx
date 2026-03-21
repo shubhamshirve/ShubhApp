@@ -407,7 +407,7 @@ const OperatorInvoices = () => {
                               Download PDF
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onClick={() => window.open(`/invoice/${invoice.id}`, '_blank')}
+                              onClick={() => window.open(`/invoice/${invoice.invoice_number || invoice.id}`, '_blank')}
                             >
                               <ExternalLink className="w-4 h-4 mr-2 text-blue-600" />
                               View Public Invoice

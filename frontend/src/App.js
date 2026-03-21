@@ -161,7 +161,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/invoice/:id" element={<PublicInvoice />} />
+          <Route path="/invoice/:invoiceRef" element={<PublicInvoice />} />
 
           {/* Admin Routes */}
           <Route path="/admin" element={

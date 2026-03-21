@@ -129,7 +129,7 @@ Legend:
 ## Sprint 2
 
 ### 4. Invoice Branding and Public Invoice Consistency
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P1`
 - Importance: `High`
 - Effort: `L`
@@ -149,6 +149,18 @@ Legend:
   - Invoice customization should support logo upload and selectable fields
 - Dependencies:
   - Best after Sprint 1 wallet/auth stabilization
+- Current implementation notes:
+  - Public invoice routes now resolve by `invoice_number` first, with legacy `invoice.id` fallback for older links.
+  - Manual invoice creation now returns invoice-number-based public URLs.
+  - Invoice settings now support logo upload plus field-level visibility toggles for branding/contact/subscriber/bank sections.
+  - Public invoice page now renders operator logo, address, payment status, and field visibility rules from shared invoice settings.
+  - PDF generation now uses the same merged invoice settings object as the public page and supports logo rendering.
+- Pending tests:
+  - Manual public invoice URL test using `invoice_number`, plus fallback verification for old id-based links.
+  - Manual operator invoice settings test for logo upload, preview, save, and reload persistence.
+  - Manual PDF verification for logo, address, payment status, and visible-field toggles.
+  - Manual payment create/verify flow through the public invoice route after moving to invoice-number URLs.
+  - Targeted regression check for WhatsApp/shared public invoice links opened from operator invoices.
 
 ### 5. Multi-Plan Subscribers and Multi-Line Invoices
 - Status: `planned`

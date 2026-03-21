@@ -12,9 +12,11 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.pdfgen import canvas as rl_canvas
 import io
 import base64
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
+from urllib.request import urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +105,12 @@ class InvoicePDFService:
         )
         elems = []
         elems.extend(self._classic_header(operator, invoice))
-        elems.extend(self._classic_bill_to(subscriber))
+        elems.extend(self._classic_bill_to(subscriber, operator))
         elems.extend(self._classic_items(invoice, plan))
         elems.extend(self._classic_summary(invoice))
         if qr_b64:
             elems.extend(self._build_qr_section(qr_b64))
-        if operator.get("bank_account_number"):
+        if self._is_visible(operator, "show_bank_details") and operator.get("bank_account_number"):
             elems.extend(self._build_bank_details(operator))
         elems.extend(self._classic_footer(operator))
         doc.build(elems)
@@ -117,8 +119,13 @@ class InvoicePDFService:
 
     def _classic_header(self, operator, invoice):
         elems = []
+        company_cell = [Paragraph(operator.get("company_name", "Company"), self.styles["CompanyName"])]
+        logo = self._build_logo(operator.get("logo_url"), max_width=42*mm, max_height=16*mm)
+        if logo:
+            company_cell.insert(0, logo)
+            company_cell.insert(1, Spacer(1, 4))
         header_data = [[
-            Paragraph(operator.get("company_name", "Company"), self.styles["CompanyName"]),
+            company_cell,
             Paragraph("TAX INVOICE", self.styles["InvoiceTitle"])
         ]]
         t = Table(header_data, colWidths=[250, 250])
@@ -129,15 +136,18 @@ class InvoicePDFService:
         elems.append(t)
         elems.append(Spacer(1, 6))
 
-        co_info = (
-            f"{operator.get('owner_name', '')}<br/>"
-            f"Phone: {operator.get('phone', '')}<br/>"
-            f"Email: {operator.get('email', '')}"
-        )
+        co_lines = []
+        if operator.get("owner_name"):
+            co_lines.append(operator["owner_name"])
+        if operator.get("phone"):
+            co_lines.append(f"Phone: {operator['phone']}")
+        if operator.get("email"):
+            co_lines.append(f"Email: {operator['email']}")
         if operator.get("gst_number"):
-            co_info += f"<br/>GSTIN: {operator['gst_number']}"
+            co_lines.append(f"GSTIN: {operator['gst_number']}")
         if operator.get("company_address"):
-            co_info += f"<br/>Address: {operator['company_address']}"
+            co_lines.append(f"Address: {operator['company_address']}")
+        co_info = "<br/>".join(co_lines) or operator.get("company_name", "Company")
 
         inv_info = (
             f"<b>Invoice #:</b> {invoice.get('invoice_number', '')}<br/>"
@@ -157,14 +167,17 @@ class InvoicePDFService:
         elems.append(Spacer(1, 16))
         return elems
 
-    def _classic_bill_to(self, subscriber):
+    def _classic_bill_to(self, subscriber, operator):
         elems = []
         elems.append(Paragraph("BILL TO", self.styles["SectionHeader"]))
-        bill = f"<b>{subscriber.get('name', '')}</b><br/>Phone: {subscriber.get('whatsapp_number', '')}"
-        if subscriber.get("email"):
-            bill += f"<br/>Email: {subscriber['email']}"
-        if subscriber.get("address"):
-            bill += f"<br/>Address: {subscriber['address']}"
+        lines = [f"<b>{subscriber.get('name', '')}</b>"]
+        if subscriber.get("whatsapp_number") and self._is_visible(operator, "show_subscriber_phone"):
+            lines.append(f"Phone: {subscriber['whatsapp_number']}")
+        if subscriber.get("email") and self._is_visible(operator, "show_subscriber_email"):
+            lines.append(f"Email: {subscriber['email']}")
+        if subscriber.get("address") and self._is_visible(operator, "show_subscriber_address"):
+            lines.append(f"Address: {subscriber['address']}")
+        bill = "<br/>".join(lines)
         elems.append(Paragraph(bill, self.styles["InvoiceBodyText"]))
         elems.append(Spacer(1, 16))
         return elems
@@ -248,6 +261,25 @@ class InvoicePDFService:
         elems.append(Paragraph(combined, self.styles["InvoiceSmallText"]))
         return elems
 
+    def _build_logo(self, logo_url: Optional[str], max_width: float, max_height: float):
+        if not logo_url:
+            return None
+        try:
+            if logo_url.startswith(("http://", "https://")):
+                with urlopen(logo_url, timeout=5) as resp:
+                    content = resp.read()
+                img = Image(io.BytesIO(content))
+            elif logo_url.startswith("/"):
+                root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public"))
+                img = Image(os.path.join(root, logo_url.lstrip("/").replace("/", os.sep)))
+            else:
+                img = Image(logo_url)
+            img._restrictSize(max_width, max_height)
+            return img
+        except Exception as exc:
+            logger.warning(f"Failed to load invoice logo: {exc}")
+            return None
+
     # ── Modern Template ────────────────────────────────────────────────────────
 
     def _generate_modern_invoice(self, invoice, operator, subscriber, plan, qr_b64) -> bytes:
@@ -280,7 +312,7 @@ class InvoicePDFService:
         elems.extend(self._modern_summary(invoice))
         if qr_b64:
             elems.extend(self._build_qr_section(qr_b64))
-        if operator.get("bank_account_number"):
+        if self._is_visible(operator, "show_bank_details") and operator.get("bank_account_number"):
             elems.extend(self._build_bank_details_modern(operator))
         elems.extend(self._modern_footer(operator))
 
@@ -317,22 +349,25 @@ class InvoicePDFService:
         from_lines = [
             Paragraph("FROM", self.styles["ModernLabel"]),
             Paragraph(operator.get("owner_name", ""), self.styles["ModernValue"]),
-            Paragraph(operator.get("phone", ""), self.styles["ModernSmall"]),
-            Paragraph(operator.get("email", ""), self.styles["ModernSmall"]),
         ]
+        if self._is_visible(operator, "show_company_phone"):
+            from_lines.append(Paragraph(operator.get("phone", ""), self.styles["ModernSmall"]))
+        if self._is_visible(operator, "show_company_email"):
+            from_lines.append(Paragraph(operator.get("email", ""), self.styles["ModernSmall"]))
         if operator.get("gst_number"):
             from_lines.append(Paragraph(f"GSTIN: {operator['gst_number']}", self.styles["ModernSmall"]))
-        if operator.get("company_address"):
+        if operator.get("company_address") and self._is_visible(operator, "show_company_address"):
             from_lines.append(Paragraph(operator["company_address"], self.styles["ModernSmall"]))
 
         to_lines = [
             Paragraph("BILL TO", self.styles["ModernLabel"]),
             Paragraph(f"<b>{subscriber.get('name', '')}</b>", self.styles["ModernValue"]),
-            Paragraph(subscriber.get("whatsapp_number", ""), self.styles["ModernSmall"]),
         ]
-        if subscriber.get("email"):
+        if subscriber.get("whatsapp_number") and self._is_visible(operator, "show_subscriber_phone"):
+            to_lines.append(Paragraph(subscriber["whatsapp_number"], self.styles["ModernSmall"]))
+        if subscriber.get("email") and self._is_visible(operator, "show_subscriber_email"):
             to_lines.append(Paragraph(subscriber["email"], self.styles["ModernSmall"]))
-        if subscriber.get("address"):
+        if subscriber.get("address") and self._is_visible(operator, "show_subscriber_address"):
             to_lines.append(Paragraph(subscriber["address"], self.styles["ModernSmall"]))
 
         meta_lines = [
@@ -497,6 +532,10 @@ class InvoicePDFService:
         elems.append(Paragraph(bank_info, self.styles["InvoiceBodyText"]))
         elems.append(Spacer(1, 12))
         return elems
+
+    def _is_visible(self, operator: Dict[str, Any], field_key: str) -> bool:
+        visible_fields = operator.get("visible_fields") or {}
+        return visible_fields.get(field_key, True)
 
     def _fmt(self, val) -> str:
         if not val:

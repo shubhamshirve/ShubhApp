@@ -1,18 +1,19 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-21  
-**Active Branch:** `7.13-3`  
-**Status:** Tasks 1, 2, and 3 implemented in code; live verification still pending
+**Active Branch:** `7.13-4`  
+**Status:** Tasks 1, 2, 3, and 4 implemented in code; live verification still pending
 
 ---
 
 ## Current Snapshot
 
-The branch now includes working code changes for the first three Sprint 1 items:
+The branch now includes working code changes for the first four prioritized tasks:
 
 - Task 1: Wallet accounting and billing integrity
 - Task 2: Auth and OTP production hardening
 - Task 3: Platform maintenance mode
+- Task 4: Invoice branding and public invoice consistency
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
 - [.env](/d:/eBill/.env)
@@ -89,6 +90,26 @@ Implemented behavior:
 - Admin and operator layouts fetch `/auth/app-state` and show a visible maintenance banner.
 - Wallet and subscription UI actions now disable during maintenance.
 
+### Task 4: Invoice Branding and Public Invoice Consistency
+
+Primary files:
+- [invoice_view_service.py](/d:/eBill/backend/services/invoice_view_service.py)
+- [public.py](/d:/eBill/backend/routers/public.py)
+- [operator.py](/d:/eBill/backend/routers/operator.py)
+- [pdf_service.py](/d:/eBill/backend/services/pdf_service.py)
+- [PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
+- [Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
+- [Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
+- [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md)
+
+Implemented behavior:
+- Public invoice APIs now resolve invoices by `invoice_number` first and fall back to internal invoice id for backwards compatibility.
+- Operator-created public invoice links now use `/invoice/{invoice_number}` instead of internal ids.
+- Added shared invoice-view helpers so public invoice data and PDF data are built from the same merged invoice settings object.
+- Invoice settings now include field-visibility controls and an operator logo upload endpoint.
+- Public invoice page now shows operator branding/address and respects field visibility rules.
+- PDF generation now pulls from the same branding data and supports logo rendering for uploaded or direct logo URLs.
+
 ---
 
 ## Pending Tests
@@ -97,6 +118,8 @@ Implemented behavior:
 - `python -m py_compile backend/routers/wallet.py backend/routers/operator.py`
 - `python -m py_compile backend/routers/auth.py backend/services/email_service.py backend/server.py`
 - `python -m py_compile backend/models.py backend/dependencies.py backend/routers/admin.py backend/routers/auth.py backend/routers/operator.py backend/routers/wallet.py backend/services/cron_service.py`
+- `python -m py_compile backend/models.py backend/services/invoice_view_service.py backend/routers/public.py backend/routers/operator.py backend/services/pdf_service.py`
+- `cmd /c npm run build` in [frontend](/d:/eBill/frontend) completed successfully with existing hook-dependency lint warnings only
 
 ### Still pending for Task 1
 - Manual wallet top-up with Razorpay test/live keys:
@@ -138,6 +161,24 @@ Implemented behavior:
   - `/auth/app-state` banner loads correctly without request loops
   - wallet/subscription buttons disable correctly during maintenance
 
+### Still pending for Task 4
+- Public invoice route verification:
+  - open `/invoice/{invoice_number}`
+  - confirm old `/invoice/{invoice_id}` links still resolve
+- Invoice settings verification:
+  - upload logo
+  - save visibility toggles
+  - reload settings and confirm persistence
+- Public invoice verification:
+  - operator address/logo display
+  - payment status display
+  - hidden fields actually disappear
+- PDF verification:
+  - branding and visibility settings match the public invoice data
+  - downloaded filename uses invoice number
+- Payment regression:
+  - create-payment-order and verify-payment still work through invoice-number route
+
 ---
 
 ## Current Working Plan
@@ -167,25 +208,25 @@ The active source of truth remains [ROADMAP.md](/d:/eBill/memory/ROADMAP.md).
 
 ## Immediate Next Task
 
-### Task 4: Invoice Branding and Public Invoice Consistency
+### Task 5: Multi-Plan Subscribers and Multi-Line Invoices
 
 Why this should come next:
-- Sprint 1 core stabilization work is now in code.
-- Invoice branding/public URL work is the next highest-impact customer-facing item without a major schema rewrite.
-- It can proceed while live verification for Tasks 1 to 3 happens in parallel.
+- Task 4 customer-facing invoice work is now in code.
+- The next roadmap item is the largest schema refactor and should start only after the current verification backlog is understood.
+- It will require more deliberate migration work than the previous tasks.
 
 Likely starting files:
-- [public.py](/d:/eBill/backend/routers/public.py)
+- [models.py](/d:/eBill/backend/models.py)
 - [operator.py](/d:/eBill/backend/routers/operator.py)
-- [pdf_service.py](/d:/eBill/backend/services/pdf_service.py)
-- [Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
-- invoice/public page frontend files
+- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
+- [Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
+- subscriber and invoice-related frontend forms
 
 Expected implementation shape:
-- switch public invoice routes to invoice number
-- align invoice page and PDF rendering
-- include operator logo/address cleanly
-- extend invoice customization controls where needed
+- add multi-plan subscriber data modeling
+- add grouped vs split billing behavior
+- teach invoice rendering and creation flows about multiple line items
+- plan a safe migration path for existing data
 
 ---
 
@@ -194,19 +235,21 @@ Expected implementation shape:
 - Task 1 still needs real payment-provider verification before being treated as production-complete.
 - Task 2 now depends on correct Resend env configuration; auth testing will fail without those keys.
 - Task 3 needs browser and cron validation before being treated as rollout-ready.
+- Task 4 needs real route/PDF/payment verification before being treated as customer-ready.
 - There are still older historical docs/tests in the repo that reference legacy plan-credit behavior and may need cleanup later.
-- Invoice branding work will likely touch both public routes and PDF generation, so keep link compatibility in mind.
+- Task 5 will likely require schema migration work, so avoid starting it without a migration/testing plan.
 
 ---
 
 ## Branch / Git State At Handoff
 
-- Current working branch for delivery: `7.13-3`
+- Current working branch for delivery: `7.13-4`
 - Source implementation branch before delivery branch creation: `V7.14`
 - Latest code in progress includes:
   - wallet/top-up accounting changes
   - auth/OTP hardening
   - env/bootstrap alignment
   - maintenance mode across admin settings, API access state, cron guards, and layout banners
+  - invoice-number public routing, invoice branding/visibility controls, and operator logo upload
 
-If continuing from here, start Task 4 after this branch is committed and pushed.
+If continuing from here, start Task 5 after this branch is committed, pushed, and the pending Task 4 checks are reviewed.

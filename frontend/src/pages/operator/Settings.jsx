@@ -29,6 +29,8 @@ import {
   Clock,
   CalendarClock,
   Palette,
+  Loader2,
+  Upload,
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -37,6 +39,7 @@ const OperatorSettings = () => {
   const hasPaymentReminder = !!features?.whatsapp_notifications;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [profile, setProfile] = useState(null);
   const [gatewayConfig, setGatewayConfig] = useState(null);
@@ -77,6 +80,16 @@ const OperatorSettings = () => {
     show_gst: true,
     terms_conditions: "",
     invoice_template: "classic",
+    visible_fields: {
+      show_logo: true,
+      show_company_address: true,
+      show_company_phone: true,
+      show_company_email: true,
+      show_bank_details: true,
+      show_subscriber_phone: true,
+      show_subscriber_email: true,
+      show_subscriber_address: true,
+    },
   });
 
   const [gatewayForm, setGatewayForm] = useState({
@@ -132,6 +145,16 @@ const OperatorSettings = () => {
         show_gst: invoiceRes.data.show_gst !== false,
         terms_conditions: invoiceRes.data.terms_conditions || "",
         invoice_template: invoiceRes.data.invoice_template || "classic",
+        visible_fields: {
+          show_logo: invoiceRes.data.visible_fields?.show_logo !== false,
+          show_company_address: invoiceRes.data.visible_fields?.show_company_address !== false,
+          show_company_phone: invoiceRes.data.visible_fields?.show_company_phone !== false,
+          show_company_email: invoiceRes.data.visible_fields?.show_company_email !== false,
+          show_bank_details: invoiceRes.data.visible_fields?.show_bank_details !== false,
+          show_subscriber_phone: invoiceRes.data.visible_fields?.show_subscriber_phone !== false,
+          show_subscriber_email: invoiceRes.data.visible_fields?.show_subscriber_email !== false,
+          show_subscriber_address: invoiceRes.data.visible_fields?.show_subscriber_address !== false,
+        },
       });
 
       if (reminderRes?.data) {
@@ -240,6 +263,37 @@ const OperatorSettings = () => {
       toast.error("Failed to update theme");
     } finally {
       setThemeSaving(false);
+    }
+  };
+
+  const handleInvoiceLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload a PNG, JPG, or SVG image");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size must be less than 5MB");
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await authAxios.post("/operator/invoice-settings/upload-logo", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setInvoiceForm(prev => ({ ...prev, logo_url: res.data.url }));
+      toast.success("Logo uploaded successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to upload logo");
+    } finally {
+      setLogoUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -711,7 +765,56 @@ const OperatorSettings = () => {
                         placeholder="https://yourcompany.com/logo.png"
                         data-testid="inv-logo-url"
                       />
-                      <p className="text-xs text-slate-500">Enter a direct URL to your company logo (recommended: 200x60 px)</p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
+                          {logoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                          {logoUploading ? "Uploading..." : "Upload Logo"}
+                          <input
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+                            className="hidden"
+                            onChange={handleInvoiceLogoUpload}
+                            disabled={logoUploading || isReadOnly}
+                          />
+                        </label>
+                        <p className="text-xs text-slate-500">Use upload for best PDF compatibility, or paste a direct logo URL.</p>
+                      </div>
+                      {invoiceForm.logo_url && (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 inline-flex">
+                          <img src={invoiceForm.logo_url} alt="Invoice logo preview" className="max-h-12 w-auto" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4 space-y-4">
+                    <p className="text-sm font-medium text-slate-700">Visible Fields on Invoice</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[
+                        ["show_logo", "Show Logo"],
+                        ["show_company_address", "Show Company Address"],
+                        ["show_company_phone", "Show Company Phone"],
+                        ["show_company_email", "Show Company Email"],
+                        ["show_bank_details", "Show Bank Details"],
+                        ["show_subscriber_phone", "Show Subscriber Phone"],
+                        ["show_subscriber_email", "Show Subscriber Email"],
+                        ["show_subscriber_address", "Show Subscriber Address"],
+                      ].map(([key, label]) => (
+                        <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                          <Label className="font-normal">{label}</Label>
+                          <Switch
+                            checked={invoiceForm.visible_fields?.[key] !== false}
+                            onCheckedChange={(checked) => setInvoiceForm(prev => ({
+                              ...prev,
+                              visible_fields: {
+                                ...(prev.visible_fields || {}),
+                                [key]: checked,
+                              },
+                            }))}
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                      ))}
                     </div>
                   </div>
 
