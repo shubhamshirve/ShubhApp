@@ -73,10 +73,8 @@ const PopoverDatePicker = ({ date, onSelect, label }) => {
           mode="single"
           selected={date}
           onSelect={(d) => {
-            if (d) {
-              onSelect(d);
-              setOpen(false);
-            }
+            if (d) onSelect(d);
+            setOpen(false);
           }}
           initialFocus
         />

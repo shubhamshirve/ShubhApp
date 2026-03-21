@@ -421,18 +421,7 @@ const OperatorSubscription = () => {
             <CreditCard className="w-4 h-4 inline mr-1.5 -mt-0.5" />
             Subscription & Add-ons
           </button>
-          <button
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              activeTab === "topup"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            onClick={() => setActiveTab("topup")}
-            data-testid="tab-topup"
-          >
-            <Wallet className="w-4 h-4 inline mr-1.5 -mt-0.5" />
-            Wallet Top-up
-          </button>
+
           <button
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === "history"
@@ -755,134 +744,7 @@ const OperatorSubscription = () => {
         </>
         )}
 
-        {/* ─── Wallet Top-up Tab ─────────────────────────────── */}
-        {activeTab === "topup" && (
-          <div className="space-y-6">
-            {walletLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
-              </div>
-            ) : (
-              <>
-                {/* Balance card */}
-                {wallet && (
-                  <>
-                    {/* Suspension / low balance alerts */}
-                    {wallet.wallet_suspended && (
-                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-suspended-banner">
-                        <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-semibold text-red-800">Account Suspended — Low Wallet Balance</p>
-                          <p className="text-sm text-red-700 mt-1">
-                            Your wallet balance is critically low. All automation has been stopped.
-                            Top-up at least ₹100 to resume service.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {isCritical && !wallet.wallet_suspended && (
-                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-critical-banner">
-                        <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-semibold text-red-800">Critical: Wallet Balance Below ₹100</p>
-                          <p className="text-sm text-red-700 mt-1">
-                            Please top-up immediately to prevent account suspension.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {isLow && !isCritical && !wallet.wallet_suspended && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-low-banner">
-                        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-semibold text-amber-800">Low Wallet Balance</p>
-                          <p className="text-sm text-amber-700 mt-1">
-                            Balance below ₹500. Top-up to keep invoice automation active.
-                          </p>
-                        </div>
-                      </div>
-                    )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <Card className="sm:col-span-1">
-                        <CardContent className="pt-6">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCritical ? "bg-red-100" : isLow ? "bg-amber-100" : "bg-emerald-100"}`}>
-                              <Wallet className={`w-5 h-5 ${isCritical ? "text-red-600" : isLow ? "text-amber-600" : "text-emerald-600"}`} />
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500">Wallet Balance</p>
-                              <p className={`text-2xl font-bold ${isCritical ? "text-red-700" : isLow ? "text-amber-700" : "text-slate-900"}`} data-testid="wallet-balance-display">
-                                ₹{balance.toLocaleString("en-IN")}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-slate-400">
-                            ₹{subscription?.per_invoice_price ?? 10} deducted per invoice generated
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="sm:col-span-2">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-base flex items-center gap-2">
-                            <Plus className="w-4 h-4" />
-                            Top-up Wallet
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex gap-3 mb-3">
-                            {[500, 1000, 2000, 5000].map((preset) => (
-                              <button
-                                key={preset}
-                                onClick={() => setTopupAmount(String(preset))}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                                  topupAmount === String(preset)
-                                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                                    : "border-slate-200 text-slate-600 hover:border-slate-300"
-                                }`}
-                                data-testid={`topup-preset-${preset}`}
-                              >
-                                ₹{preset.toLocaleString("en-IN")}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <div className="flex-1 relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
-                              <Input
-                                type="number"
-                                placeholder="Enter wallet credit amount"
-                                value={topupAmount}
-                                onChange={(e) => setTopupAmount(e.target.value)}
-                                className="pl-7"
-                                min="100"
-                                max="50000"
-                                data-testid="topup-amount-input"
-                              />
-                            </div>
-                            <Button
-                              onClick={handleTopup}
-                              disabled={topupLoading || !topupAmount || isMaintenance}
-                              data-testid="topup-pay-btn"
-                            >
-                              {topupLoading ? (
-                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
-                              ) : (
-                                <><CreditCard className="w-4 h-4 mr-2" /> Pay via Razorpay</>
-                              )}
-                            </Button>
-                          </div>
-                          <p className="text-xs text-slate-400 mt-2">Enter the wallet credit amount before GST. GST is added at checkout. Min ₹100 · Max ₹50,000 · Secure payment via Razorpay</p>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        )}
 
         {activeTab === "history" && (
           <Card>
