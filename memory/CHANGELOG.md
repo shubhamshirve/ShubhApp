@@ -161,3 +161,12 @@
 - On successful payment verification, the pre-GST plan amount is credited to the operator wallet.
 - Operator Settings page crash bug fixed — removed leftover Reminders tab state/JSX that caused crashes during admin impersonation.
 
+#### Fix 6: Subscription Wallet Top-up Removal
+- Removed the "Wallet Top-up" tab and UI block from the `Subscription.jsx` operator screen to streamline flows.
+
+#### Fix 7: PDF Invoice Download (Client-Side Print Replacement)
+- Replaced backend ReportLab PDF generation with a `window.print()` implementation via the `PublicInvoice.jsx` layout.
+- This ensures downloaded PDFs exactly match the beautiful Tailwind CSS layout of the modern public invoice.
+- Added `@media print:hidden` CSS utility classes to hide navigation/header bars and "Pay Now" actions on the printed PDF.
+- Added `payment_id` and `paid_at` data to `public.py` so the "Payment Received" confirmation block reliably displays the Date Paid and Transaction Ref on the printed receipt acting as proof of payment.
+

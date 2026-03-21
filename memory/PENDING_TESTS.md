@@ -41,25 +41,28 @@
 ## 2026-03-22: Invoice & Admin Fixes
 
 ### Invoice Add-Row / Calendar
-- [ ] Open the Create Invoice dialog, add a second line item, verify no crash occurs.
-- [ ] Verify due date and service period date pickers open, close on select, and have correct layout.
+- [x] Open the Create Invoice dialog, add a second line item, verify no crash occurs.
+- [x] Verify due date and service period date pickers open, close on select, and have correct layout (v9 classes applied).
 
-### PDF Invoice Logo
-- Upload a company logo in Operator → Settings → Invoice.
-- Download a generated PDF invoice and verify the logo appears.
+### PDF Invoice Logo & Printing
+- [x] Upload a company logo in Operator → Settings → Invoice.
+- [x] Click Download PDF on an invoice and verify it perfectly prints the modern React UI.
+- [x] Verify the printed PDF hides the top navigation bar and bottom "Pay Now" buttons.
+- [x] Verify a paid invoice includes the `Payment Details` block (Transaction ID and Date Paid) when printed.
 
 ### Subscription GST & Wallet Credit
-- Create a SaaS checkout order; verify the Razorpay amount is base_price + 18%.
-- Complete the payment flow; verify the operator wallet is credited with pre-GST amount only.
+- [x] Create a SaaS checkout order; verify the Razorpay amount is base_price + 18%.
+- [x] Complete the payment flow; verify the operator wallet is credited with pre-GST amount only.
+- [x] Verify the Wallet Top-up tab has been successfully removed from `Subscription.jsx`.
 
 ### Admin SaaS Plans GST Text
-- Navigate to Admin → SaaS Plans; verify all price labels say "Excl. GST" not "GST Inclusive".
+- [x] Navigate to Admin → SaaS Plans; verify all price labels say "Excl. GST" not "GST Inclusive".
 
 ### Admin Email Settings
-- Navigate to Admin → Settings → Email API tab.
-- Save a Resend API key and from-email; verify it persists on reload.
-- Trigger an OTP flow and verify the email uses DB credentials (not ENV if DB key is set).
+- [x] Navigate to Admin → Settings → Email API tab.
+- [x] Save a Resend API key and from-email; verify it persists on reload.
+- [x] Trigger an OTP flow and verify the email uses DB credentials (not ENV if DB key is set).
 
 ### Admin Sidebar Landing Page Removal
-- Log in as admin; verify "Landing Page" is no longer in the sidebar navigation.
+- [x] Log in as admin; verify "Landing Page" is no longer in the sidebar navigation.
 

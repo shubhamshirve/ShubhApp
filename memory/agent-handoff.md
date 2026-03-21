@@ -1,7 +1,7 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-22  
-**Active Branch:** `V7.14-4`  
+**Active Branch:** `V7.14-5`  
 **Status:** All Tasks 1-8 and ongoing bug fixes implemented; pending live verification.
 
 ---
@@ -18,7 +18,7 @@ The branch now includes working code changes for all prioritized tasks and recen
 - Task 6: Session timeout and strong role validation
 - Task 7: Global reminders and IST scheduling
 - Task 8: Admin wallet operations (credit, debit, suspend)
-- Add-on: Bug fixes for multi-line invoice crash, calendar modal behavior, PDF logo paths, SaaS plans GST text, Admin nav cleanup, and Global Email Settings.
+- Add-on: Bug fixes for multi-line invoice crash, calendar modal behavior, PDF logo paths, SaaS plans GST text, Admin nav cleanup, Global Email Settings, Subscription Wallet Top-up tab removal, and Client-Side Printing replacement for PDF Invoices with mapped payment statuses.
 
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
