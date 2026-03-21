@@ -87,6 +87,15 @@
 - Created data migration script `backend/migrations/task5_multi_plan.py` for legacy schema conversion.
 - Verified with automated API tests in `backend/tests/test_task5_multi_plan.py`.
 
+### Admin Wallet Operations in Code
+
+#### Task 8: Admin Wallet Operations (implemented, pending live verification)
+- Backend: Added `WalletAdjustmentRequest` and `WalletSuspendRequest` models. Added three endpoints: `POST /admin/wallets/{operator_id}/credit`, `debit`, and `suspend`.
+- Frontend: Upgraded `Wallets.jsx` with Credit/Debit/Suspend buttons, a shared adjustment modal, a suspend confirmation dialog, and full list/transaction refreshing after actions.
+- Behavior: Debits > balance fail. Debits that drop balance < 100 auto-suspend. Credits that restore balance >= 100 auto-unsuspend.
+- Validation: All actions capture reasons and write full audit logs.
+- Tests: Added test suite in `backend/tests/test_task8_admin_wallet.py`.
+
 ## 2025-07-18
 
 ### Batch 8: Codebase Cleanup & Removal

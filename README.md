@@ -46,6 +46,7 @@ A production-grade billing platform for ISP/broadband operators. Built with Reac
 - WhatsApp Business API integration
 - PDF invoice generation (Classic & Modern templates)
 - Admin impersonation for operator support
+- Admin manual wallet operations (credit/debit/suspend) with full audit logging
 - Audit logging with search/filter/pagination
 - Backup & restore system
 - KYC management (business type, PAN, GST, bank details)
