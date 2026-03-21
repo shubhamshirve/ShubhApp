@@ -25,3 +25,15 @@
 - PDF verification to confirm branding and field-visibility settings match public invoice data
 - Operator invoice-settings upload-logo flow verification
 - Regression check for payment creation and verification using invoice-number public routes
+
+## Task 5: Multi-Plan Subscribers and Multi-Line Invoices
+- Manual creation of subscriber with multiple plans on different billing dates
+- Manual creation of a multi-line invoice
+- Automated billing cron execution verification for multi-line grouping
+- Verify `backend/tests/test_task5_multi_plan.py` executes successfully in a stable environment
+
+## Task 6: Session Timeout and Strong Role Validation
+- Manual save of `session_timeout_hours` in Admin settings
+- Force expiration of token and verify frontend Axios interceptor logs the user out gracefully
+- Attempt to delete a subscriber/staff using a staff account to verify 403 Forbidden
+- Verify `backend/tests/test_task6_roles_session.py` executes successfully in a stable environment

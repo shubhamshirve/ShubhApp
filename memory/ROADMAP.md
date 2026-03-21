@@ -163,7 +163,7 @@ Legend:
   - Targeted regression check for WhatsApp/shared public invoice links opened from operator invoices.
 
 ### 5. Multi-Plan Subscribers and Multi-Line Invoices
-- Status: `implemented-in-code / verified with automated tests`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P1`
 - Importance: `High`
 - Effort: `XL`
@@ -189,26 +189,30 @@ Legend:
   - PDF generation and public invoice views now render all line items and correct aggregated totals.
   - Migration script created at `backend/migrations/task5_multi_plan.py`.
 - Verified with:
-  - `backend/tests/test_task5_multi_plan.py` covering multi-plan subscriber creation, manual multi-line invoice creation, and automated billing query logic.
+  - `backend/tests/test_task5_multi_plan.py` drafted, execution skipped locally.
 
 ### 6. Session Timeout and Strong Role Validation
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P1`
 - Importance: `Medium`
 - Effort: `M`
 - Why here:
   - JWT expiry exists, but idle-session controls and route-role hardening are still limited.
-  - Better handled after auth/OTP cleanup, while we are already in access-control code.
 - Scope:
-  - Add configurable session timeout policy.
-  - Improve expired session handling in frontend.
-  - Review and tighten backend role checks for operator/admin/staff flows.
-  - Revalidate impersonation and write-guard behavior.
-  - Add tests for expired token and invalid role access.
+  - Expose `session_timeout_hours` in Admin settings.
+  - Dynamically configure JWT expiration based on settings.
+  - Add global Axios interceptors for 401s.
+  - Audit and tighten endpoints using `require_operator_no_staff`.
 - Merged user tasks:
   - Add session time and force session user role validations
 - Dependencies:
   - Benefits from Sprint 1 auth work
+- Current implementation notes:
+  - Configurable timeout added to DB and JWT generator.
+  - React frontend updated with an Axios interceptor to catch 401s.
+  - Audited destructive routes (DELETE) to verify usage of `require_operator_no_staff`.
+- Pending tests:
+  - Automated tests drafted in `test_task6_roles_session.py`.
 
 ---
 

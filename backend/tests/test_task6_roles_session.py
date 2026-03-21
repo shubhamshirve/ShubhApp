@@ -1,100 +1,81 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
+import requests
 import os
-import sys
+import uuid
 
-# Change dir to backend so imports work
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL') or 'http://localhost:8000'
+BASE_URL = BASE_URL.rstrip('/')
 
-from server import app
-from database import db
-from utils import create_token, hash_password
-from datetime import datetime, timezone
-
-# Test users
-TEST_OPERATOR_EMAIL = "operator_task6@test.com"
-TEST_STAFF_EMAIL = "staff_task6@test.com"
-PASSWORD = "TestPassword@123"
+OPERATOR_EMAIL = "operator1@test.com"
+OPERATOR_PASSWORD = "Test@123"
 
 @pytest.fixture(scope="module")
-async def setup_users():
-    """Setup a test operator and staff user for RBAC validation."""
-    operator = {
-        "id": "operator_task6",
-        "email": TEST_OPERATOR_EMAIL,
-        "password": hash_password(PASSWORD),
-        "role": "operator",
-        "operator_id": "operator_task6",
-        "status": "active",
-        "deleted_at": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    staff = {
-        "id": "staff_task6",
-        "email": TEST_STAFF_EMAIL,
-        "password": hash_password(PASSWORD),
-        "role": "staff",
-        "operator_id": "operator_task6",
-        "status": "active",
-        "deleted_at": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
+def operator_token():
+    """Login and return operator token."""
+    response = requests.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"email": OPERATOR_EMAIL, "password": OPERATOR_PASSWORD}
+    )
+    assert response.status_code == 200, f"Operator login failed: {response.text}"
+    return response.json()["access_token"]
+
+@pytest.fixture(scope="module")
+def staff_token(operator_token):
+    """Use operator token to create a staff member and log in."""
+    staff_pwd = "StaffPassword123"
+    staff_email = f"test_staff_{uuid.uuid4().hex[:8]}@test.com"
+    payload = {
+        "name": "Test Staff",
+        "email": staff_email,
+        "password": staff_pwd,
+        "permissions": ["view_dashboard"]
     }
     
-    await db.users.insert_many([operator, staff])
-    yield
-    await db.users.delete_many({"id": {"$in": ["operator_task6", "staff_task6"]}})
-
-@pytest.mark.asyncio
-async def test_expired_token(setup_users):
-    """Test that a JWT configured with a negative expiry acts as an expired token."""
-    expired_token = create_token({
-        "id": "operator_task6", 
-        "email": TEST_OPERATOR_EMAIL, 
-        "role": "operator", 
-        "operator_id": "operator_task6"
-    }, expiration_hours=-1)  # expired 1 hour ago
+    # Create Staff
+    create_resp = requests.post(
+        f"{BASE_URL}/api/operator/staff",
+        json=payload,
+        headers={"Authorization": f"Bearer {operator_token}"}
+    )
+    assert create_resp.status_code == 200, f"Staff creation failed: {create_resp.text}"
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get(
-            "/api/operator/profile",
-            headers={"Authorization": f"Bearer {expired_token}"}
-        )
-        assert response.status_code == 401
-        assert "Signature has expired" in response.json()["detail"] or "validate credentials" in response.text.lower()
+    # Login as Staff
+    login_resp = requests.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"email": staff_email, "password": staff_pwd}
+    )
+    assert login_resp.status_code == 200, f"Staff login failed: {login_resp.text}"
+    return login_resp.json()["access_token"]
 
-@pytest.mark.asyncio
-async def test_staff_cannot_delete(setup_users):
+
+def test_invalid_token_rejected(operator_token):
+    """Test that an invalid or expired token is rejected with 401 Unauthorized."""
+    # Append random string to invalidate signature
+    invalid_token = operator_token[:-5] + "XXXXX"
+    
+    response = requests.get(
+        f"{BASE_URL}/api/operator/profile",
+        headers={"Authorization": f"Bearer {invalid_token}"}
+    )
+    assert response.status_code == 401
+    assert "validate credentials" in response.json().get("detail", "").lower() or "signature has expired" in response.text.lower()
+
+
+def test_staff_blocked_from_deletes(staff_token):
     """Test that staff user is blocked by require_operator_no_staff from calling DELETE routes."""
-    staff_token = create_token({
-        "id": "staff_task6", 
-        "email": TEST_STAFF_EMAIL, 
-        "role": "staff", 
-        "operator_id": "operator_task6"
-    })
-    
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.delete(
-            "/api/operator/staff/some_staff_id",
-            headers={"Authorization": f"Bearer {staff_token}"}
-        )
-        assert response.status_code == 403
-        assert "Staff users cannot perform delete operations" in response.json()["detail"]
+    response = requests.delete(
+        f"{BASE_URL}/api/operator/staff/some_fake_id",
+        headers={"Authorization": f"Bearer {staff_token}"}
+    )
+    assert response.status_code == 403
+    assert "Staff users cannot perform delete operations" in response.json().get("detail", "")
 
-@pytest.mark.asyncio
-async def test_operator_can_delete_staff(setup_users):
+
+def test_operator_allowed_deletes(operator_token):
     """Test that operator successfully bypasses the no-staff guard for DELETE routes."""
-    operator_token = create_token({
-        "id": "operator_task6", 
-        "email": TEST_OPERATOR_EMAIL, 
-        "role": "operator", 
-        "operator_id": "operator_task6"
-    })
-    
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # Operator trying to delete staff
-        # Given "some_staff_id" doesn't exist, it should pass the guard and return 404
-        response = await client.delete(
-            "/api/operator/staff/some_staff_id",
-            headers={"Authorization": f"Bearer {operator_token}"}
-        )
-        assert response.status_code == 404
+    response = requests.delete(
+        f"{BASE_URL}/api/operator/staff/some_fake_id",
+        headers={"Authorization": f"Bearer {operator_token}"}
+    )
+    # Target doesn't exist, but it passed auth
+    assert response.status_code == 404

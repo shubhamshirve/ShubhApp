@@ -1,19 +1,21 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-21  
-**Active Branch:** `7.13-4`  
-**Status:** Tasks 1, 2, 3, and 4 implemented in code; live verification still pending
+**Active Branch:** `V7.14-2`  
+**Status:** Tasks 1-6 implemented in code; live verification still pending
 
 ---
 
 ## Current Snapshot
 
-The branch now includes working code changes for the first four prioritized tasks:
+The branch now includes working code changes for the first six prioritized tasks:
 
 - Task 1: Wallet accounting and billing integrity
 - Task 2: Auth and OTP production hardening
 - Task 3: Platform maintenance mode
 - Task 4: Invoice branding and public invoice consistency
+- Task 5: Multi-plan subscribers and multi-line invoices
+- Task 6: Session timeout and strong role validation
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
 - [.env](/d:/eBill/.env)
@@ -208,25 +210,22 @@ The active source of truth remains [ROADMAP.md](/d:/eBill/memory/ROADMAP.md).
 
 ## Immediate Next Task
 
-### Task 5: Multi-Plan Subscribers and Multi-Line Invoices
+### Task 7: Global Reminder Control and IST Scheduling
 
 Why this should come next:
-- Task 4 customer-facing invoice work is now in code.
-- The next roadmap item is the largest schema refactor and should start only after the current verification backlog is understood.
-- It will require more deliberate migration work than the previous tasks.
+- The backend cron-job logic was stabilized during Maintenance Mode integration.
+- Moving to automated scheduling (IST offsets, reminders) establishes the automation core.
+- The platform needs to reliably execute reminder delivery before scaling up messaging.
 
 Likely starting files:
-- [models.py](/d:/eBill/backend/models.py)
-- [operator.py](/d:/eBill/backend/routers/operator.py)
-- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
-- [Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
-- subscriber and invoice-related frontend forms
+- `backend/services/cron_service.py`
+- `backend/models.py`
+- `frontend/src/pages/admin/Settings.jsx`
 
 Expected implementation shape:
-- add multi-plan subscriber data modeling
-- add grouped vs split billing behavior
-- teach invoice rendering and creation flows about multiple line items
-- plan a safe migration path for existing data
+- Move reminder scheduling controls from the operator level to the global admin settings.
+- Adjust all system timing from UTC behavior to India Standard Time (IST).
+- Revise the cron workers to respect the global toggle.
 
 ---
 
