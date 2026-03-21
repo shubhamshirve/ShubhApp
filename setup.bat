@@ -106,6 +106,8 @@ if not exist ".env" (
         echo JWT_SECRET=change-this-to-a-strong-random-secret
         echo RAZORPAY_KEY_ID=your_razorpay_key_id
         echo RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+        echo RESEND_API_KEY=
+        echo RESEND_FROM_EMAIL=
         echo WHATSAPP_PHONE_NUMBER_ID=
         echo WHATSAPP_ACCESS_TOKEN=
         echo WHATSAPP_BUSINESS_ACCOUNT_ID=

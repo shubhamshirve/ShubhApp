@@ -69,6 +69,8 @@ def _ensure_env_files():
                     "JWT_SECRET=change-this-to-a-strong-random-secret",
                     "RAZORPAY_KEY_ID=your_razorpay_key_id",
                     "RAZORPAY_KEY_SECRET=your_razorpay_key_secret",
+                    "RESEND_API_KEY=",
+                    "RESEND_FROM_EMAIL=",
                     "WHATSAPP_PHONE_NUMBER_ID=",
                     "WHATSAPP_ACCESS_TOKEN=",
                     "WHATSAPP_BUSINESS_ACCOUNT_ID=",

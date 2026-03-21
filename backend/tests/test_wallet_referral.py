@@ -209,15 +209,22 @@ class TestTopupOrder:
         print(f"Above maximum: {res.json()}")
 
     def test_topup_no_gateway_configured(self, operator1_token):
-        """Topup fails with 500 if no Razorpay key configured (expected behavior)."""
+        """Topup response exposes wallet-credit and GST breakup when gateway is configured."""
         res = requests.post(
             f"{BASE_URL}/api/operator/wallet/topup/create-order?amount=500",
             headers={"Authorization": f"Bearer {operator1_token}"}
         )
-        # Expected to fail since no Razorpay key is configured
         print(f"Topup create order status: {res.status_code}, response: {res.text}")
+        if res.status_code == 200:
+            data = res.json()
+            assert data["wallet_credit_amount"] == 500
+            assert "gst_rate" in data
+            assert "gst_amount" in data
+            assert "paid_amount" not in data
+            assert data["total_amount"] >= data["wallet_credit_amount"]
+            return
         assert res.status_code in [500, 400], \
-            f"Expected 500/400 (no gateway configured), got {res.status_code}"
+            f"Expected 200 or 500/400 (no gateway configured), got {res.status_code}"
 
 
 # ─── Admin Wallets Tests ───────────────────────────────────────────────────────

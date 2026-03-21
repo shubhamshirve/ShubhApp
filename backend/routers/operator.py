@@ -486,7 +486,6 @@ async def create_checkout_order(
         "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": rounded_total,
-        "wallet_credit_amount": 0,  # No wallet credit for subscription (prices are GST inclusive flat fee)
         "coupon_code": applied_coupon,
         "description": description, "status": "created",
         "created_at": now.isoformat(), "deleted_at": None
@@ -635,28 +634,19 @@ async def verify_checkout_payment(
     }
     await db.saas_payments.insert_one(payment_record)
 
-    # Credit wallet with subscription base fee (monthly_base_fee portion only — for Pro plans)
     if order["item_type"] == "subscription":
         try:
-            from routers.wallet import credit_wallet, apply_referral_reward
-            wallet_credit_amount = order.get("wallet_credit_amount", 0)
-            if wallet_credit_amount > 0:
-                await credit_wallet(
-                    operator["id"], wallet_credit_amount,
-                    f"Monthly base fee credited to wallet ({order.get('description', '')})",
-                    reference_id=razorpay_payment_id,
-                    tx_type="subscription_credit",
-                )
+            from routers.wallet import apply_referral_reward
             # Mark referral discount as used (first transaction)
             if operator.get("referral_discount_eligible") and not operator.get("referral_discount_used"):
                 await db.operators.update_one(
                     {"id": operator["id"]},
                     {"$set": {"referral_discount_used": True, "updated_at": now.isoformat()}}
                 )
-            # Give 5% referral reward to referrer
+            # Subscription pricing is a flat SaaS fee; only referral reward affects wallet here.
             await apply_referral_reward(operator["id"], order["total_amount"], razorpay_payment_id)
         except Exception as e:
-            logger.warning(f"Wallet credit after subscription failed: {e}")
+            logger.warning(f"Subscription post-payment wallet updates failed: {e}")
 
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],

@@ -11,12 +11,17 @@ from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
 from utils import generate_id, hash_password, verify_password, create_token
 from dependencies import get_current_user
 from sanitization import SanitizedModel, sanitize_text
+from services.email_service import get_email_service, EmailServiceError
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 logger = logging.getLogger(__name__)
 
-# Test OTP that always works
-TEST_OTP = "200796"
+OTP_LENGTH = 6
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_COOLDOWN_SECONDS = 30
+OTP_MAX_RESENDS = 5
+OTP_EXPIRY_MINUTES = 10
+RECOVERY_OTP_EXPIRY_MINUTES = 15
 
 
 async def _generate_unique_referral_code(company_name: str) -> str:
@@ -38,9 +43,74 @@ class OTPVerifyRequest(SanitizedModel):
     otp: str
 
 
+def _generate_otp() -> str:
+    return str(random.randint(10 ** (OTP_LENGTH - 1), (10 ** OTP_LENGTH) - 1))
+
+
+def _mask_email(email: str) -> str:
+    if not email or "@" not in email:
+        return ""
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local[0] + "*" * max(0, len(local) - 1)
+    else:
+        masked_local = local[:2] + "*" * (len(local) - 2)
+    return f"{masked_local}@{domain}"
+
+
+async def _send_registration_otp_email(email: str, otp: str):
+    service = get_email_service()
+    await service.send_email(
+        to_email=email,
+        subject="Your E-Bill registration OTP",
+        text=f"Your E-Bill registration OTP is {otp}. It is valid for {OTP_EXPIRY_MINUTES} minutes.",
+        html=(
+            "<p>Your E-Bill registration OTP is "
+            f"<strong>{otp}</strong>.</p>"
+            f"<p>This code is valid for {OTP_EXPIRY_MINUTES} minutes.</p>"
+            "<p>If you did not request this, you can ignore this email.</p>"
+        ),
+    )
+
+
+async def _send_recovery_otp_email(email: str, otp: str):
+    service = get_email_service()
+    await service.send_email(
+        to_email=email,
+        subject="Your E-Bill password recovery OTP",
+        text=f"Your E-Bill password recovery OTP is {otp}. It is valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes.",
+        html=(
+            "<p>Your E-Bill password recovery OTP is "
+            f"<strong>{otp}</strong>.</p>"
+            f"<p>This code is valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes.</p>"
+            "<p>If you did not request a password reset, please ignore this email.</p>"
+        ),
+    )
+
+
+def _parse_dt(value: str) -> datetime:
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _enforce_resend_limits(record: dict, now: datetime):
+    resend_count = record.get("resend_count", 0)
+    if resend_count >= OTP_MAX_RESENDS:
+        raise HTTPException(status_code=429, detail="Maximum OTP resend limit reached. Please start again.")
+
+    last_sent_at = record.get("last_sent_at")
+    if last_sent_at:
+        seconds_since_last_send = (now - _parse_dt(last_sent_at)).total_seconds()
+        if seconds_since_last_send < OTP_RESEND_COOLDOWN_SECONDS:
+            wait_seconds = int(OTP_RESEND_COOLDOWN_SECONDS - seconds_since_last_send)
+            raise HTTPException(status_code=429, detail=f"Please wait {wait_seconds}s before requesting a new OTP.")
+
+
 @router.post("/register-init")
 async def register_init(data: OperatorCreate):
-    """Step 1: Validate registration data, check uniqueness, send OTP via WhatsApp."""
+    """Step 1: Validate registration data, check uniqueness, send OTP via email."""
     # Validate email uniqueness
     existing_email = await db.users.find_one({"email": data.email, "deleted_at": None})
     if existing_email:
@@ -66,7 +136,7 @@ async def register_init(data: OperatorCreate):
         raise HTTPException(status_code=400, detail="Phone number already registered")
 
     # Generate 6-digit OTP
-    otp = str(random.randint(100000, 999999))
+    otp = _generate_otp()
     now = datetime.now(timezone.utc)
     registration_id = generate_id()
 
@@ -90,35 +160,27 @@ async def register_init(data: OperatorCreate):
         "referred_by_code": data.referral_code.upper().strip() if data.referral_code else None,
         "otp": otp,
         "otp_attempts": 0,
+        "resend_count": 0,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=10)).isoformat(),
+        "last_sent_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat(),
     }
     # Remove any existing pending registration for this email/phone
     await db.pending_registrations.delete_many({"$or": [{"email": data.email}, {"phone": data.phone}]})
     await db.pending_registrations.insert_one(pending)
 
-    # Try to send OTP via WhatsApp
-    otp_sent = False
     try:
-        wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
-        if wa_config and wa_config.get("access_token"):
-            from services.whatsapp_service import WhatsAppService
-            wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-            # Send as a simple text message using the WhatsApp API
-            await wa_service.send_text_message(
-                recipient_phone=data.phone,
-                message=f"Your OTP for registration is: {otp}. Valid for 10 minutes."
-            )
-            otp_sent = True
-            logger.info(f"OTP sent via WhatsApp to {data.phone[-4:]}")
-    except Exception as e:
-        logger.warning(f"Failed to send OTP via WhatsApp: {e}")
+        await _send_registration_otp_email(data.email, otp)
+        logger.info("Registration OTP sent via email to %s", _mask_email(data.email))
+    except EmailServiceError as exc:
+        await db.pending_registrations.delete_one({"id": registration_id})
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return {
         "registration_id": registration_id,
-        "message": "OTP sent to your WhatsApp number" if otp_sent else "OTP generated. Please enter the verification code.",
-        "otp_sent": otp_sent,
-        "phone_last4": data.phone[-4:],
+        "message": "OTP sent to your email address.",
+        "otp_sent": True,
+        "email_masked": _mask_email(data.email),
     }
 
 
@@ -130,23 +192,22 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
         raise HTTPException(status_code=400, detail="Registration session not found or expired. Please start again.")
 
     # Check expiry
-    expires_at = datetime.fromisoformat(pending["expires_at"])
+    expires_at = _parse_dt(pending["expires_at"])
     if datetime.now(timezone.utc) > expires_at:
         await db.pending_registrations.delete_one({"id": data.registration_id})
         raise HTTPException(status_code=400, detail="OTP has expired. Please register again.")
 
     # Check attempts
-    if pending.get("otp_attempts", 0) >= 5:
+    if pending.get("otp_attempts", 0) >= OTP_MAX_ATTEMPTS:
         await db.pending_registrations.delete_one({"id": data.registration_id})
         raise HTTPException(status_code=400, detail="Too many failed attempts. Please register again.")
 
-    # Verify OTP - accept test OTP or actual OTP
-    if data.otp != TEST_OTP and data.otp != pending["otp"]:
+    if data.otp != pending["otp"]:
         await db.pending_registrations.update_one(
             {"id": data.registration_id},
             {"$inc": {"otp_attempts": 1}}
         )
-        remaining = 5 - pending.get("otp_attempts", 0) - 1
+        remaining = OTP_MAX_ATTEMPTS - pending.get("otp_attempts", 0) - 1
         raise HTTPException(status_code=400, detail=f"Invalid OTP. {remaining} attempts remaining.")
 
     # OTP verified - complete registration
@@ -253,41 +314,34 @@ async def resend_otp(registration_id: str = ""):
     if not pending:
         raise HTTPException(status_code=400, detail="Registration session not found or expired.")
 
-    expires_at = datetime.fromisoformat(pending["expires_at"])
+    expires_at = _parse_dt(pending["expires_at"])
     if datetime.now(timezone.utc) > expires_at:
         await db.pending_registrations.delete_one({"id": registration_id})
         raise HTTPException(status_code=400, detail="Session expired. Please register again.")
 
-    # Generate new OTP
-    new_otp = str(random.randint(100000, 999999))
     now = datetime.now(timezone.utc)
+    _enforce_resend_limits(pending, now)
+    new_otp = _generate_otp()
     await db.pending_registrations.update_one(
         {"id": registration_id},
         {"$set": {
             "otp": new_otp,
             "otp_attempts": 0,
-            "expires_at": (now + timedelta(minutes=10)).isoformat(),
-        }}
+            "last_sent_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat(),
+        }, "$inc": {"resend_count": 1}}
     )
 
-    # Try to send via WhatsApp
-    otp_sent = False
     try:
-        wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
-        if wa_config and wa_config.get("access_token"):
-            from services.whatsapp_service import WhatsAppService
-            wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-            await wa_service.send_text_message(
-                recipient_phone=pending["phone"],
-                message=f"Your OTP for registration is: {new_otp}. Valid for 10 minutes."
-            )
-            otp_sent = True
-    except Exception as e:
-        logger.warning(f"Failed to resend OTP: {e}")
+        await _send_registration_otp_email(pending["email"], new_otp)
+        logger.info("Registration OTP resent via email to %s", _mask_email(pending["email"]))
+    except EmailServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return {
-        "message": "OTP resent to your WhatsApp" if otp_sent else "New OTP generated.",
-        "otp_sent": otp_sent,
+        "message": "OTP resent to your email.",
+        "otp_sent": True,
+        "email_masked": _mask_email(pending["email"]),
     }
 
 
@@ -458,12 +512,6 @@ async def change_password(
     )
     return {"message": "Password changed successfully"}
 
-
-
-# Test OTP for password recovery
-RECOVERY_TEST_OTP = "475869"
-
-
 class ForgotPasswordRequest(SanitizedModel):
     email: str
     method: str = "email"  # "email" or "whatsapp"
@@ -484,14 +532,35 @@ class ResetPasswordRequest(SanitizedModel):
 async def forgot_password(data: ForgotPasswordRequest):
     """Step 1: Initiate password recovery. Send OTP via email or WhatsApp."""
     user = await db.users.find_one({"email": data.email, "deleted_at": None}, {"_id": 0})
-    if not user:
-        # Don't reveal if email exists
-        raise HTTPException(status_code=400, detail="If an account exists with this email, you will receive a recovery code.")
-
-    # Generate OTP
-    otp = str(random.randint(100000, 999999))
+    otp = _generate_otp()
     now = datetime.now(timezone.utc)
     recovery_id = generate_id()
+    email_masked = _mask_email(data.email)
+
+    if not user:
+        await db.password_recovery.delete_many({"email": data.email})
+        await db.password_recovery.insert_one({
+            "id": recovery_id,
+            "user_id": None,
+            "email": data.email,
+            "phone": None,
+            "otp": otp,
+            "otp_attempts": 0,
+            "otp_verified": False,
+            "resend_count": 0,
+            "method": data.method,
+            "created_at": now.isoformat(),
+            "last_sent_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=RECOVERY_OTP_EXPIRY_MINUTES)).isoformat(),
+        })
+        return {
+            "recovery_id": recovery_id,
+            "message": "If an account exists with this email, you will receive a recovery code.",
+            "otp_sent": True,
+            "method": data.method,
+            "phone_last4": "",
+            "email_masked": email_masked,
+        }
 
     # Store recovery request
     recovery = {
@@ -502,19 +571,19 @@ async def forgot_password(data: ForgotPasswordRequest):
         "otp": otp,
         "otp_attempts": 0,
         "otp_verified": False,
+        "resend_count": 0,
         "method": data.method,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=15)).isoformat(),
+        "last_sent_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=RECOVERY_OTP_EXPIRY_MINUTES)).isoformat(),
     }
     # Remove any existing recovery requests for this email
     await db.password_recovery.delete_many({"email": data.email})
     await db.password_recovery.insert_one(recovery)
 
-    otp_sent = False
     phone_last4 = ""
 
     if data.method == "whatsapp" and user.get("phone"):
-        # Send via WhatsApp
         try:
             wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
             if wa_config and wa_config.get("access_token"):
@@ -522,24 +591,35 @@ async def forgot_password(data: ForgotPasswordRequest):
                 wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
                 await wa_service.send_text_message(
                     recipient_phone=user["phone"],
-                    message=f"Your E-Bill password recovery OTP is: {otp}. Valid for 15 minutes. Do not share this code."
+                    message=(
+                        f"Your E-Bill password recovery OTP is: {otp}. "
+                        f"Valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes. Do not share this code."
+                    )
                 )
-                otp_sent = True
                 phone_last4 = user["phone"][-4:]
                 logger.info(f"Recovery OTP sent via WhatsApp to {phone_last4}")
+            else:
+                await db.password_recovery.delete_one({"id": recovery_id})
+                raise HTTPException(status_code=500, detail="WhatsApp OTP service is not configured.")
         except Exception as e:
             logger.warning(f"Failed to send recovery OTP via WhatsApp: {e}")
+            await db.password_recovery.delete_one({"id": recovery_id})
+            raise HTTPException(status_code=500, detail="Failed to send recovery OTP.")
     else:
-        # Email method - for now just log (would need email service)
-        logger.info(f"Recovery OTP for {data.email}: {otp} (email sending not implemented)")
-        otp_sent = True  # Pretend it's sent for demo purposes
+        try:
+            await _send_recovery_otp_email(data.email, otp)
+            logger.info("Recovery OTP sent via email to %s", email_masked)
+        except EmailServiceError as exc:
+            await db.password_recovery.delete_one({"id": recovery_id})
+            raise HTTPException(status_code=500, detail=str(exc))
 
     return {
         "recovery_id": recovery_id,
-        "message": "Recovery code sent" if otp_sent else "Recovery code generated",
-        "otp_sent": otp_sent,
+        "message": "Recovery code sent",
+        "otp_sent": True,
         "method": data.method,
         "phone_last4": phone_last4,
+        "email_masked": email_masked,
     }
 
 
@@ -551,23 +631,22 @@ async def verify_recovery_otp(data: VerifyRecoveryOTPRequest):
         raise HTTPException(status_code=400, detail="Recovery session not found or expired")
 
     # Check expiry
-    expires_at = datetime.fromisoformat(recovery["expires_at"])
+    expires_at = _parse_dt(recovery["expires_at"])
     if datetime.now(timezone.utc) > expires_at:
         await db.password_recovery.delete_one({"id": data.recovery_id})
         raise HTTPException(status_code=400, detail="Recovery code has expired. Please try again.")
 
     # Check attempts
-    if recovery.get("otp_attempts", 0) >= 5:
+    if recovery.get("otp_attempts", 0) >= OTP_MAX_ATTEMPTS:
         await db.password_recovery.delete_one({"id": data.recovery_id})
         raise HTTPException(status_code=400, detail="Too many failed attempts. Please try again.")
 
-    # Verify OTP - accept test OTP or actual OTP
-    if data.otp != RECOVERY_TEST_OTP and data.otp != recovery["otp"]:
+    if data.otp != recovery["otp"]:
         await db.password_recovery.update_one(
             {"id": data.recovery_id},
             {"$inc": {"otp_attempts": 1}}
         )
-        remaining = 5 - recovery.get("otp_attempts", 0) - 1
+        remaining = OTP_MAX_ATTEMPTS - recovery.get("otp_attempts", 0) - 1
         raise HTTPException(status_code=400, detail=f"Invalid OTP. {remaining} attempts remaining.")
 
     # Mark OTP as verified
@@ -592,9 +671,12 @@ async def reset_password(data: ResetPasswordRequest):
 
     if not recovery.get("otp_verified"):
         raise HTTPException(status_code=400, detail="OTP not verified")
+    if not recovery.get("user_id"):
+        await db.password_recovery.delete_one({"id": data.recovery_id})
+        raise HTTPException(status_code=400, detail="Recovery session has expired")
 
     # Check expiry
-    expires_at = datetime.fromisoformat(recovery["expires_at"])
+    expires_at = _parse_dt(recovery["expires_at"])
     if datetime.now(timezone.utc) > expires_at:
         await db.password_recovery.delete_one({"id": data.recovery_id})
         raise HTTPException(status_code=400, detail="Recovery session has expired")
@@ -626,9 +708,9 @@ async def resend_recovery_otp(recovery_id: str = ""):
     if not recovery:
         raise HTTPException(status_code=400, detail="Recovery session not found")
 
-    # Generate new OTP
-    new_otp = str(random.randint(100000, 999999))
     now = datetime.now(timezone.utc)
+    _enforce_resend_limits(recovery, now)
+    new_otp = _generate_otp()
 
     await db.password_recovery.update_one(
         {"id": recovery_id},
@@ -636,11 +718,17 @@ async def resend_recovery_otp(recovery_id: str = ""):
             "otp": new_otp,
             "otp_attempts": 0,
             "otp_verified": False,
-            "expires_at": (now + timedelta(minutes=15)).isoformat(),
-        }}
+            "last_sent_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=RECOVERY_OTP_EXPIRY_MINUTES)).isoformat(),
+        }, "$inc": {"resend_count": 1}}
     )
 
-    otp_sent = False
+    if not recovery.get("user_id"):
+        return {
+            "message": "Recovery code resent",
+            "otp_sent": True,
+            "email_masked": _mask_email(recovery["email"]),
+        }
     if recovery.get("method") == "whatsapp" and recovery.get("phone"):
         try:
             wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
@@ -649,15 +737,25 @@ async def resend_recovery_otp(recovery_id: str = ""):
                 wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
                 await wa_service.send_text_message(
                     recipient_phone=recovery["phone"],
-                    message=f"Your E-Bill password recovery OTP is: {new_otp}. Valid for 15 minutes."
+                    message=(
+                        f"Your E-Bill password recovery OTP is: {new_otp}. "
+                        f"Valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes."
+                    )
                 )
-                otp_sent = True
+            else:
+                raise HTTPException(status_code=500, detail="WhatsApp OTP service is not configured.")
         except Exception as e:
             logger.warning(f"Failed to resend recovery OTP: {e}")
+            raise HTTPException(status_code=500, detail="Failed to resend recovery OTP.")
     else:
-        otp_sent = True  # Email - pretend sent
+        try:
+            await _send_recovery_otp_email(recovery["email"], new_otp)
+            logger.info("Recovery OTP resent via email to %s", _mask_email(recovery["email"]))
+        except EmailServiceError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
     return {
-        "message": "Recovery code resent" if otp_sent else "New code generated",
-        "otp_sent": otp_sent,
+        "message": "Recovery code resent",
+        "otp_sent": True,
+        "email_masked": _mask_email(recovery["email"]),
     }

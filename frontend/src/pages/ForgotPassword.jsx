@@ -20,6 +20,7 @@ const ForgotPassword = () => {
   const [recoveryId, setRecoveryId] = useState("");
   const [loading, setLoading] = useState(false);
   const [phoneLast4, setPhoneLast4] = useState("");
+  const [emailMasked, setEmailMasked] = useState("");
   const navigate = useNavigate();
 
   const handleRequestOTP = async (e) => {
@@ -32,6 +33,7 @@ const ForgotPassword = () => {
       const res = await axios.post(`${API}/auth/forgot-password`, { email, method });
       setRecoveryId(res.data.recovery_id);
       setPhoneLast4(res.data.phone_last4 || "");
+      setEmailMasked(res.data.email_masked || "");
       toast.success("Recovery code sent!");
       setStep(2);
     } catch (error) {
@@ -159,7 +161,7 @@ const ForgotPassword = () => {
               </CardTitle>
               <CardDescription>
                 {step === 1 && "Enter your email to receive a recovery code"}
-                {step === 2 && `Enter the 6-digit code sent to your ${method === 'whatsapp' ? `WhatsApp (****${phoneLast4})` : 'email'}`}
+                {step === 2 && `Enter the 6-digit code sent to your ${method === 'whatsapp' ? `WhatsApp (****${phoneLast4})` : (emailMasked || 'email address')}`}
                 {step === 3 && "Create a new secure password for your account"}
               </CardDescription>
             </CardHeader>
@@ -243,9 +245,6 @@ const ForgotPassword = () => {
                       required
                       className="text-center text-2xl tracking-widest border-slate-300 focus:border-[#0066B2]"
                     />
-                    <p className="text-xs text-slate-500 text-center">
-                      For testing, use OTP: <span className="font-mono font-medium">475869</span>
-                    </p>
                   </div>
 
                   <Button

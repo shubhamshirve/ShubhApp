@@ -97,13 +97,19 @@ export default function WalletPage() {
             const verifyRes = await authAxios.post(
               `/operator/wallet/topup/verify?razorpay_order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
             );
-            toast.success(`Wallet topped up! New balance: Rs.${verifyRes.data.new_balance}`);
+            toast.success(
+              `Wallet credited Rs.${verifyRes.data.credited_amount?.toFixed?.(2) ?? verifyRes.data.credited_amount}. ` +
+              `Paid Rs.${verifyRes.data.paid_amount?.toFixed?.(2) ?? verifyRes.data.paid_amount}. ` +
+              `New balance: Rs.${verifyRes.data.new_balance?.toFixed?.(2) ?? verifyRes.data.new_balance}`
+            );
             setTopupAmount("");
             await fetchWallet();
             await fetchTransactions(0);
             setPage(0);
           } catch (err) {
             toast.error(err.response?.data?.detail || "Payment verification failed");
+          } finally {
+            setTopupLoading(false);
           }
         },
         modal: { ondismiss: () => setTopupLoading(false) },
@@ -217,7 +223,7 @@ export default function WalletPage() {
                 </div>
               </div>
               <div className="text-xs text-slate-500 space-y-1">
-                <p>• Rs.10 is deducted per invoice generated</p>
+                <p>• Per-invoice charges follow your active subscription plan</p>
                 <p className={balance < 500 ? "text-amber-600 font-medium" : ""}>• Reminder when balance &lt; Rs.500</p>
                 <p className={balance < 100 ? "text-red-600 font-medium" : ""}>• Account suspended when balance &lt; Rs.100</p>
               </div>
@@ -233,10 +239,10 @@ export default function WalletPage() {
             <CardContent>
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-slate-600 mb-1 block">Amount (Rs.)</label>
+                  <label className="text-sm text-slate-600 mb-1 block">Wallet Credit Amount (Rs., before GST)</label>
                   <Input
                     type="number"
-                    placeholder="Min Rs.100"
+                    placeholder="Min wallet credit Rs.100"
                     value={topupAmount}
                     onChange={(e) => setTopupAmount(e.target.value)}
                     min={100}
@@ -265,6 +271,9 @@ export default function WalletPage() {
                   {topupLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                   Pay & Topup
                 </Button>
+                <p className="text-xs text-slate-500">
+                  GST is added at checkout. Your wallet is credited only with the pre-GST amount you enter.
+                </p>
               </div>
             </CardContent>
           </Card>

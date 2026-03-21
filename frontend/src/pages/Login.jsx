@@ -185,15 +185,6 @@ const Login = () => {
                   </Link>
                 </p>
               </div>
-
-              {/* Demo credentials */}
-              <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <p className="text-xs font-medium text-slate-600 mb-2">Demo Credentials:</p>
-                <div className="space-y-1 text-xs text-slate-500">
-                  <p><span className="font-medium">Admin:</span> admin@saas.com / admin123</p>
-                  <p className="text-slate-400 text-[10px]">(Run seed API first: POST /api/seed)</p>
-                </div>
-              </div>
             </CardContent>
           </Card>
 

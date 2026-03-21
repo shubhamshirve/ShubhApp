@@ -1,29 +1,108 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-21  
-**Active Branch:** `V7.14`  
-**Status:** Planning sync completed, implementation not yet started
+**Active Branch:** `7.13-2`  
+**Status:** Task 1 and Task 2 implemented in code; live verification and Task 3 pending
 
 ---
 
 ## Current Snapshot
 
-The repository has been moved from `V7.13-1` to `V7.14`.
+The branch now includes working code changes for the first two Sprint 1 items:
 
-What changed in `V7.14` so far:
-- Updated [ROADMAP.md](d:/eBill/memory/ROADMAP.md) to reflect a codebase-aware delivery plan
-- Reviewed deferred work and pulled two items into active sprint planning:
-  - Payment receipts and confirmation delivery
-  - Import/export enhancements
-- Pushed branch `V7.14` to `origin`
+- Task 1: Wallet accounting and billing integrity
+- Task 2: Auth and OTP production hardening
 
-No product feature implementation has started yet on this branch.
+Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
+- [.env](/d:/eBill/.env)
+- [.env.example](/d:/eBill/.env.example)
+- [setup.bat](/d:/eBill/setup.bat)
+- [init-env.sh](/d:/eBill/docker/init-env.sh)
+- [server.py](/d:/eBill/backend/server.py)
+
+Task 3, maintenance mode, has not started yet.
+
+---
+
+## What Was Implemented
+
+### Task 1: Wallet Accounting and Billing Integrity
+
+Primary files:
+- [wallet.py](/d:/eBill/backend/routers/wallet.py)
+- [operator.py](/d:/eBill/backend/routers/operator.py)
+- [Wallet.jsx](/d:/eBill/frontend/src/pages/operator/Wallet.jsx)
+- [Subscription.jsx](/d:/eBill/frontend/src/pages/operator/Subscription.jsx)
+- [test_wallet_referral.py](/d:/eBill/backend/tests/test_wallet_referral.py)
+
+Implemented behavior:
+- Wallet top-up amount is now treated as wallet credit before GST.
+- GST rate is read from platform settings and stored in the checkout order.
+- Wallet verification credits only `base_amount`, not the GST-inclusive paid amount.
+- Referral reward on wallet top-up now uses the credited amount.
+- Stale subscription wallet-credit branch was removed from checkout verification.
+- Operator UI copy now explains that GST is added at checkout and only the pre-GST amount is credited.
+
+Important outcome:
+- Subscription renewals no longer carry dead `wallet_credit_amount` logic under the simplified SaaS plan model.
+
+### Task 2: Auth and OTP Production Hardening
+
+Primary files:
+- [auth.py](/d:/eBill/backend/routers/auth.py)
+- [email_service.py](/d:/eBill/backend/services/email_service.py)
+- [Login.jsx](/d:/eBill/frontend/src/pages/Login.jsx)
+- [ForgotPassword.jsx](/d:/eBill/frontend/src/pages/ForgotPassword.jsx)
+- [Register.jsx](/d:/eBill/frontend/src/pages/Register.jsx)
+- [server.py](/d:/eBill/backend/server.py)
+
+Implemented behavior:
+- Removed hardcoded registration and recovery OTP bypass values.
+- Added Resend-backed email OTP delivery service.
+- Registration OTP flow now sends by email.
+- Forgot-password email mode now sends real provider-backed OTP instead of fake success logging.
+- Added resend cooldown and resend-count limits.
+- Removed frontend demo credentials and test OTP hints.
+- Registration and recovery UI copy now reflects real delivery behavior.
+
+Security note:
+- Forgot-password keeps a generic response for unknown emails and stores a non-usable recovery session to reduce account-enumeration leakage.
+
+---
+
+## Pending Tests
+
+### Completed local verification
+- `python -m py_compile backend/routers/wallet.py backend/routers/operator.py`
+- `python -m py_compile backend/routers/auth.py backend/services/email_service.py backend/server.py`
+
+### Still pending for Task 1
+- Manual wallet top-up with Razorpay test/live keys:
+  - confirm entered amount is treated as pre-GST credit
+  - confirm paid amount includes GST
+  - confirm wallet balance increases only by base amount
+- Manual operator wallet transaction/history check after top-up
+- Manual subscription renewal regression:
+  - confirm no `subscription_credit` wallet transaction is created
+- Optional targeted API verification:
+  - `/api/operator/wallet/topup/create-order`
+  - `/api/operator/wallet/topup/verify`
+
+### Still pending for Task 2
+- Live registration OTP send/verify with valid `RESEND_API_KEY` and `RESEND_FROM_EMAIL`
+- Live forgot-password email OTP send/verify/reset flow
+- WhatsApp recovery OTP regression check
+- Automated tests for:
+  - OTP expiry
+  - resend cooldown/limit handling
+  - invalid OTP attempt limit
+  - provider failure handling
 
 ---
 
 ## Current Working Plan
 
-The active source of truth is [ROADMAP.md](d:/eBill/memory/ROADMAP.md).
+The active source of truth remains [ROADMAP.md](/d:/eBill/memory/ROADMAP.md).
 
 ### Sprint 1
 1. Wallet accounting and billing integrity
@@ -44,131 +123,49 @@ The active source of truth is [ROADMAP.md](d:/eBill/memory/ROADMAP.md).
 10. Payment receipts and confirmation delivery
 11. Import/export enhancements
 
-Deferred:
-- Cashfree gateway
-- SMS and email invoice/reminder delivery
-- GST reconciliation (R1 / 3B)
-- Advanced analytics
-
 ---
 
 ## Immediate Next Task
 
-Start with:
+### Task 3: Platform Maintenance Mode
 
-### Task 1: Wallet Accounting and Billing Integrity
+Why this should come next:
+- Tasks 1 and 2 are already patched through the codebase.
+- Maintenance mode is the next Sprint 1 blocker and affects cron, write-guards, and frontend state.
+- It should land before bigger schema/reporting work.
 
-Why this is first:
-- It affects real money movement
-- It has drift between code, tests, and historical docs
-- Later billing/invoice work depends on getting wallet behavior correct
+Likely starting files:
+- [admin.py](/d:/eBill/backend/routers/admin.py)
+- [dependencies.py](/d:/eBill/backend/dependencies.py)
+- [server.py](/d:/eBill/backend/server.py)
+- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
+- frontend layout/app shell files for global read-only popup/banner
 
-Main concerns already identified:
-- Subscription wallet credit behavior appears inconsistent with older tests/docs
-- Wallet top-up currently credits the paid total directly
-- Top-up flow does not yet support GST-exclusive entry with GST computed separately
-- Need to verify invoice deduction always uses the active plan's `per_invoice_price`
-
----
-
-## Key Findings from Code Review
-
-### Wallet and Subscription
-- `backend/routers/wallet.py`
-  - Wallet top-up order stores `base_amount` and `total_amount`
-  - Verify flow currently credits `order["total_amount"]` directly to wallet
-- `backend/routers/operator.py`
-  - Subscription checkout currently stores `wallet_credit_amount: 0`
-  - There is still conditional subscription wallet credit logic during checkout verification
-- `backend/services/cron_service.py`
-  - Auto-generated invoices deduct wallet via `deduct_wallet_for_invoice`
-- `backend/models.py`
-  - SaaS plans use `monthly_price` and `per_invoice_price`
-
-### Auth and OTP
-- `backend/routers/auth.py`
-  - Registration OTP test bypass still exists
-  - Recovery OTP test bypass still exists
-  - Forgot-password email flow is still mocked/logged instead of real delivery
-- `frontend/src/pages/Login.jsx`
-  - Demo credentials are still shown
-- `frontend/src/pages/ForgotPassword.jsx`
-  - Test OTP hint is still shown
-
-### Maintenance / Read-Only
-- `backend/dependencies.py`
-  - Read-only check exists
-- `backend/services/cron_service.py`
-  - Read-only mode is currently triggered from wallet suspension/expiry paths only
-- `backend/routers/admin.py`
-  - No true platform maintenance mode yet
-
-### Invoice and Public Invoice
-- `backend/routers/public.py`
-  - Public invoice fetch still uses internal invoice ID
-- `backend/routers/operator.py`
-  - Public invoice URLs currently point to `/invoice/{invoice.id}`
-- `frontend/src/pages/PublicInvoice.jsx`
-  - Public view already supports payment status and GST display
-- `backend/services/pdf_service.py`
-  - PDF generation already exists and can be extended for receipts
-
-### Reminder and Scheduling
-- `backend/server.py`
-  - Scheduler jobs are configured in UTC
-- `frontend/src/pages/operator/Settings.jsx`
-  - Reminder management still lives under operator settings
-- `frontend/src/pages/admin/Settings.jsx`
-  - Global WhatsApp credentials/template assignment already exist
-
-### Reports / Import / Export
-- Operator and admin CSV export already exist in report screens
-- Subscriber and plan CSV/XLSX import already exist
-- Frontend already includes `recharts`, but analytics work is not yet expanded
+Expected implementation shape:
+- add admin-controlled maintenance flag in platform settings
+- stop scheduled automation while enabled
+- force non-admin write paths into read-only mode
+- surface a global maintenance message in the frontend
 
 ---
 
-## Important Files for the Next Session
+## Risks To Keep In Mind
 
-### Start here for Task 1
-- [wallet.py](d:/eBill/backend/routers/wallet.py)
-- [operator.py](d:/eBill/backend/routers/operator.py)
-- [cron_service.py](d:/eBill/backend/services/cron_service.py)
-- [models.py](d:/eBill/backend/models.py)
-- [test_wallet_referral.py](d:/eBill/backend/tests/test_wallet_referral.py)
-- [test_plan_revamp.py](d:/eBill/backend/tests/test_plan_revamp.py)
-
-### Related planning context
-- [ROADMAP.md](d:/eBill/memory/ROADMAP.md)
-- [PRD.md](d:/eBill/memory/PRD.md)
-- [CHANGELOG.md](d:/eBill/memory/CHANGELOG.md)
+- Task 1 still needs real payment-provider verification before being treated as production-complete.
+- Task 2 now depends on correct Resend env configuration; auth testing will fail without those keys.
+- There are still older historical docs/tests in the repo that reference legacy plan-credit behavior and may need cleanup later.
+- Maintenance mode will touch both API write guards and cron startup/runtime behavior, so avoid partial rollout.
 
 ---
 
-## Risks to Keep in Mind
+## Branch / Git State At Handoff
 
-- Wallet behavior may already be relied on by existing data or tests
-- Historical docs mention older Pro-plan wallet credit behavior that may no longer match the branch
-- Changing top-up accounting can affect referral reward calculations
-- OTP hardening will remove current test shortcuts, so dev/test strategy may need adjustment
-- Multi-plan billing should not begin before wallet/invoice/auth foundations are stable
+- Current working branch for delivery: `7.13-2`
+- Source implementation branch before delivery branch creation: `V7.14`
+- Latest code in progress includes:
+  - wallet/top-up accounting changes
+  - auth/OTP hardening
+  - env/bootstrap alignment
+  - pending memory/changelog sync
 
----
-
-## Recommended Next Execution Order
-
-1. Reconcile wallet behavior in code vs tests vs intended business rule
-2. Patch wallet top-up accounting and subscription wallet handling
-3. Run targeted wallet/subscription tests
-4. Move to auth/OTP hardening only after wallet logic is stable
-
----
-
-## Branch / Git State at Handoff
-
-- Branch: `V7.14`
-- Remote tracking: `origin/V7.14`
-- Latest planning commit before feature work:
-  - `de12b72` - `Update roadmap for V7.14 delivery plan`
-
-If continuing from here, update this file again after Task 1 is implemented or materially re-scoped.
+If continuing from here, start Task 3 after the requested git push is complete.

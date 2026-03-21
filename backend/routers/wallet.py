@@ -148,6 +148,15 @@ async def apply_referral_reward(operator_id: str, payment_amount: float, payment
         )
 
 
+async def get_platform_gst_rate() -> float:
+    """Read platform GST rate from admin settings with a safe fallback."""
+    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0, "gst_rate": 1})
+    try:
+        return float((settings or {}).get("gst_rate", 18))
+    except (TypeError, ValueError):
+        return 18.0
+
+
 # ─── Operator Wallet Endpoints ─────────────────────────────────────────────────
 
 @router.get("/operator/wallet")
@@ -209,7 +218,12 @@ async def create_topup_order(
     from services.razorpay_service import RazorpayService
     rz = RazorpayService(razorpay_key, razorpay_secret)
     order_id = generate_id()
-    rounded_amount = math.floor(amount + 0.5)
+    gst_rate = await get_platform_gst_rate()
+    base_amount = round(amount, 2)
+    gst_amount = round(base_amount * gst_rate / 100, 2)
+    exact_total = round(base_amount + gst_amount, 2)
+    rounded_amount = math.floor(exact_total + 0.5)
+    rounding_diff = round(rounded_amount - exact_total, 2)
 
     order = rz.create_order(
         amount=rounded_amount,
@@ -223,7 +237,11 @@ async def create_topup_order(
         "razorpay_order_id": order["id"],
         "operator_id": operator["id"],
         "item_type": "wallet_topup",
-        "base_amount": amount,
+        "base_amount": base_amount,
+        "gst_rate": gst_rate,
+        "gst_amount": gst_amount,
+        "exact_total": exact_total,
+        "rounding_diff": rounding_diff,
         "total_amount": rounded_amount,
         "status": "created",
         "created_at": now.isoformat(),
@@ -238,7 +256,12 @@ async def create_topup_order(
         "amount": rounded_amount * 100,
         "currency": "INR",
         "name": platform_name,
-        "description": f"Wallet Topup - Rs.{rounded_amount}",
+        "description": f"Wallet Topup - Rs.{base_amount}",
+        "wallet_credit_amount": base_amount,
+        "gst_rate": gst_rate,
+        "gst_amount": gst_amount,
+        "exact_total": exact_total,
+        "rounding_diff": rounding_diff,
         "total_amount": rounded_amount,
         "prefill": {
             "name": operator.get("owner_name", ""),
@@ -276,13 +299,16 @@ async def verify_topup_payment(
     if order["status"] == "paid":
         raise HTTPException(status_code=400, detail="Payment already processed")
 
-    topup_amount = order["total_amount"]
+    credited_amount = round(float(order.get("base_amount", order["total_amount"])), 2)
+    gst_amount = round(float(order.get("gst_amount", 0)), 2)
+    paid_amount = round(float(order.get("total_amount", 0)), 2)
+    gst_rate = round(float(order.get("gst_rate", 18)), 2)
     operator_id = current_user["operator_id"]
     now = datetime.now(timezone.utc)
 
     # Credit wallet
     new_balance = await credit_wallet(
-        operator_id, topup_amount,
+        operator_id, credited_amount,
         f"Wallet Topup (Ref: {razorpay_payment_id[-8:]})",
         reference_id=razorpay_payment_id,
         tx_type="topup",
@@ -297,14 +323,22 @@ async def verify_topup_payment(
         )
 
     # Referral reward to referrer
-    await apply_referral_reward(operator_id, topup_amount, razorpay_payment_id)
+    await apply_referral_reward(operator_id, credited_amount, razorpay_payment_id)
 
     await db.checkout_orders.update_one(
         {"razorpay_order_id": razorpay_order_id},
         {"$set": {"status": "paid", "razorpay_payment_id": razorpay_payment_id, "paid_at": now.isoformat()}},
     )
 
-    return {"status": "success", "message": f"Wallet credited with Rs.{topup_amount}", "new_balance": new_balance}
+    return {
+        "status": "success",
+        "message": f"Wallet credited with Rs.{credited_amount:.2f}",
+        "credited_amount": credited_amount,
+        "gst_rate": gst_rate,
+        "gst_amount": gst_amount,
+        "paid_amount": paid_amount,
+        "new_balance": new_balance,
+    }
 
 
 # ─── Admin Wallet Endpoints ────────────────────────────────────────────────────

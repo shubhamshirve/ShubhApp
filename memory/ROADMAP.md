@@ -14,7 +14,7 @@
 
 ## Active Delivery Plan
 
-This roadmap replaces the older generic backlog with a codebase-aware implementation order based on the current `V7.13-1` branch.
+This roadmap replaces the older generic backlog with a codebase-aware implementation order based on the current implementation branch.
 
 Priority logic:
 - Fix money correctness before adding new billing features.
@@ -32,7 +32,7 @@ Legend:
 ## Sprint 1
 
 ### 1. Wallet Accounting and Billing Integrity
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P0`
 - Importance: `Critical`
 - Effort: `L`
@@ -52,9 +52,18 @@ Legend:
   - Wallet top-up should be GST-exclusive with GST added before payment
 - Dependencies:
   - None
+- Current implementation notes:
+  - Wallet top-up now treats the entered amount as pre-GST wallet credit, stores GST breakup in `checkout_orders`, and credits only the base amount after payment verification.
+  - Referral reward on wallet top-up now uses the credited amount instead of the GST-inclusive paid amount.
+  - Stale subscription wallet-credit logic was removed from SaaS checkout verification to align with the simplified flat subscription pricing model.
+- Pending tests:
+  - Manual Razorpay top-up flow with live/test keys to confirm paid amount vs credited amount.
+  - Manual wallet transaction verification in UI after top-up.
+  - Subscription renewal regression check to confirm no `subscription_credit` transaction is created.
+  - Optional targeted API/integration run for `/operator/wallet/topup/create-order` and `/operator/wallet/topup/verify`.
 
 ### 2. Auth and OTP Production Hardening
-- Status: `planned`
+- Status: `implemented-in-code / pending provider verification`
 - Priority: `P0`
 - Importance: `Critical`
 - Effort: `M`
@@ -72,6 +81,16 @@ Legend:
   - Make registration OTPs send via Resend API
 - Dependencies:
   - Resend credentials
+- Current implementation notes:
+  - Registration OTP and email-based recovery OTP now use a new Resend-backed email service.
+  - Hardcoded registration/recovery OTP bypasses were removed.
+  - Registration and recovery resend endpoints now enforce cooldown and resend limits.
+  - Login and forgot-password demo/test UI hints were removed, and registration copy now reflects email OTP delivery.
+- Pending tests:
+  - Live registration OTP send/verify using valid `RESEND_API_KEY` and `RESEND_FROM_EMAIL`.
+  - Live forgot-password email OTP send/verify/reset flow.
+  - WhatsApp recovery OTP regression check for operators using WhatsApp method.
+  - Add dedicated automated tests for OTP expiry, resend throttling, invalid OTP attempts, and Resend failure handling.
 
 ### 3. Platform Maintenance Mode
 - Status: `planned`

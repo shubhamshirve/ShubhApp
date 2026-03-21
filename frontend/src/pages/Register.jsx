@@ -55,6 +55,7 @@ const Register = () => {
   const [registrationId, setRegistrationId] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [otpSent, setOtpSent] = useState(false);
+  const [otpEmailMasked, setOtpEmailMasked] = useState("");
   const [resending, setResending] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const otpRefs = useRef([]);
@@ -139,6 +140,7 @@ const Register = () => {
       });
       setRegistrationId(res.data.registration_id);
       setOtpSent(res.data.otp_sent);
+      setOtpEmailMasked(res.data.email_masked || "");
       setStep(2);
       setCountdown(30);
       toast.success(res.data.message || "OTP sent! Please verify.");
@@ -289,7 +291,7 @@ const Register = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="phone">WhatsApp Number *</Label>
+                    <Label htmlFor="phone">Phone Number *</Label>
                     <Input
                       id="phone"
                       name="phone"
@@ -300,7 +302,7 @@ const Register = () => {
                       required
                       data-testid="register-phone"
                     />
-                    <p className="text-xs text-slate-400">OTP will be sent to this number</p>
+                    <p className="text-xs text-slate-400">Used for account communication and WhatsApp notifications</p>
                   </div>
                 </div>
 
@@ -535,7 +537,7 @@ const Register = () => {
                   ) : (
                     <span className="flex items-center gap-2">
                       <MessageCircle className="w-4 h-4" />
-                      Send OTP & Verify
+                      Send Email OTP
                     </span>
                   )}
                 </Button>
@@ -574,7 +576,7 @@ const Register = () => {
               </div>
               <CardDescription>
                 {otpSent ? (
-                  <>We sent a verification code to your WhatsApp number ending in <span className="font-semibold text-slate-700">****{formData.phone.slice(-4)}</span></>
+                  <>We sent a verification code to your email address <span className="font-semibold text-slate-700">{otpEmailMasked || formData.email}</span></>
                 ) : (
                   <>Please enter the verification code to complete registration</>
                 )}
@@ -648,7 +650,7 @@ const Register = () => {
 
                 <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-center">
                   <p className="text-xs text-amber-700">
-                    Didn't receive the OTP? Check your WhatsApp messages or try resending.
+                    Didn't receive the OTP? Check your inbox or spam folder, then try resending.
                   </p>
                 </div>
               </form>

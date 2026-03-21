@@ -1,53 +1,65 @@
-# E-Bill Platform — CHANGELOG
+# E-Bill Platform - CHANGELOG
+
+## 2026-03-21
+
+### Sprint 1 Progress: Wallet + Auth Hardening in Code
+
+#### Task 1: Wallet Accounting and Billing Integrity (implemented, pending live verification)
+- Wallet top-up now treats the entered amount as wallet credit before GST.
+- Top-up checkout orders now store GST breakup fields: `base_amount`, `gst_rate`, `gst_amount`, `exact_total`, `rounding_diff`, `total_amount`.
+- Wallet verification credits only the pre-GST wallet amount, not the total amount paid.
+- Referral reward on wallet top-up now uses the credited amount basis.
+- Removed stale subscription wallet-credit logic from SaaS checkout verification to align with simplified flat subscription pricing.
+- Updated operator wallet/top-up UI copy to explain pre-GST crediting and paid-vs-credited totals.
+
+#### Task 2: Auth and OTP Production Hardening (implemented, pending provider verification)
+- Removed hardcoded registration and password-recovery OTP bypasses.
+- Added Resend-backed email OTP delivery via new `backend/services/email_service.py`.
+- Registration OTP flow now sends via email.
+- Forgot-password email flow now uses real provider-backed email delivery instead of fake success logging.
+- Added resend cooldown and resend-count limits for registration and recovery OTP flows.
+- Removed login demo-credentials panel and forgot-password test OTP hints from the frontend.
+- Updated registration OTP messaging to reflect email delivery.
+
+#### Env / Bootstrap Sync
+- Added `RESEND_API_KEY` and `RESEND_FROM_EMAIL` to:
+  - root `.env`
+  - `.env.example`
+  - `setup.bat`
+  - `docker/init-env.sh`
+  - backend `.env` auto-bootstrap in `server.py`
+
+#### Tests still pending
+- Manual Razorpay top-up verification for credited amount vs paid amount
+- Manual subscription renewal regression check for wallet transactions
+- Live Resend registration OTP test
+- Live Resend forgot-password OTP test
+- Additional automated OTP edge-case tests: expiry, resend throttling, invalid attempts, provider failure handling
 
 ## 2025-07-18
 
-### Batch 8: Codebase Cleanup & Removal ✅
-- **Settlement System removed** (frontend + backend + cron): Deleted `admin/Settlements.jsx`, `operator/Settlements.jsx`, `seed_settlement_data.py`. Removed ~350 lines from `admin.py` (all settlement endpoints), ~100 lines from `operator.py`, `run_daily_settlement_processing` function from `cron_service.py`, and settlement cron scheduler entry from `server.py`.
-- **Platform fee logic removed**: `platform_fee_percentage` field removed from `SaaSPlanResponse` model, from SaaS plan create/update in `admin.py`, from seeded plans in `server.py`. `update_platform_fee` endpoint removed.
-- **Dead files deleted**: `frontend/src/pages/LandingPage.jsx`, `backend_kyc_test.py`, `kyc_focused_test.py`, `kyc_review_test.py`.
-- **Dead code cleaned**: Removed legacy constants `SUBSCRIBER_TIERS`, `STAFF_TIERS`, `VALID_SUBSCRIBER_COUNTS`, `VALID_STAFF_COUNTS`, `calc_plan_price` from `models.py`. Removed `/api/landing-page` public endpoint from `server.py`.
-- **Total impact**: ~3,100+ lines removed, 7 files deleted.
+### Batch 8: Codebase Cleanup & Removal
+- Settlement system removed from frontend, backend, and cron.
+- Platform fee logic removed from plan models and related endpoints.
+- Dead files deleted, including legacy landing and KYC test files.
+- Dead constants and landing-page route cleanup completed.
 
 ## 2026-03-18
 
-### Task 1: Referral + Wallet System ✅
-- New `operator_wallets` and `wallet_transactions` collections
-- Every operator gets unique `referral_code` (REF-XXXXXX) on registration
-- Register page accepts referral code → 10% discount (up to ₹500) on first payment
-- Referrer earns 5% of referred operator's payments for 3 months (wallet credit)
-- Wallet deducts ₹10 per invoice generated (manual + auto cron)
-- Wallet balance < ₹500 → daily cron sends WhatsApp reminder
-- Wallet balance < ₹100 → operator suspended (is_read_only=True, automation stopped)
-- Topup via Razorpay restores service if balance ≥ ₹100
-- New pages: `/operator/wallet` (balance, topup, referral, transactions), `/admin/wallets` (all wallets, drilldown)
-- New router: `/app/backend/routers/wallet.py`
-- Tests: 100% pass (23/23 backend)
+### Task 1: Referral + Wallet System
+- Added `operator_wallets` and `wallet_transactions` collections.
+- Operators receive unique referral codes on registration.
+- Referral discounts and rewards were added to initial wallet flow.
+- Wallet deduction, reminder, suspension, top-up, and admin wallet views were introduced.
 
-### Task 2: Basic/Pro Plan Revamp ✅
-- Added `plan_type`, `per_customer_rate`, `monthly_base_fee` to SaaS plan model
-- **Basic**: ₹12/customer/month, no addons, no platform fee
-- **Pro**: ₹22/customer/month + ₹1,000/month base fee (credited to operator wallet), all addons included, no platform fee
-- Admin plan creator has 3-button plan type selector (Basic / Pro / Custom)
-- Checkout dynamically calculates based on active subscriber count
-- Pro plan wallet_credit_amount = ₹1000 * months stored in checkout order
-- Custom plans retain legacy fixed-price behavior
-- Modified: `models.py`, `admin.py`, `operator.py`, `SaaSPlans.jsx`, `Subscription.jsx`
-- Tests: 100% pass (33/33 backend)
+### Task 2: Basic/Pro Plan Revamp
+- Added Basic/Pro plan revamp with legacy plan-type pricing model at that time.
+- Checkout and admin plan creation were updated around that older pricing structure.
 
-### Task 5: Support Ticket System ✅
-- Operators/Staff can create support tickets (title, description, priority: low/medium/high/urgent)
-- Threaded conversation: operator and admin can reply
-- Admin auto-sets status to "in_progress" on first reply
-- Status management: Open → In Progress → Resolved → Closed
-- Admin page: stats cards, filters (status/priority/search), ticket detail with operator info panel
-- New router: `/app/backend/routers/support.py`
-- New pages: `/operator/support`, `/admin/support`
-- Both sidebars updated with Support link
-- Tests: 100% pass (45/45 backend, all frontend)
+### Task 5: Support Ticket System
+- Added threaded support ticket flows for operator/staff/admin.
+- Added `/operator/support` and `/admin/support`.
 
-### Task 7: Remove Landing Page ✅
-- Root `/` now redirects to `/login` instead of showing landing page
-- LandingPage import removed from App.js
-- Admin Landing Page builder (`/admin/landing-page`) retained for future use
-- Root `.env` created at `/app/.env` with Razorpay test keys and DB config
+### Task 7: Remove Landing Page
+- Root `/` now redirects to `/login`.
+- Admin landing-page builder remains available for future use.

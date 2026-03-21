@@ -270,7 +270,11 @@ const OperatorSubscription = () => {
             const verifyRes = await authAxios.post(
               `/operator/wallet/topup/verify?razorpay_order_id=${response.razorpay_order_id}&razorpay_payment_id=${response.razorpay_payment_id}&razorpay_signature=${response.razorpay_signature}`
             );
-            toast.success(`Wallet topped up! New balance: ₹${verifyRes.data.new_balance}`);
+            toast.success(
+              `Wallet credited ₹${verifyRes.data.credited_amount?.toFixed?.(2) ?? verifyRes.data.credited_amount}. ` +
+              `Paid ₹${verifyRes.data.paid_amount?.toFixed?.(2) ?? verifyRes.data.paid_amount}. ` +
+              `New balance: ₹${verifyRes.data.new_balance?.toFixed?.(2) ?? verifyRes.data.new_balance}`
+            );
             setTopupAmount("");
             fetchWallet();
           } catch (err) {
@@ -839,7 +843,7 @@ const OperatorSubscription = () => {
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
                               <Input
                                 type="number"
-                                placeholder="Enter amount"
+                                placeholder="Enter wallet credit amount"
                                 value={topupAmount}
                                 onChange={(e) => setTopupAmount(e.target.value)}
                                 className="pl-7"
@@ -860,7 +864,7 @@ const OperatorSubscription = () => {
                               )}
                             </Button>
                           </div>
-                          <p className="text-xs text-slate-400 mt-2">Min ₹100 · Max ₹50,000 · Secure payment via Razorpay</p>
+                          <p className="text-xs text-slate-400 mt-2">Enter the wallet credit amount before GST. GST is added at checkout. Min ₹100 · Max ₹50,000 · Secure payment via Razorpay</p>
                         </CardContent>
                       </Card>
                     </div>

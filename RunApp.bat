@@ -45,8 +45,8 @@ echo.
 REM ──────────────────────────────────────────
 REM  Start Backend (FastAPI)
 REM ──────────────────────────────────────────
-echo  Starting Backend on http://localhost:8001 ...
-start "SaaS Backend" cmd /k ^"cd /d "%~dp0backend" ^& call venv\Scripts\activate.bat ^& echo Backend starting... ^& uvicorn server:app --host 0.0.0.0 --port 8001 --reload^"
+echo  Starting Backend on http://localhost:8000 ...
+start "SaaS Backend" cmd /k ^"cd /d "%~dp0backend" ^& call venv\Scripts\activate.bat ^& echo Backend starting... ^& uvicorn server:app --host 0.0.0.0 --port 8000 --reload^"
 
 REM Give backend a moment to start
 timeout /t 3 /nobreak >nul
@@ -82,8 +82,8 @@ echo   App is running!
 echo  ==========================================
 echo.
 echo   Frontend  : http://localhost:3000
-echo   Backend   : http://localhost:8001
-echo   API Docs  : http://localhost:8001/docs
+echo   Backend   : http://localhost:8000
+echo   API Docs  : http://localhost:8000/docs
 echo.
 echo   Admin Login:
 echo     Email   : admin@saas.com
