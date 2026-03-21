@@ -6,6 +6,8 @@ from utils import decode_token
 
 security = HTTPBearer()
 
+DEFAULT_MAINTENANCE_MESSAGE = "The app is under maintenance. Updates and automation are temporarily paused."
+
 
 async def get_current_user(
     request: Request,
@@ -46,8 +48,30 @@ async def require_operator_no_staff(current_user: dict = Depends(get_current_use
     return current_user
 
 
-async def check_operator_read_only(operator_id: str) -> bool:
+async def get_platform_settings() -> dict:
+    return await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+
+
+async def get_platform_maintenance_state() -> dict:
+    settings = await get_platform_settings()
+    return {
+        "maintenance_mode": bool(settings.get("maintenance_mode", False)),
+        "maintenance_message": settings.get("maintenance_message") or DEFAULT_MAINTENANCE_MESSAGE,
+    }
+
+
+async def get_operator_access_state(operator_id: str) -> dict:
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
-    if operator and operator.get("is_read_only"):
-        return True
-    return False
+    maintenance = await get_platform_maintenance_state()
+    operator_read_only = bool(operator.get("is_read_only")) if operator else False
+    return {
+        "operator": operator,
+        "maintenance_mode": maintenance["maintenance_mode"],
+        "maintenance_message": maintenance["maintenance_message"],
+        "is_read_only": operator_read_only or maintenance["maintenance_mode"],
+    }
+
+
+async def check_operator_read_only(operator_id: str) -> bool:
+    state = await get_operator_access_state(operator_id)
+    return state["is_read_only"]

@@ -22,7 +22,7 @@ import {
   Layout,
   Wallet
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 
 const AdminSidebar = ({ isOpen, onClose }) => {
@@ -248,6 +248,20 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
 
 export const AdminLayout = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { authAxios, user } = useAuth();
+  const [appState, setAppState] = useState({ maintenance_mode: false, maintenance_message: "" });
+
+  useEffect(() => {
+    const loadState = async () => {
+      try {
+        const res = await authAxios.get("/auth/app-state");
+        setAppState(res.data);
+      } catch {
+        // Ignore banner state failures
+      }
+    };
+    loadState();
+  }, [user?.id]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -264,6 +278,19 @@ export const AdminLayout = ({ children, title }) => {
           <h1 className="text-xl font-heading font-bold text-slate-900">{title}</h1>
         </header>
         <main className="flex-1 p-4 lg:p-8 overflow-auto">
+          {appState?.maintenance_mode && (
+            <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-700 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-900">Maintenance Mode Active</p>
+                  <p className="text-sm text-amber-800">
+                    {appState?.maintenance_message || "The app is under maintenance. Updates and automation are temporarily paused."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           {children}
         </main>
       </div>
@@ -276,6 +303,21 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
   const { user, authAxios } = useAuth();
   const navigate = useNavigate();
   const isImpersonating = !!user?.impersonated_by;
+  const [appState, setAppState] = useState({ maintenance_mode: false, maintenance_message: "", is_read_only: false });
+
+  useEffect(() => {
+    const loadState = async () => {
+      try {
+        const res = await authAxios.get("/auth/app-state");
+        setAppState(res.data);
+      } catch {
+        // Ignore banner state failures
+      }
+    };
+    loadState();
+  }, [user?.id]);
+
+  const effectiveReadOnly = isReadOnly || appState?.is_read_only;
 
   const handleReturnToAdmin = async () => {
     try {
@@ -293,7 +335,7 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
       <OperatorSidebar 
         isOpen={sidebarOpen} 
         onClose={() => setSidebarOpen(false)} 
-        isReadOnly={isReadOnly}
+        isReadOnly={effectiveReadOnly}
       />
       <div className="flex-1 flex flex-col min-w-0">
         {isImpersonating && (
@@ -321,7 +363,20 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
           <h1 className="text-xl font-heading font-bold text-slate-900">{title}</h1>
         </header>
         <main className="flex-1 p-4 lg:p-8 overflow-auto">
-          {isReadOnly && (
+          {appState?.maintenance_mode && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm animate-fade-in">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-800">App Under Maintenance</p>
+                  <p className="text-sm text-red-700">
+                    {appState?.maintenance_message || "The app is under maintenance. Updates and automation are temporarily paused."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {effectiveReadOnly && !appState?.maintenance_mode && (
             <div className="read-only-banner mb-6 animate-fade-in">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-600" />

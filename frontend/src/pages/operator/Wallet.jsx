@@ -161,6 +161,7 @@ export default function WalletPage() {
   const balance = wallet?.balance ?? 0;
   const isLow = balance < 500;
   const isCritical = balance < 100;
+  const isMaintenance = !!wallet?.maintenance_mode;
 
   return (
     <OperatorLayout title="Wallet">
@@ -264,7 +265,7 @@ export default function WalletPage() {
                 </div>
                 <Button
                   onClick={handleTopup}
-                  disabled={topupLoading || !topupAmount}
+                  disabled={topupLoading || !topupAmount || isMaintenance || wallet?.is_read_only}
                   className="w-full bg-[#0066B2] hover:bg-[#004080]"
                   data-testid="topup-submit-btn"
                 >

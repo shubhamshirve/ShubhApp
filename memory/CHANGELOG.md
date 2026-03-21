@@ -36,6 +36,25 @@
 - Live Resend forgot-password OTP test
 - Additional automated OTP edge-case tests: expiry, resend throttling, invalid attempts, provider failure handling
 
+### Sprint 1 Progress: Maintenance Mode in Code
+
+#### Task 3: Platform Maintenance Mode (implemented, pending live verification)
+- Added `maintenance_mode` and `maintenance_message` to platform global settings.
+- Added shared maintenance/access-state helpers in backend dependencies so effective read-only now includes platform maintenance.
+- Added `/auth/app-state` for layout-level maintenance/read-only state loading.
+- Operator dashboard, wallet, and subscription responses now expose maintenance fields.
+- Wallet top-up and subscription checkout/renew flows now block during maintenance.
+- Cron automation and daily wallet checks now short-circuit with a maintenance skip reason.
+- Admin settings UI now includes a maintenance toggle and custom message field.
+- Admin and operator layouts now show maintenance banners, and operator action buttons are disabled while maintenance is active.
+
+#### Task 3 tests still pending
+- Manual admin maintenance toggle and persistence verification
+- Manual operator/staff read-only behavior verification
+- Manual admin layout banner verification
+- Manual cron skip verification while maintenance is enabled
+- Frontend runtime smoke test for `/auth/app-state` and disabled-action states
+
 ## 2025-07-18
 
 ### Batch 8: Codebase Cleanup & Removal

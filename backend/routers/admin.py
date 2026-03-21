@@ -449,7 +449,9 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
     if not settings:
         return {
             "active_payment_gateway": "razorpay", "notification_enabled": True,
-            "auto_invoice_days_before": 3, "late_fee_percentage": 0, "gst_rate": 18
+            "auto_invoice_days_before": 3, "late_fee_percentage": 0, "gst_rate": 18,
+            "maintenance_mode": False,
+            "maintenance_message": "The app is under maintenance. Updates and automation are temporarily paused.",
         }
     return settings
 
@@ -457,10 +459,11 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
 @router.put("/settings")
 async def update_global_settings(data: GlobalSettingsUpdate, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)
+    old_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
     settings = {"type": "platform", **data.model_dump(), "updated_at": now.isoformat(), "updated_by": current_user["id"]}
     await db.global_settings.update_one({"type": "platform"}, {"$set": settings}, upsert=True)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
-                    "update", "global_settings", None, data.model_dump(),
+                    "update", "global_settings", old_settings, data.model_dump(),
                     ip_address=current_user.get("_ip_address"))
     return {"message": "Settings updated successfully"}
 

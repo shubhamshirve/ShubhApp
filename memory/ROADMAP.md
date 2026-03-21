@@ -93,7 +93,7 @@ Legend:
   - Add dedicated automated tests for OTP expiry, resend throttling, invalid OTP attempts, and Resend failure handling.
 
 ### 3. Platform Maintenance Mode
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P0`
 - Importance: `High`
 - Effort: `M`
@@ -110,6 +110,19 @@ Legend:
   - Add maintenance mode into admin settings
 - Dependencies:
   - None
+- Current implementation notes:
+  - Admin global settings now store `maintenance_mode` and a configurable `maintenance_message`.
+  - Effective operator access now merges operator-level read-only with platform maintenance state.
+  - Operator dashboard, subscription, and wallet APIs now expose maintenance state so the UI can render correctly.
+  - Wallet top-up and subscription checkout/renew endpoints now block while maintenance mode is active.
+  - Cron automation now short-circuits during maintenance instead of performing writes.
+  - Admin and operator layouts now show maintenance banners, and operator actions are disabled in wallet/subscription flows.
+- Pending tests:
+  - Manual admin settings toggle test for maintenance on/off with custom message persistence.
+  - Manual operator/staff verification that write actions are blocked while reads still work.
+  - Manual banner visibility check in admin and operator layouts.
+  - Manual cron validation to confirm scheduled jobs skip work during maintenance.
+  - Frontend runtime smoke test after startup to confirm settings save and layout banner behavior.
 
 ---
 

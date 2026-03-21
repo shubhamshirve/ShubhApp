@@ -497,6 +497,8 @@ class GlobalSettingsUpdate(SanitizedModel):
     auto_invoice_days_before: int = 3
     late_fee_percentage: float = 0
     gst_rate: float = 18
+    maintenance_mode: bool = False
+    maintenance_message: Optional[str] = "The app is under maintenance. Updates and automation are temporarily paused."
 
 
 class AdminPaymentGatewayConfig(SanitizedModel):

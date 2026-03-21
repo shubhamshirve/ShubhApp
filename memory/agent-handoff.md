@@ -1,17 +1,18 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-21  
-**Active Branch:** `7.13-2`  
-**Status:** Task 1 and Task 2 implemented in code; live verification and Task 3 pending
+**Active Branch:** `7.13-3`  
+**Status:** Tasks 1, 2, and 3 implemented in code; live verification still pending
 
 ---
 
 ## Current Snapshot
 
-The branch now includes working code changes for the first two Sprint 1 items:
+The branch now includes working code changes for the first three Sprint 1 items:
 
 - Task 1: Wallet accounting and billing integrity
 - Task 2: Auth and OTP production hardening
+- Task 3: Platform maintenance mode
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
 - [.env](/d:/eBill/.env)
@@ -19,8 +20,6 @@ Supporting env/bootstrap files were also aligned so the new auth provider keys e
 - [setup.bat](/d:/eBill/setup.bat)
 - [init-env.sh](/d:/eBill/docker/init-env.sh)
 - [server.py](/d:/eBill/backend/server.py)
-
-Task 3, maintenance mode, has not started yet.
 
 ---
 
@@ -68,6 +67,28 @@ Implemented behavior:
 Security note:
 - Forgot-password keeps a generic response for unknown emails and stores a non-usable recovery session to reduce account-enumeration leakage.
 
+### Task 3: Platform Maintenance Mode
+
+Primary files:
+- [models.py](/d:/eBill/backend/models.py)
+- [dependencies.py](/d:/eBill/backend/dependencies.py)
+- [admin.py](/d:/eBill/backend/routers/admin.py)
+- [auth.py](/d:/eBill/backend/routers/auth.py)
+- [operator.py](/d:/eBill/backend/routers/operator.py)
+- [wallet.py](/d:/eBill/backend/routers/wallet.py)
+- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
+- [Layout.jsx](/d:/eBill/frontend/src/components/Layout.jsx)
+- [Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+
+Implemented behavior:
+- Admin can enable maintenance mode and set a platform-wide message from settings.
+- Platform maintenance state now feeds a shared access-state helper used alongside operator read-only status.
+- Operator dashboard, wallet, and subscription responses expose `maintenance_mode`, `maintenance_message`, and effective `is_read_only`.
+- Wallet top-up and subscription checkout/renew flows are blocked during maintenance.
+- Cron jobs and daily wallet automation now short-circuit while maintenance mode is enabled.
+- Admin and operator layouts fetch `/auth/app-state` and show a visible maintenance banner.
+- Wallet and subscription UI actions now disable during maintenance.
+
 ---
 
 ## Pending Tests
@@ -75,6 +96,7 @@ Security note:
 ### Completed local verification
 - `python -m py_compile backend/routers/wallet.py backend/routers/operator.py`
 - `python -m py_compile backend/routers/auth.py backend/services/email_service.py backend/server.py`
+- `python -m py_compile backend/models.py backend/dependencies.py backend/routers/admin.py backend/routers/auth.py backend/routers/operator.py backend/routers/wallet.py backend/services/cron_service.py`
 
 ### Still pending for Task 1
 - Manual wallet top-up with Razorpay test/live keys:
@@ -97,6 +119,24 @@ Security note:
   - resend cooldown/limit handling
   - invalid OTP attempt limit
   - provider failure handling
+
+### Still pending for Task 3
+- Manual admin maintenance toggle test:
+  - enable maintenance mode
+  - save custom message
+  - confirm values persist on reload
+- Manual operator verification:
+  - wallet top-up is blocked
+  - subscription renew is blocked
+  - read-only pages still load
+- Manual admin verification:
+  - admin still has settings access while maintenance is on
+  - maintenance banner appears in layout
+- Manual cron verification:
+  - scheduled jobs skip work and return maintenance reason
+- Frontend smoke test:
+  - `/auth/app-state` banner loads correctly without request loops
+  - wallet/subscription buttons disable correctly during maintenance
 
 ---
 
@@ -127,25 +167,25 @@ The active source of truth remains [ROADMAP.md](/d:/eBill/memory/ROADMAP.md).
 
 ## Immediate Next Task
 
-### Task 3: Platform Maintenance Mode
+### Task 4: Invoice Branding and Public Invoice Consistency
 
 Why this should come next:
-- Tasks 1 and 2 are already patched through the codebase.
-- Maintenance mode is the next Sprint 1 blocker and affects cron, write-guards, and frontend state.
-- It should land before bigger schema/reporting work.
+- Sprint 1 core stabilization work is now in code.
+- Invoice branding/public URL work is the next highest-impact customer-facing item without a major schema rewrite.
+- It can proceed while live verification for Tasks 1 to 3 happens in parallel.
 
 Likely starting files:
-- [admin.py](/d:/eBill/backend/routers/admin.py)
-- [dependencies.py](/d:/eBill/backend/dependencies.py)
-- [server.py](/d:/eBill/backend/server.py)
-- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
-- frontend layout/app shell files for global read-only popup/banner
+- [public.py](/d:/eBill/backend/routers/public.py)
+- [operator.py](/d:/eBill/backend/routers/operator.py)
+- [pdf_service.py](/d:/eBill/backend/services/pdf_service.py)
+- [Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
+- invoice/public page frontend files
 
 Expected implementation shape:
-- add admin-controlled maintenance flag in platform settings
-- stop scheduled automation while enabled
-- force non-admin write paths into read-only mode
-- surface a global maintenance message in the frontend
+- switch public invoice routes to invoice number
+- align invoice page and PDF rendering
+- include operator logo/address cleanly
+- extend invoice customization controls where needed
 
 ---
 
@@ -153,19 +193,20 @@ Expected implementation shape:
 
 - Task 1 still needs real payment-provider verification before being treated as production-complete.
 - Task 2 now depends on correct Resend env configuration; auth testing will fail without those keys.
+- Task 3 needs browser and cron validation before being treated as rollout-ready.
 - There are still older historical docs/tests in the repo that reference legacy plan-credit behavior and may need cleanup later.
-- Maintenance mode will touch both API write guards and cron startup/runtime behavior, so avoid partial rollout.
+- Invoice branding work will likely touch both public routes and PDF generation, so keep link compatibility in mind.
 
 ---
 
 ## Branch / Git State At Handoff
 
-- Current working branch for delivery: `7.13-2`
+- Current working branch for delivery: `7.13-3`
 - Source implementation branch before delivery branch creation: `V7.14`
 - Latest code in progress includes:
   - wallet/top-up accounting changes
   - auth/OTP hardening
   - env/bootstrap alignment
-  - pending memory/changelog sync
+  - maintenance mode across admin settings, API access state, cron guards, and layout banners
 
-If continuing from here, start Task 3 after the requested git push is complete.
+If continuing from here, start Task 4 after this branch is committed and pushed.

@@ -9,7 +9,7 @@ import logging
 from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
 from utils import generate_id, hash_password, verify_password, create_token
-from dependencies import get_current_user
+from dependencies import get_current_user, get_platform_maintenance_state, get_operator_access_state
 from sanitization import SanitizedModel, sanitize_text
 from services.email_service import get_email_service, EmailServiceError
 
@@ -758,4 +758,25 @@ async def resend_recovery_otp(recovery_id: str = ""):
         "message": "Recovery code resent",
         "otp_sent": True,
         "email_masked": _mask_email(recovery["email"]),
+    }
+
+
+@router.get("/app-state")
+async def get_app_state(current_user: dict = Depends(get_current_user)):
+    """Return platform maintenance/read-only state for the current user."""
+    maintenance = await get_platform_maintenance_state()
+    is_read_only = False
+    if current_user["role"] in ["operator", "staff"] and current_user.get("operator_id"):
+        access = await get_operator_access_state(current_user["operator_id"])
+        is_read_only = access["is_read_only"]
+        maintenance = {
+            "maintenance_mode": access["maintenance_mode"],
+            "maintenance_message": access["maintenance_message"],
+        }
+
+    return {
+        "maintenance_mode": maintenance["maintenance_mode"],
+        "maintenance_message": maintenance["maintenance_message"],
+        "is_read_only": is_read_only,
+        "role": current_user["role"],
     }

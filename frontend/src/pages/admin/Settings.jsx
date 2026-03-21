@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Switch } from "../../components/ui/switch";
+import { Textarea } from "../../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import {
   Select,
@@ -379,6 +381,29 @@ const AdminSettings = () => {
                       type="number"
                       value={settings?.late_fee_percentage || 0}
                       onChange={(e) => setSettings(s => ({ ...s, late_fee_percentage: parseFloat(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-amber-900">Maintenance Mode</p>
+                      <p className="text-sm text-amber-700">
+                        When enabled, automation stops and operator/staff users are forced into read-only mode.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!settings?.maintenance_mode}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, maintenance_mode: checked }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Maintenance Message</Label>
+                    <Textarea
+                      value={settings?.maintenance_message || ""}
+                      onChange={(e) => setSettings(s => ({ ...s, maintenance_message: e.target.value }))}
+                      placeholder="The app is under maintenance. Updates and automation are temporarily paused."
+                      rows={3}
                     />
                   </div>
                 </div>

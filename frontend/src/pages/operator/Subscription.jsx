@@ -152,6 +152,10 @@ const OperatorSubscription = () => {
   };
 
   const handleRenew = async () => {
+    if (subscription?.maintenance_mode) {
+      toast.error(subscription?.maintenance_message || "The app is under maintenance.");
+      return;
+    }
     if (!selectedPlan) {
       toast.error("Please select a plan");
       return;
@@ -238,6 +242,10 @@ const OperatorSubscription = () => {
   };
 
   const handleTopup = async () => {
+    if (subscription?.maintenance_mode) {
+      toast.error(subscription?.maintenance_message || "The app is under maintenance.");
+      return;
+    }
     const amt = parseFloat(topupAmount);
     if (!amt || amt < 100) {
       toast.error("Minimum top-up amount is ₹100");
@@ -393,6 +401,7 @@ const OperatorSubscription = () => {
   const balance = wallet?.balance ?? 0;
   const isLow = balance < 500;
   const isCritical = balance < 100;
+  const isMaintenance = !!subscription?.maintenance_mode;
 
   return (
     <OperatorLayout title="Subscription" isReadOnly={subscription?.is_read_only}>
@@ -854,7 +863,7 @@ const OperatorSubscription = () => {
                             </div>
                             <Button
                               onClick={handleTopup}
-                              disabled={topupLoading || !topupAmount}
+                              disabled={topupLoading || !topupAmount || isMaintenance}
                               data-testid="topup-pay-btn"
                             >
                               {topupLoading ? (
@@ -1104,7 +1113,7 @@ const OperatorSubscription = () => {
             </Button>
             <Button
               onClick={handleRenew}
-              disabled={!selectedPlan || processing}
+              disabled={!selectedPlan || processing || isMaintenance}
               data-testid="confirm-renew-btn"
             >
               {processing ? (

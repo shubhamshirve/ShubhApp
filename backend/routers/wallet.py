@@ -7,7 +7,7 @@ import logging
 
 from database import db
 from utils import generate_id
-from dependencies import require_operator, require_admin
+from dependencies import require_operator, require_admin, check_operator_read_only, get_operator_access_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Wallet"])
@@ -166,6 +166,7 @@ async def get_wallet(current_user: dict = Depends(require_operator)):
     operator_id = current_user["operator_id"]
     wallet = await get_or_create_wallet(operator_id)
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    access_state = await get_operator_access_state(operator_id)
     return {
         "balance": wallet.get("balance", 0),
         "operator_id": operator_id,
@@ -174,6 +175,9 @@ async def get_wallet(current_user: dict = Depends(require_operator)):
         "referral_discount_used": operator.get("referral_discount_used", False),
         "referral_reward_active": is_referral_reward_active(operator) if operator else False,
         "wallet_suspended": operator.get("wallet_suspended", False) if operator else False,
+        "is_read_only": access_state["is_read_only"],
+        "maintenance_mode": access_state["maintenance_mode"],
+        "maintenance_message": access_state["maintenance_message"],
         "updated_at": wallet.get("updated_at"),
     }
 
@@ -200,6 +204,8 @@ async def create_topup_order(
     """Create Razorpay order for wallet topup."""
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin doesn't have a wallet")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
     if amount < 100:
         raise HTTPException(status_code=400, detail="Minimum topup amount is Rs.100")
     if amount > 50000:

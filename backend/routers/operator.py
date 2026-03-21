@@ -19,7 +19,12 @@ from models import (
     ReminderSettingsUpdate,
 )
 from utils import generate_id, hash_password, generate_invoice_number, generate_invoice_number_atomic
-from dependencies import require_operator, require_operator_no_staff, check_operator_read_only
+from dependencies import (
+    require_operator,
+    require_operator_no_staff,
+    check_operator_read_only,
+    get_operator_access_state,
+)
 from audit import log_audit
 from sanitization import sanitize_filename, sanitize_text
 
@@ -365,6 +370,8 @@ async def create_checkout_order(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot checkout")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
@@ -664,6 +671,7 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
+    access_state = await get_operator_access_state(current_user["operator_id"])
     saas_plan = None
     if operator.get("saas_plan_id"):
         saas_plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
@@ -681,7 +689,9 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
         "subscriber_count": subscriber_count,
         "subscription_ends_at": operator.get("subscription_ends_at"),
         "trial_ends_at": operator.get("trial_ends_at"),
-        "is_read_only": operator.get("is_read_only", False),
+        "is_read_only": access_state["is_read_only"],
+        "maintenance_mode": access_state["maintenance_mode"],
+        "maintenance_message": access_state["maintenance_message"],
         "available_plans": [
             {
                 "id": p["id"], "name": p["name"],
@@ -711,6 +721,8 @@ async def renew_operator_subscription(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot renew")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
@@ -782,6 +794,7 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
     ).to_list(1000)
     total_revenue = sum(inv.get("final_amount", 0) for inv in paid_invoice_list)
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    access_state = await get_operator_access_state(operator_id)
     # Fetch plan limits
     max_subscribers = None
     max_staff = None
@@ -798,7 +811,9 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
         "total_invoices": total_invoices, "pending_invoices": pending_invoices,
         "overdue_invoices": overdue_invoices, "paid_invoices": paid_invoices,
         "total_revenue": total_revenue,
-        "is_read_only": operator.get("is_read_only", False) if operator else False,
+        "is_read_only": access_state["is_read_only"],
+        "maintenance_mode": access_state["maintenance_mode"],
+        "maintenance_message": access_state["maintenance_message"],
         "subscription_ends_at": operator.get("subscription_ends_at") if operator else None,
         "trial_ends_at": operator.get("trial_ends_at") if operator else None,
         "status": operator.get("status") if operator else "unknown",
@@ -1890,7 +1905,8 @@ async def update_reminder_settings(
     operator_id = current_user["operator_id"]
     if not await _has_addon(operator_id, "whatsapp_notifications"):
         raise HTTPException(status_code=403, detail="WhatsApp notifications add-on is not enabled")
-    await check_operator_read_only(current_user)
+    if await check_operator_read_only(operator_id):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
     # Validate day values
     for d in data.remind_before_due:

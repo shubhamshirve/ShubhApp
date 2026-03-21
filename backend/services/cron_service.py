@@ -8,6 +8,14 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+async def get_maintenance_state(db) -> Dict[str, Any]:
+    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    return {
+        "maintenance_mode": bool(settings.get("maintenance_mode", False)),
+        "maintenance_message": settings.get("maintenance_message") or "The app is under maintenance.",
+    }
+
 class CronJobService:
     """Service for scheduled tasks like invoice generation and reminders"""
     
@@ -32,6 +40,9 @@ class CronJobService:
             "invoices_generated": 0,
             "errors": []
         }
+        maintenance = await get_maintenance_state(self.db)
+        if maintenance["maintenance_mode"]:
+            return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
         
         now = datetime.now(timezone.utc)
         target_day = (now + timedelta(days=days_before)).day
@@ -109,6 +120,9 @@ class CronJobService:
             "reminders_sent": 0,
             "errors": []
         }
+        maintenance = await get_maintenance_state(self.db)
+        if maintenance["maintenance_mode"]:
+            return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
         
         now = datetime.now(timezone.utc)
         cutoff_date = (now - timedelta(days=days_overdue)).isoformat()
@@ -170,6 +184,9 @@ class CronJobService:
             "expired": 0,
             "set_read_only": 0
         }
+        maintenance = await get_maintenance_state(self.db)
+        if maintenance["maintenance_mode"]:
+            return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
         
         now = datetime.now(timezone.utc)
         
@@ -391,6 +408,9 @@ class CronJobService:
             "skipped": 0,
             "errors": [],
         }
+        maintenance = await get_maintenance_state(self.db)
+        if maintenance["maintenance_mode"]:
+            return {**results, "skipped": 1, "reason": maintenance["maintenance_message"]}
         now = datetime.now(timezone.utc)
         today = now.date()
 
@@ -599,6 +619,9 @@ async def run_daily_wallet_check(db):
     """Daily cron: check operator wallet balances, send reminders, suspend if < 100."""
     now = datetime.now(timezone.utc)
     results = {"checked": 0, "reminders_sent": 0, "suspended": 0, "errors": []}
+    maintenance = await get_maintenance_state(db)
+    if maintenance["maintenance_mode"]:
+        return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
 
     operators = await db.operators.find(
         {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
