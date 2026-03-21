@@ -41,8 +41,8 @@
 ## 2026-03-22: Invoice & Admin Fixes
 
 ### Invoice Add-Row / Calendar
-- Open the Create Invoice dialog, add a second line item, verify no crash occurs.
-- Verify due date and service period date pickers open and stay open inside the dialog.
+- [ ] Open the Create Invoice dialog, add a second line item, verify no crash occurs.
+- [ ] Verify due date and service period date pickers open, close on select, and have correct layout.
 
 ### PDF Invoice Logo
 - Upload a company logo in Operator → Settings → Invoice.

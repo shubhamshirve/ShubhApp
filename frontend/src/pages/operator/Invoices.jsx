@@ -58,6 +58,33 @@ import {
   Trash2
 } from "lucide-react";
 
+const PopoverDatePicker = ({ date, onSelect, label }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "PPP") : label}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0 z-[100]" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(d) => {
+            if (d) {
+              onSelect(d);
+              setOpen(false);
+            }
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 const OperatorInvoices = () => {
   const { authAxios, features } = useAuth();
   const [invoices, setInvoices] = useState([]);
@@ -547,21 +574,11 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-2">
                   <Label>Due Date *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(formData.due_date, "PPP")}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 z-[100]" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={formData.due_date}
-                        onSelect={(date) => date && setFormData(prev => ({ ...prev, due_date: date }))}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <PopoverDatePicker 
+                    date={formData.due_date} 
+                    onSelect={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
+                    label="Select Due Date"
+                  />
                 </div>
               </div>
 
@@ -633,40 +650,20 @@ const OperatorInvoices = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Service Period Start *</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(item.service_start_date, "PPP")}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 z-[100]" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={item.service_start_date}
-                                onSelect={(date) => date && updateLineItem(index, "service_start_date", date)}
-                              />
-                            </PopoverContent>
-                          </Popover>
+                          <PopoverDatePicker 
+                            date={item.service_start_date}
+                            onSelect={(date) => updateLineItem(index, "service_start_date", date)}
+                            label="Start Date"
+                          />
                         </div>
 
                         <div className="space-y-2">
                           <Label>Service Period End *</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(item.service_end_date, "PPP")}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 z-[100]" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={item.service_end_date}
-                                onSelect={(date) => date && updateLineItem(index, "service_end_date", date)}
-                              />
-                            </PopoverContent>
-                          </Popover>
+                          <PopoverDatePicker 
+                            date={item.service_end_date}
+                            onSelect={(date) => updateLineItem(index, "service_end_date", date)}
+                            label="End Date"
+                          />
                         </div>
                       </div>
                     </div>
