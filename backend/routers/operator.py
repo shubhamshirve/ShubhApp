@@ -441,9 +441,9 @@ async def create_checkout_order(
         if not saas_plan:
             raise HTTPException(status_code=404, detail="Plan not found")
 
-        # Always 1 month; GST inclusive pricing (no GST added)
+        # Subscription plan logic: Base price is exclusive of GST.
         base_amount = saas_plan["monthly_price"]
-        description = f"{saas_plan['name']} — Monthly Subscription (GST Inclusive)"
+        description = f"{saas_plan['name']} — Monthly Subscription"
         selected_addon_codes = []
         receipt_prefix = "SUB"
     else:
@@ -486,9 +486,9 @@ async def create_checkout_order(
                 applied_coupon = coupon_code.upper()
     discounted_base = round(base_amount - discount_amount - referral_discount_amount, 2)
 
-    # All SaaS prices are GST inclusive — no additional GST
-    gst_amount = 0.0
-    exact_total = discounted_base
+    # Calculate GST on the discounted base amount for all SaaS checkout items
+    gst_amount = round(discounted_base * gst_rate / 100, 2)
+    exact_total = discounted_base + gst_amount
     import math
     rounded_total = math.floor(exact_total + 0.5)          # standard half-up rounding → int
     rounding_diff = round(rounded_total - exact_total, 2)  # +ve = rounded up, -ve = rounded down
@@ -639,7 +639,17 @@ async def verify_checkout_payment(
             update_fields["active_addons"] = active
         update_fields["addon_expiry"] = addon_expiry
         await db.operators.update_one({"id": operator["id"]}, {"$set": update_fields})
-        result_msg = f"Subscription extended by {order['months']} month(s)"
+        
+        # Credit the operator's wallet with the pre-GST base amount
+        from routers.wallet import credit_wallet
+        await credit_wallet(
+            operator_id=operator["id"],
+            amount=order["base_amount"],
+            description=f"Subscription Credit: {order['item_code'] or order.get('plan_id', '')}",
+            tx_type="subscription_credit"
+        )
+        
+        result_msg = f"Subscription extended by {order['months']} month(s) and wallet credited ₹{order['base_amount']}"
     else:
         result_msg = "Payment verified"
 

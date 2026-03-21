@@ -36,7 +36,6 @@ import {
 const OperatorSettings = () => {
   const { authAxios, user, features } = useAuth();
   const isImpersonated = !!user?.impersonated_by;
-  const hasPaymentReminder = !!features?.whatsapp_notifications;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -47,8 +46,6 @@ const OperatorSettings = () => {
   // Theme state
   const [currentTheme, setCurrentTheme] = useState("modern");
   const [themeSaving, setThemeSaving] = useState(false);
-
-  const [reminderSaving, setReminderSaving] = useState(false);
   
   const [profileForm, setProfileForm] = useState({
     company_name: "",
@@ -886,177 +883,6 @@ const OperatorSettings = () => {
             </Card>
           </TabsContent>
 
-          {/* Reminders Tab */}
-          {hasPaymentReminder && (
-            <TabsContent value="reminders">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarClock className="w-5 h-5" />
-                    Payment Reminder Schedule
-                  </CardTitle>
-                  <p className="text-sm text-slate-500">
-                    Configure automatic WhatsApp reminders for pending invoices. Reminders run daily at 07:00 UTC.
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleReminderSubmit} className="space-y-6">
-                    {/* Master toggle */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                      <div>
-                        <Label className="text-sm font-medium">Enable Auto Reminders</Label>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Automatically send WhatsApp reminders based on your schedule below
-                        </p>
-                      </div>
-                      <Switch
-                        checked={reminderForm.enabled}
-                        onCheckedChange={(checked) => setReminderForm(prev => ({ ...prev, enabled: checked }))}
-                        disabled={isReadOnly}
-                        data-testid="reminder-enabled-switch"
-                      />
-                    </div>
-
-                    {/* Before due date */}
-                    <div className={`space-y-3 ${!reminderForm.enabled ? "opacity-50 pointer-events-none" : ""}`}>
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-blue-500" />
-                          Before Due Date
-                        </p>
-                        <p className="text-xs text-slate-500 ml-6">Send a reminder X days before the invoice is due</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 ml-6">
-                        {[7, 5, 3, 2, 1].map(day => (
-                          <button
-                            key={`before-${day}`}
-                            type="button"
-                            onClick={() => toggleBeforeDay(day)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                              reminderForm.remind_before_due.includes(day)
-                                ? "bg-blue-50 border-blue-300 text-blue-700"
-                                : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
-                            }`}
-                            data-testid={`before-due-${day}`}
-                          >
-                            {day} {day === 1 ? "day" : "days"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* On due date */}
-                    <div className={`${!reminderForm.enabled ? "opacity-50 pointer-events-none" : ""}`}>
-                      <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-amber-800 flex items-center gap-2">
-                            <Bell className="w-4 h-4" />
-                            On Due Date
-                          </p>
-                          <p className="text-xs text-amber-600 ml-6">Send a reminder on the exact due date</p>
-                        </div>
-                        <Switch
-                          checked={reminderForm.remind_on_due}
-                          onCheckedChange={(checked) => setReminderForm(prev => ({ ...prev, remind_on_due: checked }))}
-                          disabled={isReadOnly}
-                          data-testid="reminder-on-due-switch"
-                        />
-                      </div>
-                    </div>
-
-                    {/* After due date */}
-                    <div className={`space-y-3 ${!reminderForm.enabled ? "opacity-50 pointer-events-none" : ""}`}>
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-red-500" />
-                          After Due Date (Overdue)
-                        </p>
-                        <p className="text-xs text-slate-500 ml-6">Send follow-up reminders for overdue invoices</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 ml-6">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(day => (
-                          <button
-                            key={`after-${day}`}
-                            type="button"
-                            onClick={() => toggleAfterDay(day)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                              reminderForm.remind_after_due.includes(day)
-                                ? "bg-red-50 border-red-300 text-red-700"
-                                : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
-                            }`}
-                            data-testid={`after-due-${day}`}
-                          >
-                            {day} {day === 1 ? "day" : "days"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Max reminders */}
-                    <div className={`space-y-2 ${!reminderForm.enabled ? "opacity-50 pointer-events-none" : ""}`}>
-                      <Label>Max Reminders Per Invoice</Label>
-                      <Select
-                        value={String(reminderForm.max_reminders_per_invoice)}
-                        onValueChange={(val) => setReminderForm(prev => ({ ...prev, max_reminders_per_invoice: parseInt(val) }))}
-                        disabled={isReadOnly}
-                      >
-                        <SelectTrigger className="w-40" data-testid="max-reminders-select">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[3, 5, 10, 15, 20].map(n => (
-                            <SelectItem key={n} value={String(n)}>{n} reminders</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-500">Stop sending reminders after this count is reached per invoice</p>
-                    </div>
-
-                    {/* Summary */}
-                    {reminderForm.enabled && (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                        <p className="text-sm font-medium text-slate-700 mb-2">Schedule Summary</p>
-                        <div className="text-xs text-slate-600 space-y-1">
-                          {reminderForm.remind_before_due.length > 0 && (
-                            <p>
-                              Before due: {[...reminderForm.remind_before_due].sort((a, b) => b - a).map(d => `${d}d`).join(", ")} before
-                            </p>
-                          )}
-                          {reminderForm.remind_on_due && <p>On due date</p>}
-                          {reminderForm.remind_after_due.length > 0 && (
-                            <p>
-                              After due: {[...reminderForm.remind_after_due].sort((a, b) => a - b).map(d => `${d}d`).join(", ")} after
-                            </p>
-                          )}
-                          {!reminderForm.remind_before_due.length && !reminderForm.remind_on_due && !reminderForm.remind_after_due.length && (
-                            <p className="text-amber-600">No reminder schedule configured yet. Select at least one option above.</p>
-                          )}
-                          <p className="mt-1 text-slate-500">Max {reminderForm.max_reminders_per_invoice} reminders per invoice</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm font-medium text-blue-800 mb-1">How it works</p>
-                      <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-                        <li>Reminders are processed daily at 07:00 UTC automatically</li>
-                        <li>Each invoice tracks how many reminders have been sent</li>
-                        <li>Duplicate reminders for the same day are prevented</li>
-                        <li>Requires WhatsApp Business API to be configured</li>
-                      </ul>
-                    </div>
-
-                    <div className="flex justify-end pt-4 border-t">
-                      <Button type="submit" disabled={isReadOnly || reminderSaving} data-testid="save-reminder-btn">
-                        <Save className="w-4 h-4 mr-2" />
-                        {reminderSaving ? "Saving..." : "Save Reminder Settings"}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
         </Tabs>
       </div>
     </OperatorLayout>
