@@ -6,7 +6,8 @@ import os
 import logging
 
 from database import db
-from utils import generate_id, log_audit
+from utils import generate_id
+from audit import log_audit
 from dependencies import require_operator, require_admin, check_operator_read_only, get_operator_access_state
 from models import WalletAdjustmentRequest, WalletSuspendRequest
 
