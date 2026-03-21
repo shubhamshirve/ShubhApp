@@ -1,106 +1,174 @@
-# Agent Handoff — E-Bill Platform
+# Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2025-07-18  
-**Status:** Batch 8 Cleanup Complete ✅
-
----
-
-## What Was Done (Batch 8)
-
-All tasks from the previous handoff document have been executed and verified:
-
-### ✅ 1. REMOVED: Settlement System (Frontend + Backend + Cron)
-**Files DELETED:**
-- `frontend/src/pages/admin/Settlements.jsx`
-- `frontend/src/pages/operator/Settlements.jsx`
-- `backend/seed_settlement_data.py`
-
-**Code REMOVED from existing files:**
-- `App.js` — AdminSettlements/OperatorSettlements imports + route definitions
-- `Layout.jsx` — Both "Settlements" sidebar links + `Banknote` icon import
-- `backend/routers/admin.py` — Entire Settlements section (~350 lines): summary, list, detail, status update, process, manual settlement, platform-fee, settlement-invoices endpoints
-- `backend/routers/operator.py` — Operator settlements section (~100 lines): summary, list, detail
-- `backend/services/cron_service.py` — `run_daily_settlement_processing` function (~106 lines)
-- `backend/server.py` — Settlement cron import + `daily_settlements` scheduler entry
-
-### ✅ 2. REMOVED: Platform Fee Logic
-- `backend/models.py` — Removed `platform_fee_percentage` field from `SaaSPlanResponse`
-- `backend/routers/admin.py` — Removed `platform_fee_percentage: 0.0` from plan create/update
-- `backend/server.py` — Removed `platform_fee_percentage` from seeded Basic/Pro plans
-- `update_platform_fee` endpoint removed (was inside settlements section)
-
-### ✅ 3. DELETED: Dead/Unused Files
-- `frontend/src/pages/LandingPage.jsx` (726 lines — unused, root already redirects to `/login`)
-- `backend_kyc_test.py` (root-level standalone test script)
-- `kyc_focused_test.py` (root-level standalone test script)
-- `kyc_review_test.py` (root-level standalone test script)
-
-### ✅ 4. CLEANED: Dead Code in Existing Files
-- `backend/models.py` — Removed `SUBSCRIBER_TIERS`, `STAFF_TIERS`, `VALID_SUBSCRIBER_COUNTS`, `VALID_STAFF_COUNTS`, `calc_plan_price` (old tier-based pricing replaced by `monthly_price`)
-- `backend/server.py` — Removed `/api/landing-page` public endpoint
+**Last Updated:** 2026-03-21  
+**Active Branch:** `V7.14`  
+**Status:** Planning sync completed, implementation not yet started
 
 ---
 
-## Current Codebase State
+## Current Snapshot
 
-### Scheduled Jobs (APScheduler)
-| Job | Schedule | Description |
-|-----|----------|-------------|
-| Auto Backup | 02:00 UTC daily | Gzipped JSON backup |
-| Expiry Check | 01:00 UTC daily | Mark expired trials/subscriptions |
-| Invoice Generation | 06:00 UTC daily | Auto-generate invoices 3 days before billing |
-| Reminder Processing | 07:00 UTC daily | Send reminders per operator schedule |
-| Wallet Check | 08:00 UTC daily | Wallet balance check, reminders, auto-suspend |
+The repository has been moved from `V7.13-1` to `V7.14`.
 
-### Verified Working
-- ✅ Backend health: `GET /api/health`
-- ✅ Settlement endpoints return 404 (correctly removed)
-- ✅ `/api/landing-page` returns 404 (correctly removed)
-- ✅ SaaS plans no longer return `platform_fee_percentage` field
-- ✅ Admin sidebar has no "Settlements" link
-- ✅ Operator sidebar has no "Settlements" link
+What changed in `V7.14` so far:
+- Updated [ROADMAP.md](d:/eBill/memory/ROADMAP.md) to reflect a codebase-aware delivery plan
+- Reviewed deferred work and pulled two items into active sprint planning:
+  - Payment receipts and confirmation delivery
+  - Import/export enhancements
+- Pushed branch `V7.14` to `origin`
+
+No product feature implementation has started yet on this branch.
 
 ---
 
-## Next Up (from Roadmap)
+## Current Working Plan
 
-Tasks that STAY valid and need credentials/keys:
+The active source of truth is [ROADMAP.md](d:/eBill/memory/ROADMAP.md).
 
-### P1 — Needs External Credentials
-1. **Multi-channel OTP** (Resend email / SMS / WhatsApp) — **Needs**: Resend API key, SMS provider credentials
-2. **Cashfree payment gateway** — **Needs**: Cashfree API key + secret
-3. **Payment receipt generation + WhatsApp send** — No external deps needed
-4. **SMS & Email invoice/reminders** — **Needs**: SMS/Email provider credentials
+### Sprint 1
+1. Wallet accounting and billing integrity
+2. Auth and OTP production hardening
+3. Platform maintenance mode
 
-### P2 — No External Deps
-- GST R1 & 3B Reconciliation
-- Subscriber self-service portal
-- Import/Export (CSV/Excel) — bulk subscriber import already exists
-- Advanced reporting & analytics
-- Custom domain support
+### Sprint 2
+4. Invoice branding and public invoice consistency
+5. Multi-plan subscribers and multi-line invoices
+6. Session timeout and strong role validation
+
+### Sprint 3
+7. Global reminder control and IST scheduling
+8. Admin wallet operations
+
+### Sprint 4
+9. Messaging and reporting polish
+10. Payment receipts and confirmation delivery
+11. Import/export enhancements
+
+Deferred:
+- Cashfree gateway
+- SMS and email invoice/reminder delivery
+- GST reconciliation (R1 / 3B)
+- Advanced analytics
 
 ---
 
-## Key Files Reference
+## Immediate Next Task
 
-```
-backend/
-  server.py              — FastAPI entry + APScheduler (5 jobs)
-  models.py              — Pydantic schemas (no tier constants, no platform_fee)
-  routers/admin.py       — Admin routes (no settlements section)
-  routers/operator.py    — Operator routes (no settlements section)
-  routers/auth.py        — Auth + OTP registration
-  routers/support.py     — Support ticket system
-  routers/wallet.py      — Wallet + referral system
-  services/cron_service.py — Cron functions (no settlement processing)
+Start with:
 
-frontend/src/
-  App.js                 — Routes (no settlement routes)
-  components/Layout.jsx  — Sidebars (no Banknote/Settlements)
-  pages/admin/           — Admin pages (no Settlements.jsx)
-  pages/operator/        — Operator pages (no Settlements.jsx)
-```
+### Task 1: Wallet Accounting and Billing Integrity
 
-## Test Credentials
-- **Admin**: admin@saas.com / admin123
-- **Seed**: `POST /api/seed`
+Why this is first:
+- It affects real money movement
+- It has drift between code, tests, and historical docs
+- Later billing/invoice work depends on getting wallet behavior correct
+
+Main concerns already identified:
+- Subscription wallet credit behavior appears inconsistent with older tests/docs
+- Wallet top-up currently credits the paid total directly
+- Top-up flow does not yet support GST-exclusive entry with GST computed separately
+- Need to verify invoice deduction always uses the active plan's `per_invoice_price`
+
+---
+
+## Key Findings from Code Review
+
+### Wallet and Subscription
+- `backend/routers/wallet.py`
+  - Wallet top-up order stores `base_amount` and `total_amount`
+  - Verify flow currently credits `order["total_amount"]` directly to wallet
+- `backend/routers/operator.py`
+  - Subscription checkout currently stores `wallet_credit_amount: 0`
+  - There is still conditional subscription wallet credit logic during checkout verification
+- `backend/services/cron_service.py`
+  - Auto-generated invoices deduct wallet via `deduct_wallet_for_invoice`
+- `backend/models.py`
+  - SaaS plans use `monthly_price` and `per_invoice_price`
+
+### Auth and OTP
+- `backend/routers/auth.py`
+  - Registration OTP test bypass still exists
+  - Recovery OTP test bypass still exists
+  - Forgot-password email flow is still mocked/logged instead of real delivery
+- `frontend/src/pages/Login.jsx`
+  - Demo credentials are still shown
+- `frontend/src/pages/ForgotPassword.jsx`
+  - Test OTP hint is still shown
+
+### Maintenance / Read-Only
+- `backend/dependencies.py`
+  - Read-only check exists
+- `backend/services/cron_service.py`
+  - Read-only mode is currently triggered from wallet suspension/expiry paths only
+- `backend/routers/admin.py`
+  - No true platform maintenance mode yet
+
+### Invoice and Public Invoice
+- `backend/routers/public.py`
+  - Public invoice fetch still uses internal invoice ID
+- `backend/routers/operator.py`
+  - Public invoice URLs currently point to `/invoice/{invoice.id}`
+- `frontend/src/pages/PublicInvoice.jsx`
+  - Public view already supports payment status and GST display
+- `backend/services/pdf_service.py`
+  - PDF generation already exists and can be extended for receipts
+
+### Reminder and Scheduling
+- `backend/server.py`
+  - Scheduler jobs are configured in UTC
+- `frontend/src/pages/operator/Settings.jsx`
+  - Reminder management still lives under operator settings
+- `frontend/src/pages/admin/Settings.jsx`
+  - Global WhatsApp credentials/template assignment already exist
+
+### Reports / Import / Export
+- Operator and admin CSV export already exist in report screens
+- Subscriber and plan CSV/XLSX import already exist
+- Frontend already includes `recharts`, but analytics work is not yet expanded
+
+---
+
+## Important Files for the Next Session
+
+### Start here for Task 1
+- [wallet.py](d:/eBill/backend/routers/wallet.py)
+- [operator.py](d:/eBill/backend/routers/operator.py)
+- [cron_service.py](d:/eBill/backend/services/cron_service.py)
+- [models.py](d:/eBill/backend/models.py)
+- [test_wallet_referral.py](d:/eBill/backend/tests/test_wallet_referral.py)
+- [test_plan_revamp.py](d:/eBill/backend/tests/test_plan_revamp.py)
+
+### Related planning context
+- [ROADMAP.md](d:/eBill/memory/ROADMAP.md)
+- [PRD.md](d:/eBill/memory/PRD.md)
+- [CHANGELOG.md](d:/eBill/memory/CHANGELOG.md)
+
+---
+
+## Risks to Keep in Mind
+
+- Wallet behavior may already be relied on by existing data or tests
+- Historical docs mention older Pro-plan wallet credit behavior that may no longer match the branch
+- Changing top-up accounting can affect referral reward calculations
+- OTP hardening will remove current test shortcuts, so dev/test strategy may need adjustment
+- Multi-plan billing should not begin before wallet/invoice/auth foundations are stable
+
+---
+
+## Recommended Next Execution Order
+
+1. Reconcile wallet behavior in code vs tests vs intended business rule
+2. Patch wallet top-up accounting and subscription wallet handling
+3. Run targeted wallet/subscription tests
+4. Move to auth/OTP hardening only after wallet logic is stable
+
+---
+
+## Branch / Git State at Handoff
+
+- Branch: `V7.14`
+- Remote tracking: `origin/V7.14`
+- Latest planning commit before feature work:
+  - `de12b72` - `Update roadmap for V7.14 delivery plan`
+
+If continuing from here, update this file again after Task 1 is implemented or materially re-scoped.
