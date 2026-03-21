@@ -78,6 +78,9 @@ async def get_public_invoice(invoice_ref: str):
             "status": invoice["status"],
             "payment_link": invoice.get("payment_link"),
             "created_at": invoice["created_at"],
+            "payment_id": invoice.get("payment_id"),
+            "paid_at": invoice.get("paid_at"),
+            "line_items": invoice.get("line_items", [])
         },
         "operator": {
             "company_name": operator.get("company_name", ""),

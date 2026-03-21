@@ -75,27 +75,18 @@ export default function PublicInvoice() {
     fetchInvoice();
   }, [fetchInvoice]);
 
-  // Download PDF
-  const handleDownloadPdf = async () => {
-    setPdfLoading(true);
-    try {
-      const res = await axios.get(`${API}/public/invoice/${invoiceRef}/pdf`, {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Invoice_${data?.invoice?.invoice_number || invoiceRef}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast.success("PDF downloaded successfully");
-    } catch {
-      toast.error("Failed to download PDF");
-    } finally {
-      setPdfLoading(false);
+  useEffect(() => {
+    if (data) {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("print") === "true") {
+        setTimeout(() => window.print(), 1000);
+      }
     }
+  }, [data]);
+
+  // Download PDF
+  const handleDownloadPdf = () => {
+    window.print();
   };
 
   // Load Razorpay checkout script
@@ -218,7 +209,7 @@ export default function PublicInvoice() {
       <Toaster position="top-right" richColors closeButton />
 
       {/* Top Bar */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 print:hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="w-5 h-5 text-indigo-600" />
@@ -550,7 +541,7 @@ export default function PublicInvoice() {
 
         {/* Pay Now CTA (Large, sticky at bottom on mobile) */}
         {showPayButton && (
-          <div className="mt-6 sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20">
+          <div className="mt-6 sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20 print:hidden">
             <button
               onClick={handlePayNow}
               disabled={paying}
@@ -564,12 +555,35 @@ export default function PublicInvoice() {
 
         {/* Paid Confirmation */}
         {invoice.status === "paid" && (
-          <div className="mt-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-6 text-center">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-            <h3 className="text-lg font-semibold text-emerald-800">Payment Received</h3>
-            <p className="text-sm text-emerald-600 mt-1">
-              Thank you! This invoice has been paid.
+          <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-2xl p-6 sm:p-8 text-center shadow-sm">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-emerald-800 mb-2">Payment Received</h3>
+            <p className="text-emerald-600 font-medium mb-6">
+              Thank you! This invoice has been successfully paid.
             </p>
+            {(invoice.payment_id || invoice.paid_at) && (
+              <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm border border-emerald-100 overflow-hidden text-left">
+                <div className="px-6 py-3 bg-emerald-600 text-white text-sm font-semibold tracking-wider uppercase">
+                  Payment Details
+                </div>
+                <div className="p-6 space-y-4">
+                  {invoice.payment_id && (
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Transaction Ref</p>
+                      <p className="font-mono text-slate-800 bg-slate-50 px-3 py-2 rounded-md text-sm border">{invoice.payment_id}</p>
+                    </div>
+                  )}
+                  {invoice.paid_at && (
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Date Paid</p>
+                      <p className="text-slate-800 font-medium">{formatDate(invoice.paid_at)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -270,19 +270,11 @@ const OperatorInvoices = () => {
 
   const handleDownloadPDF = async (invoiceId, invoiceNumber) => {
     try {
-      const response = await authAxios.get(`/operator/invoices/${invoiceId}/pdf`, {
-        responseType: 'blob'
-      });
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Invoice_${invoiceNumber}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      toast.success("PDF downloaded!");
+      const inv = invoices.find(i => i.id === invoiceId);
+      if (!inv) return;
+      window.open(`/invoice/${inv.invoice_number}?print=true`, "_blank");
     } catch (error) {
-      toast.error("Failed to download PDF");
+      toast.error("Failed to open invoice");
     }
   };
 
