@@ -248,7 +248,7 @@ Legend:
   - Manual cron validation: reminders sent according to global schedule.
 
 ### 8. Admin Wallet Operations
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P2`
 - Importance: `Medium`
 - Effort: `M`
@@ -264,6 +264,14 @@ Legend:
   - Wallet CRUD options for admin
 - Dependencies:
   - Depends on Task 1
+- Current implementation notes:
+  - Backend: Added `WalletAdjustmentRequest` and `WalletSuspendRequest` models. Added three endpoints: `POST /admin/wallets/{operator_id}/credit`, `debit`, and `suspend`.
+  - Frontend: Upgraded `Wallets.jsx` with Credit/Debit/Suspend buttons, a shared adjustment modal, a suspend confirmation dialog, and full list/transaction refreshing after actions.
+  - Behavior: Debits > balance fail. Debits that drop balance < 100 auto-suspend. Credits that restore balance >= 100 auto-unsuspend.
+  - Tests: Test suite written in `backend/tests/test_task8_admin_wallet.py`.
+- Pending tests:
+  - Run the `test_task8_admin_wallet.py` test suite against the live server.
+  - Manual UI verification of credit, debit, suspend flows.
 
 ---
 

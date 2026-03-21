@@ -5,8 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../../components/ui/dialog";
 import { toast } from "sonner";
-import { Wallet, AlertTriangle, TrendingDown, RefreshCw, Search } from "lucide-react";
+import {
+  Wallet, AlertTriangle, TrendingDown, RefreshCw, Search,
+  PlusCircle, MinusCircle, Lock, Unlock
+} from "lucide-react";
 
 export default function AdminWallets() {
   const { authAxios } = useAuth();
@@ -17,6 +29,17 @@ export default function AdminWallets() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [txLoading, setTxLoading] = useState(false);
+
+  // Adjustment modal state
+  const [adjustModal, setAdjustModal] = useState(null); // { operator, type: 'credit'|'debit' }
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
+
+  // Suspend dialog state
+  const [suspendModal, setSuspendModal] = useState(null); // { operator, suspend: bool }
+  const [suspendReason, setSuspendReason] = useState("");
+  const [suspendSaving, setSuspendSaving] = useState(false);
 
   const fetchWallets = async () => {
     setLoading(true);
@@ -50,6 +73,67 @@ export default function AdminWallets() {
     await fetchTransactions(wallet.operator_id);
   };
 
+  const openAdjust = (e, operator, type) => {
+    e.stopPropagation();
+    setAdjustModal({ operator, type });
+    setAdjustAmount("");
+    setAdjustReason("");
+  };
+
+  const handleAdjustSubmit = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(adjustAmount);
+    if (!amount || amount <= 0) { toast.error("Enter a valid amount"); return; }
+    if (!adjustReason.trim() || adjustReason.trim().length < 5) { toast.error("Reason must be at least 5 characters"); return; }
+    setAdjustSaving(true);
+    try {
+      const { operator, type } = adjustModal;
+      const endpoint = `/admin/wallets/${operator.operator_id}/${type}`;
+      const res = await authAxios.post(endpoint, { amount, reason: adjustReason.trim() });
+      toast.success(res.data.message);
+      if (res.data.auto_suspended) toast.warning("Wallet was auto-suspended (balance < ₹100)");
+      if (res.data.auto_unsuspended) toast.success("Wallet auto-unsuspended!");
+      setAdjustModal(null);
+      await fetchWallets();
+      if (selectedOperator?.operator_id === operator.operator_id) {
+        await fetchTransactions(operator.operator_id);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Action failed");
+    } finally {
+      setAdjustSaving(false);
+    }
+  };
+
+  const openSuspendToggle = (e, operator) => {
+    e.stopPropagation();
+    setSuspendModal({ operator, suspend: !operator.wallet_suspended });
+    setSuspendReason("");
+  };
+
+  const handleSuspendSubmit = async (e) => {
+    e.preventDefault();
+    if (!suspendReason.trim() || suspendReason.trim().length < 5) { toast.error("Reason must be at least 5 characters"); return; }
+    setSuspendSaving(true);
+    try {
+      const { operator, suspend } = suspendModal;
+      const res = await authAxios.post(`/admin/wallets/${operator.operator_id}/suspend`, {
+        suspend,
+        reason: suspendReason.trim()
+      });
+      toast.success(res.data.message);
+      setSuspendModal(null);
+      await fetchWallets();
+      if (selectedOperator?.operator_id === operator.operator_id) {
+        setSelectedOperator(prev => prev ? { ...prev, wallet_suspended: suspend } : prev);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Action failed");
+    } finally {
+      setSuspendSaving(false);
+    }
+  };
+
   const filtered = wallets.filter(w =>
     !search || w.company_name?.toLowerCase().includes(search.toLowerCase())
   );
@@ -59,7 +143,7 @@ export default function AdminWallets() {
   const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
   const getTxColor = (type) => {
-    if (["topup", "credit", "subscription_credit", "referral_reward"].includes(type)) return "text-green-700";
+    if (["topup", "credit", "subscription_credit", "referral_reward", "admin_credit"].includes(type)) return "text-green-700";
     return "text-red-600";
   };
 
@@ -141,19 +225,52 @@ export default function AdminWallets() {
                       onClick={() => handleViewTx(w)}
                       data-testid={`wallet-row-${w.operator_id}`}
                     >
+                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{w.company_name}</p>
-                        <p className="text-xs text-slate-400">{w.operator_id}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-sm font-bold ${w.balance < 100 ? "text-red-600" : w.balance < 500 ? "text-amber-600" : "text-green-700"}`}>
-                          ₹{w.balance?.toFixed(2)}
-                        </p>
-                        <div className="flex gap-1 justify-end mt-0.5">
+                        <div className="flex gap-1 mt-0.5">
                           {w.wallet_suspended && <Badge variant="destructive" className="text-xs">Suspended</Badge>}
                           {w.balance < 100 && !w.wallet_suspended && <Badge variant="destructive" className="text-xs">Critical</Badge>}
                           {w.balance >= 100 && w.balance < 500 && <Badge variant="outline" className="text-xs border-amber-300 text-amber-700">Low</Badge>}
                         </div>
+                      </div>
+
+                      {/* Balance */}
+                      <div className="text-right shrink-0 mr-1">
+                        <p className={`text-sm font-bold ${w.balance < 100 ? "text-red-600" : w.balance < 500 ? "text-amber-600" : "text-green-700"}`}>
+                          ₹{w.balance?.toFixed(2)}
+                        </p>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-green-600 hover:bg-green-50"
+                          title="Credit wallet"
+                          data-testid={`credit-btn-${w.operator_id}`}
+                          onClick={(e) => openAdjust(e, w, "credit")}
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-red-500 hover:bg-red-50"
+                          title="Debit wallet"
+                          data-testid={`debit-btn-${w.operator_id}`}
+                          onClick={(e) => openAdjust(e, w, "debit")}
+                        >
+                          <MinusCircle className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
+                          className={`h-7 w-7 hover:bg-slate-100 ${w.wallet_suspended ? "text-green-600" : "text-slate-500"}`}
+                          title={w.wallet_suspended ? "Unsuspend wallet" : "Suspend wallet"}
+                          data-testid={`suspend-btn-${w.operator_id}`}
+                          onClick={(e) => openSuspendToggle(e, w)}
+                        >
+                          {w.wallet_suspended ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -204,6 +321,98 @@ export default function AdminWallets() {
           </Card>
         </div>
       </div>
+
+      {/* Credit / Debit Modal */}
+      <Dialog open={!!adjustModal} onOpenChange={(open) => !open && setAdjustModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {adjustModal?.type === "credit" ? "Credit Wallet" : "Debit Wallet"} — {adjustModal?.operator?.company_name}
+            </DialogTitle>
+            <DialogDescription>
+              Current balance: ₹{adjustModal?.operator?.balance?.toFixed(2)}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAdjustSubmit} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                min="1"
+                max="50000"
+                step="0.01"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+                placeholder="e.g. 500"
+                data-testid="adjust-amount-input"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <Textarea
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                placeholder="Why is this adjustment being made?"
+                rows={3}
+                data-testid="adjust-reason-input"
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button type="button" variant="outline" onClick={() => setAdjustModal(null)}>Cancel</Button>
+              <Button
+                type="submit"
+                disabled={adjustSaving}
+                className={adjustModal?.type === "debit" ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                data-testid="adjust-submit-btn"
+              >
+                {adjustSaving ? "Processing..." : adjustModal?.type === "credit" ? "Credit Wallet" : "Debit Wallet"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspend / Unsuspend Dialog */}
+      <Dialog open={!!suspendModal} onOpenChange={(open) => !open && setSuspendModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {suspendModal?.suspend ? "Suspend Wallet" : "Unsuspend Wallet"} — {suspendModal?.operator?.company_name}
+            </DialogTitle>
+            <DialogDescription>
+              {suspendModal?.suspend
+                ? "Suspending will put the account in read-only mode immediately."
+                : "Unsuspending will restore full access to the operator."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSuspendSubmit} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <Textarea
+                value={suspendReason}
+                onChange={(e) => setSuspendReason(e.target.value)}
+                placeholder="Reason for this action..."
+                rows={3}
+                data-testid="suspend-reason-input"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button type="button" variant="outline" onClick={() => setSuspendModal(null)}>Cancel</Button>
+              <Button
+                type="submit"
+                disabled={suspendSaving}
+                className={suspendModal?.suspend ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}
+                data-testid="suspend-submit-btn"
+              >
+                {suspendSaving ? "Processing..." : suspendModal?.suspend ? "Suspend Wallet" : "Unsuspend Wallet"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

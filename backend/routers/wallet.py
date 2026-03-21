@@ -6,8 +6,9 @@ import os
 import logging
 
 from database import db
-from utils import generate_id
+from utils import generate_id, log_audit
 from dependencies import require_operator, require_admin, check_operator_read_only, get_operator_access_state
+from models import WalletAdjustmentRequest, WalletSuspendRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Wallet"])
@@ -381,3 +382,125 @@ async def admin_get_wallet_transactions(
         {"operator_id": operator_id}, {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return txs
+
+
+# ─── Admin Wallet Adjustment Endpoints ────────────────────────────────────────
+
+@router.post("/admin/wallets/{operator_id}/credit")
+async def admin_credit_wallet(
+    operator_id: str,
+    data: WalletAdjustmentRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Admin: manually credit an operator's wallet."""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+
+    new_balance = await credit_wallet(
+        operator_id=operator_id,
+        amount=data.amount,
+        description=f"Admin credit: {data.reason}",
+        tx_type="admin_credit",
+    )
+
+    # Auto-unsuspend if wallet was suspended and balance now ≥ 100
+    now = datetime.now(timezone.utc)
+    if operator.get("wallet_suspended") and new_balance >= 100:
+        await db.operators.update_one(
+            {"id": operator_id},
+            {"$set": {"wallet_suspended": False, "is_read_only": False, "updated_at": now.isoformat()}},
+        )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "admin_credit", "operator_wallet",
+        {"balance_before": round(new_balance - data.amount, 2)},
+        {"amount": data.amount, "reason": data.reason, "new_balance": new_balance},
+        operator_id=operator_id,
+        ip_address=current_user.get("_ip_address"),
+    )
+
+    return {
+        "message": f"Wallet credited ₹{data.amount:.2f}. New balance: ₹{new_balance:.2f}",
+        "new_balance": new_balance,
+        "auto_unsuspended": operator.get("wallet_suspended", False) and new_balance >= 100,
+    }
+
+
+@router.post("/admin/wallets/{operator_id}/debit")
+async def admin_debit_wallet(
+    operator_id: str,
+    data: WalletAdjustmentRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Admin: manually debit an operator's wallet."""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+
+    wallet = await get_or_create_wallet(operator_id)
+    if data.amount > wallet.get("balance", 0):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Debit amount ₹{data.amount:.2f} exceeds wallet balance ₹{wallet.get('balance', 0):.2f}"
+        )
+
+    new_balance, became_suspended = await deduct_wallet(
+        operator_id=operator_id,
+        amount=data.amount,
+        description=f"Admin debit: {data.reason}",
+    )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "admin_debit", "operator_wallet",
+        {"balance_before": round(new_balance + data.amount, 2)},
+        {"amount": data.amount, "reason": data.reason, "new_balance": new_balance, "auto_suspended": became_suspended},
+        operator_id=operator_id,
+        ip_address=current_user.get("_ip_address"),
+    )
+
+    return {
+        "message": f"Wallet debited ₹{data.amount:.2f}. New balance: ₹{new_balance:.2f}",
+        "new_balance": new_balance,
+        "auto_suspended": became_suspended,
+    }
+
+
+@router.post("/admin/wallets/{operator_id}/suspend")
+async def admin_toggle_wallet_suspension(
+    operator_id: str,
+    data: WalletSuspendRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Admin: suspend or unsuspend an operator's wallet."""
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    if not operator:
+        raise HTTPException(status_code=404, detail="Operator not found")
+
+    now = datetime.now(timezone.utc)
+    await db.operators.update_one(
+        {"id": operator_id},
+        {"$set": {
+            "wallet_suspended": data.suspend,
+            "is_read_only": data.suspend,
+            "updated_at": now.isoformat(),
+        }},
+    )
+
+    action = "wallet_suspend" if data.suspend else "wallet_unsuspend"
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        action, "operator_wallet",
+        {"wallet_suspended": not data.suspend},
+        {"wallet_suspended": data.suspend, "reason": data.reason},
+        operator_id=operator_id,
+        ip_address=current_user.get("_ip_address"),
+    )
+
+    status = "suspended" if data.suspend else "unsuspended"
+    return {
+        "message": f"Operator wallet {status} successfully.",
+        "wallet_suspended": data.suspend,
+    }

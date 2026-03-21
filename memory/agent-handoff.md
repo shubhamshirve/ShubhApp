@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-03-21  
 **Active Branch:** `V7.14-3`  
-**Status:** Tasks 1-7 implemented in code; live verification still pending
+**Status:** Tasks 1-8 implemented in code; live verification still pending
 
 ---
 
@@ -17,6 +17,7 @@ The branch now includes working code changes for the first six prioritized tasks
 - Task 5: Multi-plan subscribers and multi-line invoices
 - Task 6: Session timeout and strong role validation
 - Task 7: Global reminders and IST scheduling
+- Task 8: Admin wallet operations (credit, debit, suspend)
 
 Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
 - [.env](/d:/eBill/.env)

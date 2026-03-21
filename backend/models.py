@@ -685,3 +685,17 @@ class WhatsAppTemplateUpdate(SanitizedModel):
     body_variables: Optional[List[str]] = None
     has_payment_button: Optional[bool] = None
     is_active: Optional[bool] = None
+
+
+# ============== ADMIN WALLET MODELS ==============
+
+class WalletAdjustmentRequest(SanitizedModel):
+    """Used for admin manual credit/debit of an operator wallet."""
+    amount: float = Field(..., gt=0, le=50000, description="Amount to credit or debit (positive value)")
+    reason: str = Field(..., min_length=5, max_length=500, description="Reason for this adjustment")
+
+
+class WalletSuspendRequest(SanitizedModel):
+    """Used for admin wallet suspension toggle."""
+    suspend: bool = Field(..., description="True = suspend, False = unsuspend")
+    reason: str = Field(..., min_length=5, max_length=500, description="Reason for this action")
