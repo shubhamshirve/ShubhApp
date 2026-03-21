@@ -366,7 +366,7 @@ class SubscriberResponse(SanitizedModel):
     whatsapp_number: str
     email: Optional[str] = None
     address: Optional[str] = None
-    plans: List[SubscriberPlan]
+    plans: List[SubscriberPlan] = Field(default_factory=list)
     status: str
     operator_id: str
     created_at: datetime
@@ -422,7 +422,7 @@ class InvoiceResponse(SanitizedModel):
     invoice_number: str
     subscriber_id: str
     subscriber_name: Optional[str] = None
-    line_items: List[InvoiceLineItem]
+    line_items: List[InvoiceLineItem] = Field(default_factory=list)
     base_amount: float
     discount: float
     tax_amount: float
