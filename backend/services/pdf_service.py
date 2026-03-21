@@ -285,6 +285,23 @@ class InvoicePDFService:
                 with urlopen(logo_url, timeout=5) as resp:
                     content = resp.read()
                 img = Image(io.BytesIO(content))
+            elif logo_url.startswith("/uploads/"):
+                # Resolve using UPLOAD_DIR (same logic as operator.py)
+                filename = logo_url[len("/uploads/"):]
+                upload_dir = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "uploads")
+                )
+                local_path = os.path.join(upload_dir, filename)
+                if os.path.exists(local_path):
+                    img = Image(local_path)
+                else:
+                    # In Docker the path might be /app/frontend/public/uploads
+                    docker_path = f"/app/frontend/public/uploads/{filename}"
+                    if os.path.exists(docker_path):
+                        img = Image(docker_path)
+                    else:
+                        logger.warning(f"Logo file not found locally: {local_path}")
+                        return None
             elif logo_url.startswith("/"):
                 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public"))
                 img = Image(os.path.join(root, logo_url.lstrip("/").replace("/", os.sep)))

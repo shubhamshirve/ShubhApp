@@ -122,7 +122,7 @@ export default function AdminSaaSPlans() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">SaaS Plans</h2>
-            <p className="text-sm text-slate-500">All prices are GST inclusive</p>
+            <p className="text-sm text-slate-500">All prices are exclusive of GST — 18% GST will be added at checkout</p>
           </div>
           <Button onClick={openCreate} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="create-plan-btn">
             <Plus className="w-4 h-4 mr-2" /> New Plan
@@ -171,7 +171,7 @@ export default function AdminSaaSPlans() {
                         <span className="text-xl font-bold text-blue-700">{plan.monthly_price?.toLocaleString("en-IN")}</span>
                       </div>
                       <p className="text-xs text-blue-600">Monthly Price</p>
-                      <p className="text-[10px] text-blue-400">GST Inclusive</p>
+                      <p className="text-[10px] text-blue-400">Excl. GST</p>
                     </div>
                     <div className="bg-amber-50 rounded-lg p-3 text-center">
                       <div className="flex items-center justify-center gap-1 mb-0.5">
@@ -238,7 +238,7 @@ export default function AdminSaaSPlans() {
                     data-testid="plan-monthly-price-input"
                   />
                 </div>
-                <p className="text-xs text-slate-400">GST inclusive. Charged monthly for account to remain active.</p>
+                <p className="text-xs text-slate-400">GST exclusive — 18% GST will be added at checkout. Charged monthly for account to remain active.</p>
               </div>
 
               {/* Per Invoice Price */}

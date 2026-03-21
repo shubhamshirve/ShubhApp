@@ -1371,3 +1371,59 @@ async def upload_logo(
     )
     
     return {"message": "Logo uploaded successfully", "url": public_url, "filename": filename}
+
+
+# ─── Email Settings ───────────────────────────────────────────────────────────
+
+@router.get("/email-settings")
+async def get_email_settings(current_user: dict = Depends(require_admin)):
+    """Get current email API configuration (Resend)."""
+    doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
+    if doc:
+        return {
+            "resend_api_key_preview": (doc.get("resend_api_key") or "")[:8] + "****" if doc.get("resend_api_key") else "",
+            "resend_from_email": doc.get("resend_from_email", ""),
+            "is_configured": bool(doc.get("resend_api_key")),
+        }
+    # Fall back to env vars
+    env_key = os.environ.get("RESEND_API_KEY", "")
+    return {
+        "resend_api_key_preview": env_key[:8] + "****" if env_key else "",
+        "resend_from_email": os.environ.get("RESEND_FROM_EMAIL", ""),
+        "is_configured": bool(env_key),
+    }
+
+
+@router.put("/email-settings")
+async def update_email_settings(
+    data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """Update Resend email API credentials stored in DB."""
+    resend_api_key = (data.get("resend_api_key") or "").strip()
+    resend_from_email = (data.get("resend_from_email") or "").strip()
+
+    if not resend_from_email:
+        raise HTTPException(status_code=400, detail="From Email is required")
+
+    update_doc = {
+        "key": "email_settings",
+        "resend_from_email": resend_from_email,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if resend_api_key:
+        update_doc["resend_api_key"] = resend_api_key
+
+    await db.global_settings.update_one(
+        {"key": "email_settings"},
+        {"$set": update_doc},
+        upsert=True
+    )
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "email_settings", None,
+        {"resend_from_email": resend_from_email},
+        ip_address=current_user.get("_ip_address")
+    )
+    return {"message": "Email settings updated successfully"}
+

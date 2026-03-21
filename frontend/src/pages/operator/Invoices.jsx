@@ -54,7 +54,8 @@ import {
   Bell,
   MessageCircle,
   ExternalLink,
-  Eye
+  Eye,
+  Trash2
 } from "lucide-react";
 
 const OperatorInvoices = () => {
@@ -546,7 +547,7 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-2">
                   <Label>Due Date *</Label>
-                  <Popover>
+                  <Popover modal={true}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start text-left font-normal">
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -591,7 +592,7 @@ const OperatorInvoices = () => {
                         <div className="space-y-2">
                           <Label>Plan *</Label>
                           <Select 
-                            value={item.plan_id} 
+                            value={item.plan_id || undefined} 
                             onValueChange={(val) => updateLineItem(index, "plan_id", val)}
                           >
                             <SelectTrigger>
@@ -632,7 +633,7 @@ const OperatorInvoices = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Service Period Start *</Label>
-                          <Popover>
+                          <Popover modal={true}>
                             <PopoverTrigger asChild>
                               <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -651,7 +652,7 @@ const OperatorInvoices = () => {
 
                         <div className="space-y-2">
                           <Label>Service Period End *</Label>
-                          <Popover>
+                          <Popover modal={true}>
                             <PopoverTrigger asChild>
                               <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
                                 <CalendarIcon className="mr-2 h-4 w-4" />

@@ -95,8 +95,18 @@ const AdminSettings = () => {
   });
   const [reminderSaving, setReminderSaving] = useState(false);
 
+  // Email config state
+  const [emailConfig, setEmailConfig] = useState({
+    resend_api_key: "",
+    resend_from_email: "",
+    resend_api_key_preview: "",
+    is_configured: false,
+  });
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [showEmailKey, setShowEmailKey] = useState(false);
+
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings(), fetchEmailConfig()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -118,6 +128,39 @@ const AdminSettings = () => {
         max_reminders_per_invoice: res.data.max_reminders_per_invoice || 20,
       });
     } catch { /* ignore */ }
+  };
+
+  const fetchEmailConfig = async () => {
+    try {
+      const res = await authAxios.get("/admin/email-settings");
+      setEmailConfig(prev => ({
+        ...prev,
+        resend_api_key_preview: res.data.resend_api_key_preview || "",
+        resend_from_email: res.data.resend_from_email || "",
+        is_configured: res.data.is_configured || false,
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const handleSaveEmailConfig = async (e) => {
+    e.preventDefault();
+    if (!emailConfig.resend_from_email) {
+      toast.error("From Email is required"); return;
+    }
+    setEmailSaving(true);
+    try {
+      await authAxios.put("/admin/email-settings", {
+        resend_api_key: emailConfig.resend_api_key,
+        resend_from_email: emailConfig.resend_from_email,
+      });
+      toast.success("Email settings updated successfully");
+      setEmailConfig(prev => ({ ...prev, resend_api_key: "" }));
+      fetchEmailConfig();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to save email settings");
+    } finally {
+      setEmailSaving(false);
+    }
   };
 
   const fetchGateways = async () => {
@@ -387,6 +430,7 @@ const AdminSettings = () => {
             <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="email">Email API</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -1009,7 +1053,67 @@ const AdminSettings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Email API Tab */}
+          <TabsContent value="email" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Email API Configuration (Resend)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {emailConfig.is_configured && (
+                  <div className="mb-4 flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-lg text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Email API is configured and active.</span>
+                    {emailConfig.resend_api_key_preview && (
+                      <span className="text-green-500 ml-1 font-mono text-xs">(Key: {emailConfig.resend_api_key_preview})</span>
+                    )}
+                  </div>
+                )}
+                <form onSubmit={handleSaveEmailConfig} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Resend API Key</Label>
+                    <div className="relative">
+                      <Input
+                        type={showEmailKey ? "text" : "password"}
+                        value={emailConfig.resend_api_key}
+                        onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_api_key: e.target.value }))}
+                        placeholder={emailConfig.is_configured ? "Enter new key to update" : "re_......"}
+                        className="pr-10"
+                        data-testid="email-api-key-input"
+                      />
+                      <button type="button" tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        onClick={() => setShowEmailKey(v => !v)}>
+                        {showEmailKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400">Get your API key from <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline text-blue-500">resend.com/api-keys <ExternalLink className="inline w-3 h-3" /></a></p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>From Email Address *</Label>
+                    <Input
+                      type="email"
+                      value={emailConfig.resend_from_email}
+                      onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_from_email: e.target.value }))}
+                      placeholder="noreply@yourdomain.com"
+                      required
+                      data-testid="email-from-input"
+                    />
+                    <p className="text-xs text-slate-400">Must be a verified sender domain in Resend.</p>
+                  </div>
+                  <Button type="submit" disabled={emailSaving} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="save-email-btn">
+                    {emailSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Saving...</> : "Save Email Settings"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
+
 
         {/* Add Gateway Dialog */}
         <Dialog open={showGatewayDialog} onOpenChange={setShowGatewayDialog}>

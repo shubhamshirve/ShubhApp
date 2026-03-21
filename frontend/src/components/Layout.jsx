@@ -19,7 +19,6 @@ import {
   Database,
   Tag,
   MessageSquare,
-  Layout,
   Wallet
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,7 +37,6 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
     { href: "/admin/wallets", label: "Wallets", icon: Wallet },
     { href: "/admin/support", label: "Support", icon: MessageSquare },
-    { href: "/admin/landing-page", label: "Landing Page", icon: Layout },
     { href: "/admin/settings", label: "Settings", icon: Settings },
     { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },

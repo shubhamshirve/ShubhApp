@@ -56,3 +56,25 @@ def get_email_service() -> ResendEmailService:
         api_key=os.environ.get("RESEND_API_KEY", ""),
         from_email=os.environ.get("RESEND_FROM_EMAIL", ""),
     )
+
+
+async def get_email_service_async() -> ResendEmailService:
+    """
+    Build a Resend email client, checking the DB first (global_settings key='email_settings'),
+    then falling back to OS environment variables.
+    """
+    try:
+        from database import db
+        doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
+        if doc and doc.get("resend_api_key"):
+            return ResendEmailService(
+                api_key=doc["resend_api_key"],
+                from_email=doc.get("resend_from_email", os.environ.get("RESEND_FROM_EMAIL", "")),
+            )
+    except Exception:
+        pass
+    # Fall back to env vars
+    return ResendEmailService(
+        api_key=os.environ.get("RESEND_API_KEY", ""),
+        from_email=os.environ.get("RESEND_FROM_EMAIL", ""),
+    )
