@@ -85,8 +85,18 @@ const AdminSettings = () => {
   const [testPhone, setTestPhone] = useState("");
   const [testSending, setTestSending] = useState(false);
 
+  // Global Reminder settings state
+  const [reminderSettings, setReminderSettings] = useState({
+    enabled: true,
+    remind_before_due: [7, 5, 3, 2, 1],
+    remind_on_due: true,
+    remind_after_due: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    max_reminders_per_invoice: 20,
+  });
+  const [reminderSaving, setReminderSaving] = useState(false);
+
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -94,6 +104,19 @@ const AdminSettings = () => {
     try {
       const res = await authAxios.get("/admin/settings");
       setSettings(res.data);
+    } catch { /* ignore */ }
+  };
+
+  const fetchReminderSettings = async () => {
+    try {
+      const res = await authAxios.get("/admin/reminder-settings");
+      setReminderSettings({
+        enabled: res.data.enabled ?? true,
+        remind_before_due: res.data.remind_before_due || [7, 5, 3, 2, 1],
+        remind_on_due: res.data.remind_on_due ?? true,
+        remind_after_due: res.data.remind_after_due || [1,2,3,4,5,6,7,8,9,10],
+        max_reminders_per_invoice: res.data.max_reminders_per_invoice || 20,
+      });
     } catch { /* ignore */ }
   };
 
@@ -196,6 +219,37 @@ const AdminSettings = () => {
       toast.success("Settings updated");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update settings");
+    }
+  };
+
+  const VALID_BEFORE = [1, 2, 3, 5, 7];
+  const VALID_AFTER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+  const toggleReminderBeforeDay = (day) =>
+    setReminderSettings(prev => ({
+      ...prev,
+      remind_before_due: prev.remind_before_due.includes(day)
+        ? prev.remind_before_due.filter(d => d !== day)
+        : [...prev.remind_before_due, day],
+    }));
+
+  const toggleReminderAfterDay = (day) =>
+    setReminderSettings(prev => ({
+      ...prev,
+      remind_after_due: prev.remind_after_due.includes(day)
+        ? prev.remind_after_due.filter(d => d !== day)
+        : [...prev.remind_after_due, day],
+    }));
+
+  const handleSaveReminderSettings = async () => {
+    setReminderSaving(true);
+    try {
+      await authAxios.put("/admin/reminder-settings", reminderSettings);
+      toast.success("Global reminder settings saved");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to save reminder settings");
+    } finally {
+      setReminderSaving(false);
     }
   };
 
@@ -328,6 +382,7 @@ const AdminSettings = () => {
         <Tabs defaultValue="general">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="reminders">Reminders</TabsTrigger>
             <TabsTrigger value="gateways">Payment Gateways</TabsTrigger>
             <TabsTrigger value="whatsapp" data-testid="tab-whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
@@ -418,6 +473,106 @@ const AdminSettings = () => {
                   </div>
                 </div>
                 <Button onClick={handleUpdateSettings}>Save Settings</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Reminders Tab */}
+          <TabsContent value="reminders" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Global WhatsApp Reminder Schedule
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Configure when reminders are sent for all operators with the WhatsApp Notifications add-on.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Enable/Disable */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Enable Automated Reminders</p>
+                    <p className="text-xs text-slate-500">When disabled, no reminders are sent to any subscriber</p>
+                  </div>
+                  <Switch
+                    checked={reminderSettings.enabled}
+                    onCheckedChange={(v) => setReminderSettings(s => ({ ...s, enabled: v }))}
+                  />
+                </div>
+
+                {/* Before Due */}
+                <div className="space-y-2">
+                  <Label>Remind Days BEFORE Due Date</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {VALID_BEFORE.map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleReminderBeforeDay(d)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          reminderSettings.remind_before_due.includes(d)
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-slate-400"
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* On Due Date */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Remind on Due Date</p>
+                    <p className="text-xs text-slate-500">Send a reminder on the day the payment is due</p>
+                  </div>
+                  <Switch
+                    checked={reminderSettings.remind_on_due}
+                    onCheckedChange={(v) => setReminderSettings(s => ({ ...s, remind_on_due: v }))}
+                  />
+                </div>
+
+                {/* After Due */}
+                <div className="space-y-2">
+                  <Label>Remind Days AFTER Due Date</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {VALID_AFTER.map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleReminderAfterDay(d)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          reminderSettings.remind_after_due.includes(d)
+                            ? "bg-red-600 text-white border-red-600"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-red-300"
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Max Reminders */}
+                <div className="space-y-2">
+                  <Label>Max Reminders per Invoice</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={reminderSettings.max_reminders_per_invoice}
+                    onChange={(e) => setReminderSettings(s => ({ ...s, max_reminders_per_invoice: parseInt(e.target.value) || 1 }))}
+                    className="w-28"
+                  />
+                  <p className="text-xs text-slate-500">Maximum 20 reminders per invoice</p>
+                </div>
+
+                <Button onClick={handleSaveReminderSettings} disabled={reminderSaving}>
+                  {reminderSaving ? "Saving..." : "Save Reminder Settings"}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

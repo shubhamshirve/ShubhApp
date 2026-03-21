@@ -219,7 +219,7 @@ Legend:
 ## Sprint 3
 
 ### 7. Global Reminder Control and IST Scheduling
-- Status: `planned`
+- Status: `implemented-in-code / pending live verification`
 - Priority: `P2`
 - Importance: `Medium`
 - Effort: `M`
@@ -236,6 +236,16 @@ Legend:
   - All cron jobs have IST timings
 - Dependencies:
   - Maintenance mode should exist first to simplify safe rollout of scheduler changes
+- Current implementation notes:
+  - Global reminder settings now in `db.global_settings` (type: `reminder_settings`).
+  - `GET /admin/reminder-settings` and `PUT /admin/reminder-settings` serving as admin endpoints.
+  - Operator-level reminder routes removed from `operator.py`.
+  - `process_scheduled_reminders()` in `cron_service.py` now reads global config to apply to all eligible operators.
+  - APScheduler now uses `timezone="Asia/Kolkata"` with updated IST execution times.
+  - Frontend: Reminders tab removed from Operator Settings; new Reminders tab added to Admin Settings.
+- Pending tests:
+  - Manual save and verify global reminder persists.
+  - Manual cron validation: reminders sent according to global schedule.
 
 ### 8. Admin Wallet Operations
 - Status: `planned`

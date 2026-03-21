@@ -296,41 +296,41 @@ async def startup_event():
         run_daily_wallet_check,
     )
 
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
-    # Daily auto-backup at 02:00 UTC
+    # Daily auto-backup at 03:00 IST
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(_do_backup("auto")),
-        "cron", hour=2, minute=0, id="daily_backup"
+        "cron", hour=3, minute=0, id="daily_backup"
     )
 
-    # Daily auto-invoice generation at 06:00 UTC
+    # Daily auto-invoice generation at 08:00 IST
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(run_daily_invoice_generation(db)),
-        "cron", hour=6, minute=0, id="daily_invoices"
+        "cron", hour=8, minute=0, id="daily_invoices"
     )
 
-    # Daily scheduled reminder processing at 07:00 UTC
+    # Daily scheduled reminder processing at 10:00 IST
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(run_daily_reminder_processing(db)),
-        "cron", hour=7, minute=0, id="daily_reminders"
+        "cron", hour=10, minute=0, id="daily_reminders"
     )
 
-    # Daily subscription expiry check at 01:00 UTC
+    # Daily subscription expiry check at 00:05 IST
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(run_daily_expiry_check(db)),
-        "cron", hour=1, minute=0, id="daily_expiry"
+        "cron", hour=0, minute=5, id="daily_expiry"
     )
 
-    # Daily wallet balance check at 08:00 UTC
+    # Daily wallet balance check at 09:00 IST
     scheduler.add_job(
         lambda: __import__("asyncio").get_event_loop().create_task(run_daily_wallet_check(db)),
-        "cron", hour=8, minute=0, id="daily_wallet_check"
+        "cron", hour=9, minute=0, id="daily_wallet_check"
     )
 
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduled jobs started: backup(02:00), expiry(01:00), invoices(06:00), reminders(07:00), wallet_check(08:00) UTC")
+    logger.info("Scheduled jobs started (Asia/Kolkata IST): backup(03:00), expiry(00:05), invoices(08:00), reminders(10:00), wallet_check(09:00)")
 
 
 @app.on_event("shutdown")

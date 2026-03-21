@@ -16,6 +16,7 @@ from models import (
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
+    ReminderSettingsUpdate,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -474,6 +475,73 @@ async def update_global_settings(data: GlobalSettingsUpdate, current_user: dict 
                     ip_address=current_user.get("_ip_address"))
     return {"message": "Settings updated successfully"}
 
+
+# ─── Global Reminder Settings ─────────────────────────────────────────────────
+
+VALID_BEFORE_DAYS = [1, 2, 3, 5, 7]
+VALID_AFTER_DAYS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+DEFAULT_REMINDER_SETTINGS = {
+    "enabled": True,
+    "remind_before_due": [7, 5, 3, 2, 1],
+    "remind_on_due": True,
+    "remind_after_due": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "max_reminders_per_invoice": 20,
+}
+
+
+@router.get("/reminder-settings")
+async def get_global_reminder_settings(current_user: dict = Depends(require_admin)):
+    """Get platform-wide payment reminder automation settings."""
+    doc = await db.global_settings.find_one({"type": "reminder_settings"}, {"_id": 0})
+    if not doc:
+        return DEFAULT_REMINDER_SETTINGS
+    return {k: v for k, v in doc.items() if k not in ("type", "_id", "updated_at", "updated_by")}
+
+
+@router.put("/reminder-settings")
+async def update_global_reminder_settings(
+    data: ReminderSettingsUpdate,
+    current_user: dict = Depends(require_admin),
+):
+    """Update platform-wide payment reminder automation settings."""
+    for d in data.remind_before_due:
+        if d not in VALID_BEFORE_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid remind_before_due day: {d}. Allowed: {VALID_BEFORE_DAYS}"
+            )
+    for d in data.remind_after_due:
+        if d not in VALID_AFTER_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid remind_after_due day: {d}. Allowed: {VALID_AFTER_DAYS}"
+            )
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_doc = {
+        "type": "reminder_settings",
+        "enabled": data.enabled,
+        "remind_before_due": sorted(set(data.remind_before_due), reverse=True),
+        "remind_on_due": data.remind_on_due,
+        "remind_after_due": sorted(set(data.remind_after_due)),
+        "max_reminders_per_invoice": max(1, min(data.max_reminders_per_invoice, 20)),
+        "updated_at": now,
+        "updated_by": current_user["id"],
+    }
+
+    await db.global_settings.update_one(
+        {"type": "reminder_settings"},
+        {"$set": update_doc},
+        upsert=True,
+    )
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "global_reminder_settings", None, update_doc,
+        ip_address=current_user.get("_ip_address"),
+    )
+
+    return {**update_doc, "message": "Global reminder settings updated successfully"}
 
 # ─── Platform WhatsApp Config ─────────────────────────────────────────────────
 

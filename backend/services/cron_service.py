@@ -429,10 +429,10 @@ class CronJobService:
 
     async def process_scheduled_reminders(self) -> Dict[str, Any]:
         """
-        Process all operator reminder schedules.
-        For each operator with whatsapp_notifications addon + WhatsApp configured + reminders enabled:
+        Process all operator reminder schedules using the platform-wide global reminder settings.
+        For each operator with whatsapp_notifications addon + WhatsApp configured:
           - Check pending/overdue invoices
-          - Send reminders based on schedule (before due, on due, after due)
+          - Send reminders based on global schedule (before due, on due, after due)
           - Track reminders sent per invoice
         """
         results = {
@@ -447,27 +447,41 @@ class CronJobService:
         now = datetime.now(timezone.utc)
         today = now.date()
 
-        # Get all reminder settings that are enabled
-        settings_list = await self.db.reminder_settings.find(
-            {"enabled": True}, {"_id": 0}
+        # ── Load global reminder settings ──────────────────────────────────────
+        global_reminder = await self.db.global_settings.find_one(
+            {"type": "reminder_settings"}, {"_id": 0}
+        ) or {}
+        if not global_reminder.get("enabled", True):
+            return {**results, "skipped": 1, "reason": "Global reminders are disabled"}
+
+        remind_before = global_reminder.get("remind_before_due", [7, 5, 3, 2, 1])
+        remind_on_due = global_reminder.get("remind_on_due", True)
+        remind_after  = global_reminder.get("remind_after_due", list(range(1, 11)))
+        max_reminders = global_reminder.get("max_reminders_per_invoice", 20)
+
+        # ── Get all active operators ───────────────────────────────────────────
+        operators = await self.db.operators.find(
+            {"status": {"$in": ["active", "trial"]}, "deleted_at": None},
+            {"_id": 0},
         ).to_list(1000)
 
-        for settings in settings_list:
-            operator_id = settings["operator_id"]
-            try:
-                # Verify operator is active
-                operator = await self.db.operators.find_one(
-                    {"id": operator_id, "status": {"$in": ["active", "trial"]}, "deleted_at": None},
-                    {"_id": 0},
-                )
-                if not operator:
-                    continue
+        # Fetch WhatsApp config once
+        wa_config = await self.db.global_settings.find_one(
+            {"type": "platform_whatsapp"}, {"_id": 0}
+        )
+        if not wa_config or not wa_config.get("access_token"):
+            return {**results, "skipped": 1, "reason": "WhatsApp not configured"}
 
-                # Check addon is active
-                has_addon = False
-                if "whatsapp_notifications" in operator.get("active_addons", []):
-                    has_addon = True
-                else:
+        template_settings = await self.db.global_settings.find_one(
+            {"type": "whatsapp_template_settings"}, {"_id": 0}
+        ) or {}
+
+        for operator in operators:
+            operator_id = operator["id"]
+            try:
+                # Check addon
+                has_addon = "whatsapp_notifications" in operator.get("active_addons", [])
+                if not has_addon:
                     plan = await self.db.saas_plans.find_one(
                         {"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0}
                     )
@@ -475,18 +489,6 @@ class CronJobService:
                         has_addon = True
                 if not has_addon:
                     continue
-
-                # Check WhatsApp config - use platform global config
-                wa_config = await self.db.global_settings.find_one(
-                    {"type": "platform_whatsapp"}, {"_id": 0}
-                )
-                if not wa_config or not wa_config.get("access_token"):
-                    continue
-
-                # Get template settings
-                template_settings = await self.db.global_settings.find_one(
-                    {"type": "whatsapp_template_settings"}, {"_id": 0}
-                ) or {}
 
                 results["operators_processed"] += 1
 
@@ -500,43 +502,35 @@ class CronJobService:
                     {"_id": 0},
                 ).to_list(5000)
 
-                max_reminders = settings.get("max_reminders_per_invoice", 5)
-
                 for invoice in invoices:
                     try:
                         due_str = invoice.get("due_date", "")
                         if not due_str:
                             continue
                         due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
-
                         days_diff = (due_date - today).days  # positive = before due, negative = after due
 
                         should_send = False
                         reason = ""
 
-                        # Before due date
-                        if days_diff > 0 and days_diff in settings.get("remind_before_due", []):
+                        if days_diff > 0 and days_diff in remind_before:
                             should_send = True
                             reason = f"{days_diff}d_before_due"
-                        # On due date
-                        elif days_diff == 0 and settings.get("remind_on_due", False):
+                        elif days_diff == 0 and remind_on_due:
                             should_send = True
                             reason = "on_due_date"
-                        # After due date
-                        elif days_diff < 0 and abs(days_diff) in settings.get("remind_after_due", []):
+                        elif days_diff < 0 and abs(days_diff) in remind_after:
                             should_send = True
                             reason = f"{abs(days_diff)}d_after_due"
 
                         if not should_send:
                             continue
 
-                        # Check how many reminders already sent for this invoice
                         sent_count = len(invoice.get("reminders_sent", []))
                         if sent_count >= max_reminders:
                             results["skipped"] += 1
                             continue
 
-                        # Check if we already sent a reminder for this exact reason today
                         already_sent_today = any(
                             r.get("reason") == reason and r.get("date") == today.isoformat()
                             for r in invoice.get("reminders_sent", [])
@@ -545,7 +539,6 @@ class CronJobService:
                             results["skipped"] += 1
                             continue
 
-                        # Get subscriber
                         subscriber = await self.db.subscribers.find_one(
                             {"id": invoice["subscriber_id"], "deleted_at": None},
                             {"_id": 0},
@@ -553,13 +546,10 @@ class CronJobService:
                         if not subscriber:
                             continue
 
-                        # Send reminder
                         from services.whatsapp_service import WhatsAppService
-
                         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
 
                         if days_diff <= 0:
-                            # After due or on due — payment reminder
                             reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
                             days_overdue = max(0, abs(days_diff))
                             await wa_service.send_payment_reminder(
@@ -572,7 +562,6 @@ class CronJobService:
                                 template_name_override=reminder_tpl,
                             )
                         else:
-                            # Before due — invoice notification / upcoming reminder
                             invoice_tpl = template_settings.get("invoice_template") or "invoice_notification"
                             await wa_service.send_invoice_notification(
                                 recipient_phone=subscriber["whatsapp_number"],
@@ -584,7 +573,6 @@ class CronJobService:
                                 template_name_override=invoice_tpl,
                             )
 
-                        # Record the reminder
                         reminder_record = {
                             "reason": reason,
                             "date": today.isoformat(),
@@ -597,11 +585,9 @@ class CronJobService:
                                 "$set": {"updated_at": now.isoformat()},
                             },
                         )
-
                         results["reminders_sent"] += 1
                         logger.info(
-                            f"Sent scheduled reminder for invoice {invoice['invoice_number']} "
-                            f"({reason}) to {subscriber['name']}"
+                            f"Sent reminder for invoice {invoice['invoice_number']} ({reason}) to {subscriber['name']}"
                         )
 
                     except Exception as e:

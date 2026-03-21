@@ -48,13 +48,6 @@ const OperatorSettings = () => {
   const [currentTheme, setCurrentTheme] = useState("modern");
   const [themeSaving, setThemeSaving] = useState(false);
 
-  const [reminderForm, setReminderForm] = useState({
-    enabled: false,
-    remind_before_due: [],
-    remind_on_due: false,
-    remind_after_due: [],
-    max_reminders_per_invoice: 5,
-  });
   const [reminderSaving, setReminderSaving] = useState(false);
   
   const [profileForm, setProfileForm] = useState({
@@ -112,10 +105,7 @@ const OperatorSettings = () => {
         authAxios.get("/operator/invoice-settings").catch(() => ({ data: {} })),
         authAxios.get("/operator/theme-settings").catch(() => ({ data: { theme: "modern" } })),
       ];
-      if (hasPaymentReminder) {
-        promises.push(authAxios.get("/operator/reminder-settings").catch(() => ({ data: {} })));
-      }
-      const [dashboardRes, profileRes, gatewayRes, invoiceRes, themeRes, reminderRes] = await Promise.all(promises);
+      const [dashboardRes, profileRes, gatewayRes, invoiceRes, themeRes] = await Promise.all(promises);
 
       setDashboardStats(dashboardRes.data);
       setProfile(profileRes.data);
@@ -156,16 +146,6 @@ const OperatorSettings = () => {
           show_subscriber_address: invoiceRes.data.visible_fields?.show_subscriber_address !== false,
         },
       });
-
-      if (reminderRes?.data) {
-        setReminderForm({
-          enabled: reminderRes.data.enabled || false,
-          remind_before_due: reminderRes.data.remind_before_due || [],
-          remind_on_due: reminderRes.data.remind_on_due || false,
-          remind_after_due: reminderRes.data.remind_after_due || [],
-          max_reminders_per_invoice: reminderRes.data.max_reminders_per_invoice || 5,
-        });
-      }
 
       if (gatewayRes.data.configured) {
         setGatewayForm(prev => ({
@@ -240,19 +220,6 @@ const OperatorSettings = () => {
     }
   };
 
-  const handleReminderSubmit = async (e) => {
-    e.preventDefault();
-    setReminderSaving(true);
-    try {
-      await authAxios.put("/operator/reminder-settings", reminderForm);
-      toast.success("Reminder settings saved successfully");
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to update reminder settings");
-    } finally {
-      setReminderSaving(false);
-    }
-  };
-
   const handleThemeChange = async (newTheme) => {
     setThemeSaving(true);
     try {
@@ -297,24 +264,6 @@ const OperatorSettings = () => {
     }
   };
 
-  const toggleBeforeDay = (day) => {
-    setReminderForm(prev => ({
-      ...prev,
-      remind_before_due: prev.remind_before_due.includes(day)
-        ? prev.remind_before_due.filter(d => d !== day)
-        : [...prev.remind_before_due, day],
-    }));
-  };
-
-  const toggleAfterDay = (day) => {
-    setReminderForm(prev => ({
-      ...prev,
-      remind_after_due: prev.remind_after_due.includes(day)
-        ? prev.remind_after_due.filter(d => d !== day)
-        : [...prev.remind_after_due, day],
-    }));
-  };
-
   if (loading) {
     return (
       <OperatorLayout title="Settings">
@@ -352,12 +301,6 @@ const OperatorSettings = () => {
               <Palette className="w-4 h-4 mr-2" />
               Theme
             </TabsTrigger>
-            {hasPaymentReminder && (
-              <TabsTrigger value="reminders" data-testid="tab-reminders">
-                <CalendarClock className="w-4 h-4 mr-2" />
-                WhatsApp Reminders
-              </TabsTrigger>
-            )}
           </TabsList>
 
           {/* Profile Tab */}
