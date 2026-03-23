@@ -22,6 +22,7 @@ from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
 from audit import log_audit
 from sanitization import SanitizedModel, sanitize_filename, sanitize_text
+from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -482,7 +483,7 @@ async def assign_addon_to_operator(
 
 @router.get("/settings")
 async def get_global_settings(current_user: dict = Depends(require_admin)):
-    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
+    settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0})
     if not settings:
         return {
             "active_payment_gateway": "razorpay", "notification_enabled": True,
@@ -502,7 +503,7 @@ async def update_global_settings(
     current_user: dict = Depends(require_admin)
 ):
     now = datetime.now(timezone.utc)
-    old_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    old_settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
     normalized_schedule = merge_cron_schedule_settings(data.model_dump())
     settings = {
         "type": "platform",
@@ -511,7 +512,7 @@ async def update_global_settings(
         "updated_at": now.isoformat(),
         "updated_by": current_user["id"],
     }
-    await db.global_settings.update_one({"type": "platform"}, {"$set": settings}, upsert=True)
+    await save_global_settings_doc({"type": "platform"}, settings)
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
         _reschedule_platform_jobs(scheduler, settings)
@@ -1425,7 +1426,7 @@ async def upload_logo(
 @router.get("/email-settings")
 async def get_email_settings(current_user: dict = Depends(require_admin)):
     """Get current email API configuration (Resend with SMTP fallback)."""
-    doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
+    doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
     if doc:
         return {
             "resend_api_key_preview": (doc.get("resend_api_key") or "")[:8] + "****" if doc.get("resend_api_key") else "",
@@ -1459,6 +1460,8 @@ async def update_email_settings(
     current_user: dict = Depends(require_admin)
 ):
     """Update email credentials stored in DB, including SMTP fallback settings."""
+    now = datetime.now(timezone.utc)
+    existing = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0}) or {}
     resend_api_key = (data.resend_api_key or "").strip()
     resend_from_email = (data.resend_from_email or "").strip()
     smtp_host = (data.smtp_host or "").strip()
@@ -1479,24 +1482,24 @@ async def update_email_settings(
 
     update_doc = {
         "key": "email_settings",
-        "resend_from_email": resend_from_email,
+        "resend_from_email": resend_from_email or existing.get("resend_from_email", ""),
         "smtp_host": smtp_host,
         "smtp_port": data.smtp_port,
         "smtp_username": data.smtp_username or "",
-        "smtp_from_email": smtp_from_email,
+        "smtp_from_email": smtp_from_email or existing.get("smtp_from_email", ""),
         "smtp_use_tls": data.smtp_use_tls,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": now.isoformat(),
     }
     if resend_api_key:
         update_doc["resend_api_key"] = resend_api_key
+    elif existing.get("resend_api_key"):
+        update_doc["resend_api_key"] = existing["resend_api_key"]
     if data.smtp_password:
         update_doc["smtp_password"] = data.smtp_password
+    elif existing.get("smtp_password"):
+        update_doc["smtp_password"] = existing["smtp_password"]
 
-    await db.global_settings.update_one(
-        {"key": "email_settings"},
-        {"$set": update_doc},
-        upsert=True
-    )
+    await save_global_settings_doc({"key": "email_settings"}, update_doc)
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "update", "email_settings", None,

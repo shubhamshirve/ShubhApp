@@ -43,6 +43,7 @@ async def _do_backup(backup_type: str = "manual") -> dict:
 
     payload: dict = {
         "backup_id": backup_id,
+        "backup_type": backup_type,
         "created_at": now.isoformat(),
         "collections": {},
     }
@@ -77,6 +78,44 @@ async def _do_backup(backup_type: str = "manual") -> dict:
     return meta
 
 
+async def _sync_backups_from_disk() -> int:
+    """Recover backup metadata from files when a file exists but DB metadata is missing."""
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    known = {
+        item["filename"]: item
+        for item in await db.backups.find({}, {"_id": 0, "filename": 1}).to_list(1000)
+    }
+    synced = 0
+
+    for filepath in BACKUP_DIR.glob("backup_*.json.gz"):
+        if filepath.name in known:
+            continue
+
+        try:
+            with gzip.open(filepath, "rt", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception as exc:
+            logger.warning("Skipping backup metadata recovery for %s: %s", filepath.name, exc)
+            continue
+
+        collections = payload.get("collections") or {}
+        size_bytes = filepath.stat().st_size
+        meta = {
+            "id": payload.get("backup_id") or generate_id(),
+            "filename": filepath.name,
+            "created_at": payload.get("created_at") or datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc).isoformat(),
+            "size_bytes": size_bytes,
+            "size_kb": round(size_bytes / 1024, 1),
+            "type": payload.get("backup_type", "auto"),
+            "total_records": sum(len(v) for v in collections.values()),
+            "collections": list(collections.keys()),
+        }
+        await db.backups.insert_one(meta)
+        synced += 1
+
+    return synced
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @router.post("/create")
@@ -90,6 +129,7 @@ async def create_backup(current_user: dict = Depends(require_admin)):
 @router.get("/list")
 async def list_backups(current_user: dict = Depends(require_admin)):
     """List all available backups."""
+    await _sync_backups_from_disk()
     backups = await db.backups.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return backups
 

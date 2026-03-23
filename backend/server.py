@@ -37,6 +37,7 @@ from routers.backup import router as backup_router, _do_backup
 from routers.public import router as public_router
 from routers.wallet import router as wallet_router
 from routers.support import router as support_router
+from services.global_settings_store import get_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 
 # ── Logging ────────────────────────────────────────────────────────────────
@@ -313,7 +314,7 @@ async def startup_event():
         else:
             logger.info("Scheduled job '%s' completed successfully", event.job_id)
 
-    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    platform_settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
     schedule = merge_cron_schedule_settings(platform_settings)
 
     backup_hour, backup_minute = split_cron_time(schedule["cron_backup_time"])

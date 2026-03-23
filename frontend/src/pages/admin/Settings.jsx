@@ -165,9 +165,8 @@ const AdminSettings = () => {
   const fetchEmailConfig = async () => {
     try {
       const res = await authAxios.get("/admin/email-settings");
-      setEmailConfig(prev => ({
+      setEmailConfig({
         ...DEFAULT_EMAIL_CONFIG,
-        ...prev,
         resend_api_key_preview: res.data.resend_api_key_preview || "",
         resend_from_email: res.data.resend_from_email || "",
         smtp_host: res.data.smtp_host || "",
@@ -177,7 +176,7 @@ const AdminSettings = () => {
         smtp_use_tls: res.data.smtp_use_tls ?? true,
         is_configured: res.data.is_configured || false,
         is_smtp_configured: res.data.is_smtp_configured || false,
-      }));
+      });
     } catch { /* ignore */ }
   };
 
@@ -210,9 +209,9 @@ const AdminSettings = () => {
         smtp_from_email: emailConfig.smtp_from_email,
         smtp_use_tls: emailConfig.smtp_use_tls,
       });
+      await fetchEmailConfig();
       toast.success("Email settings updated successfully");
       setEmailConfig(prev => ({ ...prev, resend_api_key: "", smtp_password: "" }));
-      fetchEmailConfig();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save email settings");
     } finally {
@@ -316,6 +315,7 @@ const AdminSettings = () => {
   const handleUpdateSettings = async () => {
     try {
       await authAxios.put("/admin/settings", settings);
+      await fetchSettings();
       toast.success("Settings updated");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update settings");

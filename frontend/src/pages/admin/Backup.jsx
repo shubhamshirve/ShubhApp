@@ -26,9 +26,14 @@ import {
   CheckCircle, Clock, Shield, HardDrive, AlertTriangle, Download,
 } from "lucide-react";
 
+const DEFAULT_PLATFORM_SETTINGS = {
+  cron_backup_time: "03:00",
+};
+
 const AdminBackup = () => {
   const { authAxios } = useAuth();
   const [backups, setBackups] = useState([]);
+  const [platformSettings, setPlatformSettings] = useState(DEFAULT_PLATFORM_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
@@ -36,8 +41,20 @@ const AdminBackup = () => {
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
-    fetchBackups();
+    Promise.all([fetchBackups(), fetchSettings()]).finally(() => setLoading(false));
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await authAxios.get("/admin/settings");
+      setPlatformSettings({
+        ...DEFAULT_PLATFORM_SETTINGS,
+        ...res.data,
+      });
+    } catch {
+      // keep defaults if settings cannot be loaded
+    }
+  };
 
   const fetchBackups = async () => {
     try {
@@ -45,8 +62,6 @@ const AdminBackup = () => {
       setBackups(res.data);
     } catch {
       toast.error("Failed to load backups");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -161,7 +176,7 @@ const AdminBackup = () => {
                 <p className="text-sm font-bold text-emerald-700">
                   {backups.filter(b => b.type === "auto").length} Auto
                 </p>
-                <p className="text-xs text-emerald-600">Daily at 02:00 UTC</p>
+                <p className="text-xs text-emerald-600">Daily at {platformSettings.cron_backup_time} IST</p>
               </div>
             </CardContent>
           </Card>

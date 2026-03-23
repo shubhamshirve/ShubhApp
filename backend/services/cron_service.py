@@ -8,9 +8,11 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+from services.global_settings_store import get_global_settings_doc
+
 
 async def get_maintenance_state(db) -> Dict[str, Any]:
-    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
     return {
         "maintenance_mode": bool(settings.get("maintenance_mode", False)),
         "maintenance_message": settings.get("maintenance_message") or "The app is under maintenance.",
@@ -603,7 +605,7 @@ class CronJobService:
 
 async def run_daily_invoice_generation(db):
     """Daily cron job for invoice generation"""
-    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    platform_settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
     days_before = int(platform_settings.get("auto_invoice_days_before", 3) or 3)
     service = CronJobService(db)
     results = await service.generate_upcoming_invoices(days_before=days_before)

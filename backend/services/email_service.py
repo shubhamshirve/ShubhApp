@@ -6,6 +6,7 @@ import smtplib
 from email.message import EmailMessage
 
 import httpx
+from services.global_settings_store import get_global_settings_doc
 
 
 logger = logging.getLogger(__name__)
@@ -202,8 +203,7 @@ async def get_email_service_async():
     """
     settings = {}
     try:
-        from database import db
-        doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
+        doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
         if doc:
             settings.update(doc)
     except Exception as exc:
