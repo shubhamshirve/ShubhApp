@@ -1,258 +1,111 @@
 # Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2026-03-22  
-**Active Branch:** `V7.14-5`  
-**Status:** All Tasks 1-8 and ongoing bug fixes implemented; pending live verification.
+**Last Updated:** 2026-03-23  
+**Active Branch:** `V7.14-8`  
+**Latest Feature Branch:** `V7.14-7`
 
 ---
 
 ## Current Snapshot
 
-The branch now includes working code changes for all prioritized tasks and recent bug fixes:
+The codebase now includes:
 
-- Task 1: Wallet accounting and billing integrity
-- Task 2: Auth and OTP production hardening
-- Task 3: Platform maintenance mode
-- Task 4: Invoice branding and public invoice consistency
-- Task 5: Multi-plan subscribers and multi-line invoices
-- Task 6: Session timeout and strong role validation
-- Task 7: Global reminders and IST scheduling
-- Task 8: Admin wallet operations (credit, debit, suspend)
-- Add-on: Bug fixes for multi-line invoice crash, calendar modal behavior, PDF logo paths, SaaS plans GST text, Admin nav cleanup, Global Email Settings, Subscription Wallet Top-up tab removal, and Client-Side Printing replacement for PDF Invoices with mapped payment statuses.
-
-
-Supporting env/bootstrap files were also aligned so the new auth provider keys exist consistently in:
-- [.env](/d:/eBill/.env)
-- [.env.example](/d:/eBill/.env.example)
-- [setup.bat](/d:/eBill/setup.bat)
-- [init-env.sh](/d:/eBill/docker/init-env.sh)
-- [server.py](/d:/eBill/backend/server.py)
+- wallet accounting corrections
+- email-backed OTP hardening
+- maintenance mode
+- invoice branding and invoice-number public links
+- multi-plan subscribers and multi-line invoices
+- global reminder controls with IST scheduling
+- admin wallet actions
+- single active session enforcement
+- email-only password recovery OTP
+- pending invoice edit support
+- payment mode and payment date confirmation when operators manually mark invoices paid
 
 ---
 
-## What Was Implemented
+## Most Recent Delivery
 
-### Task 1: Wallet Accounting and Billing Integrity
+### Branch Flow
+- `V7.14-6` was created and pushed from `V7.14-5`
+- `V7.14-7` was created and pushed from `V7.14-6`
+- `V7.14-8` is the documentation update branch based on `V7.14-7`
+
+### V7.14-7 Changes
 
 Primary files:
-- [wallet.py](/d:/eBill/backend/routers/wallet.py)
-- [operator.py](/d:/eBill/backend/routers/operator.py)
-- [Wallet.jsx](/d:/eBill/frontend/src/pages/operator/Wallet.jsx)
-- [Subscription.jsx](/d:/eBill/frontend/src/pages/operator/Subscription.jsx)
-- [test_wallet_referral.py](/d:/eBill/backend/tests/test_wallet_referral.py)
+- [backend/dependencies.py](/d:/eBill/backend/dependencies.py)
+- [backend/utils.py](/d:/eBill/backend/utils.py)
+- [backend/routers/auth.py](/d:/eBill/backend/routers/auth.py)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/routers/operator.py](/d:/eBill/backend/routers/operator.py)
+- [backend/routers/public.py](/d:/eBill/backend/routers/public.py)
+- [frontend/src/App.js](/d:/eBill/frontend/src/App.js)
+- [frontend/src/pages/ForgotPassword.jsx](/d:/eBill/frontend/src/pages/ForgotPassword.jsx)
+- [frontend/src/pages/operator/Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
 
 Implemented behavior:
-- Wallet top-up amount is now treated as wallet credit before GST.
-- GST rate is read from platform settings and stored in the checkout order.
-- Wallet verification credits only `base_amount`, not the GST-inclusive paid amount.
-- Referral reward on wallet top-up now uses the credited amount.
-- Stale subscription wallet-credit branch was removed from checkout verification.
-- Operator UI copy now explains that GST is added at checkout and only the pre-GST amount is credited.
-
-Important outcome:
-- Subscription renewals no longer carry dead `wallet_credit_amount` logic under the simplified SaaS plan model.
-
-### Task 2: Auth and OTP Production Hardening
-
-Primary files:
-- [auth.py](/d:/eBill/backend/routers/auth.py)
-- [email_service.py](/d:/eBill/backend/services/email_service.py)
-- [Login.jsx](/d:/eBill/frontend/src/pages/Login.jsx)
-- [ForgotPassword.jsx](/d:/eBill/frontend/src/pages/ForgotPassword.jsx)
-- [Register.jsx](/d:/eBill/frontend/src/pages/Register.jsx)
-- [server.py](/d:/eBill/backend/server.py)
-
-Implemented behavior:
-- Removed hardcoded registration and recovery OTP bypass values.
-- Added Resend-backed email OTP delivery service.
-- Registration OTP flow now sends by email.
-- Forgot-password email mode now sends real provider-backed OTP instead of fake success logging.
-- Added resend cooldown and resend-count limits.
-- Removed frontend demo credentials and test OTP hints.
-- Registration and recovery UI copy now reflects real delivery behavior.
-
-Security note:
-- Forgot-password keeps a generic response for unknown emails and stores a non-usable recovery session to reduce account-enumeration leakage.
-
-### Task 3: Platform Maintenance Mode
-
-Primary files:
-- [models.py](/d:/eBill/backend/models.py)
-- [dependencies.py](/d:/eBill/backend/dependencies.py)
-- [admin.py](/d:/eBill/backend/routers/admin.py)
-- [auth.py](/d:/eBill/backend/routers/auth.py)
-- [operator.py](/d:/eBill/backend/routers/operator.py)
-- [wallet.py](/d:/eBill/backend/routers/wallet.py)
-- [cron_service.py](/d:/eBill/backend/services/cron_service.py)
-- [Layout.jsx](/d:/eBill/frontend/src/components/Layout.jsx)
-- [Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
-
-Implemented behavior:
-- Admin can enable maintenance mode and set a platform-wide message from settings.
-- Platform maintenance state now feeds a shared access-state helper used alongside operator read-only status.
-- Operator dashboard, wallet, and subscription responses expose `maintenance_mode`, `maintenance_message`, and effective `is_read_only`.
-- Wallet top-up and subscription checkout/renew flows are blocked during maintenance.
-- Cron jobs and daily wallet automation now short-circuit while maintenance mode is enabled.
-- Admin and operator layouts fetch `/auth/app-state` and show a visible maintenance banner.
-- Wallet and subscription UI actions now disable during maintenance.
-
-### Task 4: Invoice Branding and Public Invoice Consistency
-
-Primary files:
-- [invoice_view_service.py](/d:/eBill/backend/services/invoice_view_service.py)
-- [public.py](/d:/eBill/backend/routers/public.py)
-- [operator.py](/d:/eBill/backend/routers/operator.py)
-- [pdf_service.py](/d:/eBill/backend/services/pdf_service.py)
-- [PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
-- [Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
-- [Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
-- [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md)
-
-Implemented behavior:
-- Public invoice APIs now resolve invoices by `invoice_number` first and fall back to internal invoice id for backwards compatibility.
-- Operator-created public invoice links now use `/invoice/{invoice_number}` instead of internal ids.
-- Added shared invoice-view helpers so public invoice data and PDF data are built from the same merged invoice settings object.
-- Invoice settings now include field-visibility controls and an operator logo upload endpoint.
-- Public invoice page now shows operator branding/address and respects field visibility rules.
-- PDF generation now pulls from the same branding data and supports logo rendering for uploaded or direct logo URLs.
+- Login now rotates `active_session_id` so only one device/session remains valid.
+- Previous sessions are rejected server-side.
+- Frontend now re-checks session validity on window focus and periodic interval.
+- Password recovery no longer offers WhatsApp OTP.
+- Pending invoices can be edited.
+- Manual "mark as paid" now requires payment mode and payment date.
+- Operators cannot cancel already-paid invoices.
+- Admin can still cancel already-paid invoices.
 
 ---
 
-## Pending Tests
+## Validation Completed Locally
 
-### Completed local verification
-- `python -m py_compile backend/routers/wallet.py backend/routers/operator.py`
-- `python -m py_compile backend/routers/auth.py backend/services/email_service.py backend/server.py`
-- `python -m py_compile backend/models.py backend/dependencies.py backend/routers/admin.py backend/routers/auth.py backend/routers/operator.py backend/routers/wallet.py backend/services/cron_service.py`
-- `python -m py_compile backend/models.py backend/services/invoice_view_service.py backend/routers/public.py backend/routers/operator.py backend/services/pdf_service.py`
-- `cmd /c npm run build` in [frontend](/d:/eBill/frontend) completed successfully with existing hook-dependency lint warnings only
+- `python -m py_compile backend\models.py backend\utils.py backend\dependencies.py backend\routers\auth.py backend\routers\admin.py backend\routers\operator.py backend\routers\public.py`
+- `npm run build` inside [frontend](/d:/eBill/frontend)
 
-### Still pending for Task 1
-- Manual wallet top-up with Razorpay test/live keys:
-  - confirm entered amount is treated as pre-GST credit
-  - confirm paid amount includes GST
-  - confirm wallet balance increases only by base amount
-- Manual operator wallet transaction/history check after top-up
-- Manual subscription renewal regression:
-  - confirm no `subscription_credit` wallet transaction is created
-- Optional targeted API verification:
-  - `/api/operator/wallet/topup/create-order`
-  - `/api/operator/wallet/topup/verify`
-
-### Still pending for Task 2
-- Live registration OTP send/verify with valid `RESEND_API_KEY` and `RESEND_FROM_EMAIL`
-- Live forgot-password email OTP send/verify/reset flow
-- WhatsApp recovery OTP regression check
-- Automated tests for:
-  - OTP expiry
-  - resend cooldown/limit handling
-  - invalid OTP attempt limit
-  - provider failure handling
-
-### Still pending for Task 3
-- Manual admin maintenance toggle test:
-  - enable maintenance mode
-  - save custom message
-  - confirm values persist on reload
-- Manual operator verification:
-  - wallet top-up is blocked
-  - subscription renew is blocked
-  - read-only pages still load
-- Manual admin verification:
-  - admin still has settings access while maintenance is on
-  - maintenance banner appears in layout
-- Manual cron verification:
-  - scheduled jobs skip work and return maintenance reason
-- Frontend smoke test:
-  - `/auth/app-state` banner loads correctly without request loops
-  - wallet/subscription buttons disable correctly during maintenance
-
-### Still pending for Task 4
-- Public invoice route verification:
-  - open `/invoice/{invoice_number}`
-  - confirm old `/invoice/{invoice_id}` links still resolve
-- Invoice settings verification:
-  - upload logo
-  - save visibility toggles
-  - reload settings and confirm persistence
-- Public invoice verification:
-  - operator address/logo display
-  - payment status display
-  - hidden fields actually disappear
-- PDF verification:
-  - branding and visibility settings match the public invoice data
-  - downloaded filename uses invoice number
-- Payment regression:
-  - create-payment-order and verify-payment still work through invoice-number route
+Build result:
+- frontend build succeeded
+- existing React hook dependency warnings remain in unrelated files
 
 ---
 
-## Current Working Plan
+## Outstanding Validation
 
-The active source of truth remains [ROADMAP.md](/d:/eBill/memory/ROADMAP.md).
+See [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md) for the live list.
 
-### Sprint 1
-1. Wallet accounting and billing integrity
-2. Auth and OTP production hardening
-3. Platform maintenance mode
-
-### Sprint 2
-4. Invoice branding and public invoice consistency
-5. Multi-plan subscribers and multi-line invoices
-6. Session timeout and strong role validation
-
-### Sprint 3
-7. Global reminder control and IST scheduling
-8. Admin wallet operations
-
-### Sprint 4
-9. Messaging and reporting polish
-10. Payment receipts and confirmation delivery
-11. Import/export enhancements
+Highest-value remaining checks:
+- same-user login on two devices/browsers
+- password reset invalidating previous sessions
+- pending invoice edit regression
+- manual paid-status confirmation storing mode/date correctly
+- operator blocked from cancelling paid invoice
+- admin allowed to cancel paid invoice
+- live forgot-password email OTP verification
 
 ---
 
-## Immediate Next Task
+## Current Documentation State
 
-### Task 7: Global Reminder Control and IST Scheduling
-
-Why this should come next:
-- The backend cron-job logic was stabilized during Maintenance Mode integration.
-- Moving to automated scheduling (IST offsets, reminders) establishes the automation core.
-- The platform needs to reliably execute reminder delivery before scaling up messaging.
-
-Likely starting files:
-- `backend/services/cron_service.py`
-- `backend/models.py`
-- `frontend/src/pages/admin/Settings.jsx`
-
-Expected implementation shape:
-- Move reminder scheduling controls from the operator level to the global admin settings.
-- Adjust all system timing from UTC behavior to India Standard Time (IST).
-- Revise the cron workers to respect the global toggle.
+The following files were refreshed on `V7.14-8`:
+- [README.md](/d:/eBill/README.md)
+- [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
+- [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
+- [memory/PRD.md](/d:/eBill/memory/PRD.md)
+- [memory/PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md)
+- [memory/agent-handoff.md](/d:/eBill/memory/agent-handoff.md)
+- [frontend/README.md](/d:/eBill/frontend/README.md)
 
 ---
 
-## Risks To Keep In Mind
+## Recommended Next Work
 
-- Task 1 still needs real payment-provider verification before being treated as production-complete.
-- Task 2 now depends on correct Resend env configuration; auth testing will fail without those keys.
-- Task 3 needs browser and cron validation before being treated as rollout-ready.
-- Task 4 needs real route/PDF/payment verification before being treated as customer-ready.
-- There are still older historical docs/tests in the repo that reference legacy plan-credit behavior and may need cleanup later.
-- Task 5 will likely require schema migration work, so avoid starting it without a migration/testing plan.
+1. Complete manual verification for single-session auth and invoice status rules.
+2. Build payment receipt generation on top of the new payment metadata.
+3. Extend payment confirmation delivery through WhatsApp/email where needed.
+4. Continue messaging/reporting and import/export polish.
 
 ---
 
-## Branch / Git State At Handoff
+## Git State At Handoff
 
-- Current working branch for delivery: `7.13-4`
-- Source implementation branch before delivery branch creation: `V7.14`
-- Latest code in progress includes:
-  - wallet/top-up accounting changes
-  - auth/OTP hardening
-  - env/bootstrap alignment
-  - maintenance mode across admin settings, API access state, cron guards, and layout banners
-  - invoice-number public routing, invoice branding/visibility controls, and operator logo upload
-
-If continuing from here, start Task 5 after this branch is committed, pushed, and the pending Task 4 checks are reviewed.
+- Current branch: `V7.14-8`
+- Feature baseline under docs branch: `V7.14-7`
+- Latest feature commit from `V7.14-7`: `6471ca1`

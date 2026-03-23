@@ -1,10 +1,49 @@
 # E-Bill Platform - CHANGELOG
 
+## 2026-03-23
+
+### Branches
+- Created and pushed `V7.14-6` from `V7.14-5`
+- Created, implemented, and pushed `V7.14-7`
+- Documentation alignment prepared on `V7.14-8`
+
+### V7.14-7: Single Session, Recovery, and Invoice Control
+
+#### Auth / Session Management
+- Added single-session enforcement at the backend level using a per-user active session id.
+- New login replaces the user's previous active session, which forces the old device/session to expire.
+- Password change and password reset now rotate the active session id and invalidate older logins.
+- Frontend auth bootstrap now re-checks session validity on window focus and periodic interval so old sessions close automatically in the UI.
+- Admin return-from-impersonation now issues a fresh admin session id.
+
+#### Password Recovery
+- Removed WhatsApp OTP as a password recovery delivery method.
+- Forgot-password flow is now email-only in both API and frontend UI.
+- Recovery resend flow now always sends by email.
+
+#### Invoices
+- Added backend support to edit invoices while they are still in `pending` status.
+- Added frontend edit flow for pending invoices.
+- Operators can no longer cancel paid invoices.
+- Admin can still cancel a paid invoice through the invoice status API.
+- Manual mark-as-paid flow now requires payment mode and payment date.
+- Stored payment modes now include:
+  - `cash`
+  - `own_upi`
+  - `bank_transfer`
+  - `cheque`
+- Public online payment verification now stores `payment_mode = online`.
+
+#### Validation
+- `python -m py_compile` passed for touched backend modules.
+- `npm run build` passed in `frontend/`.
+- Existing frontend ESLint hook-dependency warnings remain, but they are pre-existing and non-blocking for build output.
+
 ## 2026-03-21
 
 ### Sprint 1 Progress: Wallet + Auth Hardening in Code
 
-#### Task 1: Wallet Accounting and Billing Integrity (implemented, pending live verification)
+#### Task 1: Wallet Accounting and Billing Integrity
 - Wallet top-up now treats the entered amount as wallet credit before GST.
 - Top-up checkout orders now store GST breakup fields: `base_amount`, `gst_rate`, `gst_amount`, `exact_total`, `rounding_diff`, `total_amount`.
 - Wallet verification credits only the pre-GST wallet amount, not the total amount paid.
@@ -12,35 +51,17 @@
 - Removed stale subscription wallet-credit logic from SaaS checkout verification to align with simplified flat subscription pricing.
 - Updated operator wallet/top-up UI copy to explain pre-GST crediting and paid-vs-credited totals.
 
-#### Task 2: Auth and OTP Production Hardening (implemented, pending provider verification)
+#### Task 2: Auth and OTP Production Hardening
 - Removed hardcoded registration and password-recovery OTP bypasses.
-- Added Resend-backed email OTP delivery via new `backend/services/email_service.py`.
+- Added Resend-backed email OTP delivery via `backend/services/email_service.py`.
 - Registration OTP flow now sends via email.
-- Forgot-password email flow now uses real provider-backed email delivery instead of fake success logging.
+- Forgot-password recovery email flow now uses real provider-backed delivery.
 - Added resend cooldown and resend-count limits for registration and recovery OTP flows.
 - Removed login demo-credentials panel and forgot-password test OTP hints from the frontend.
-- Updated registration OTP messaging to reflect email delivery.
 
-#### Env / Bootstrap Sync
-- Added `RESEND_API_KEY` and `RESEND_FROM_EMAIL` to:
-  - root `.env`
-  - `.env.example`
-  - `setup.bat`
-  - `docker/init-env.sh`
-  - backend `.env` auto-bootstrap in `server.py`
-
-#### Tests still pending
-- Manual Razorpay top-up verification for credited amount vs paid amount
-- Manual subscription renewal regression check for wallet transactions
-- Live Resend registration OTP test
-- Live Resend forgot-password OTP test
-- Additional automated OTP edge-case tests: expiry, resend throttling, invalid attempts, provider failure handling
-
-### Sprint 1 Progress: Maintenance Mode in Code
-
-#### Task 3: Platform Maintenance Mode (implemented, pending live verification)
+#### Task 3: Platform Maintenance Mode
 - Added `maintenance_mode` and `maintenance_message` to platform global settings.
-- Added shared maintenance/access-state helpers in backend dependencies so effective read-only now includes platform maintenance.
+- Added shared maintenance/access-state helpers in backend dependencies.
 - Added `/auth/app-state` for layout-level maintenance/read-only state loading.
 - Operator dashboard, wallet, and subscription responses now expose maintenance fields.
 - Wallet top-up and subscription checkout/renew flows now block during maintenance.
@@ -48,130 +69,34 @@
 - Admin settings UI now includes a maintenance toggle and custom message field.
 - Admin and operator layouts now show maintenance banners, and operator action buttons are disabled while maintenance is active.
 
-#### Task 3 tests still pending
-- Manual admin maintenance toggle and persistence verification
-- Manual operator/staff read-only behavior verification
-- Manual admin layout banner verification
-- Manual cron skip verification while maintenance is enabled
-- Frontend runtime smoke test for `/auth/app-state` and disabled-action states
-
-### Invoice Branding and Public Invoice Consistency in Code
-
-#### Task 4: Invoice Branding and Public Invoice Consistency (implemented, pending live verification)
+#### Task 4: Invoice Branding and Public Invoice Consistency
 - Public invoice endpoints now resolve by `invoice_number` first with legacy internal-id fallback.
 - Operator-created public invoice links now use `/invoice/{invoice_number}`.
 - Added shared invoice-view helpers so public invoice payloads and PDF payloads come from the same merged invoice settings object.
 - Invoice settings now support field-visibility toggles and operator logo upload.
 - Public invoice page now shows operator logo/address and respects selected visibility rules.
 - PDF generation now uses the same branding data and includes logo rendering when available.
-- Added a dedicated pending-test tracker in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
 
-#### Task 4 tests still pending
-- Manual invoice-number URL verification with legacy link fallback
-- Manual operator logo upload and visibility-toggle persistence verification
-- Manual public invoice verification for branding, hidden fields, and payment status
-- Manual PDF verification for branding parity and invoice-number filename
-- Public payment route regression check after invoice-number routing change
-
-### Multi-Plan Subscribers and Multi-Line Invoices in Code
-
-#### Task 5: Multi-Plan Subscribers and Multi-Line Invoices (implemented and verified)
-- Subscriber model updated to support multiple active plans via `plans` list.
+#### Task 5: Multi-Plan Subscribers and Multi-Line Invoices
+- Subscriber model updated to support multiple active plans via a plans list.
 - Invoice model updated to support multiple `line_items` per invoice.
-- Subscriber API (POST/PUT) now handles multiple plan objects with individual billing dates and discounts.
-- Invoice API (POST) now accepts multiple line items and calculates aggregate totals (base, discount, tax, final).
-- Cron billing logic (`generate_upcoming_invoices`) now groups plans with identical billing dates for a subscriber into single combined multi-line invoices.
-- Updated `OperatorSubscribers` UI to allow adding/editing multiple plan rows.
-- Updated `OperatorInvoices` UI to allow selecting multiple plans when creating invoices manually.
-- Updated `PublicInvoice` and `PDF Service` to render multi-line tables and aggregated totals.
-- Created data migration script `backend/migrations/task5_multi_plan.py` for legacy schema conversion.
-- Verified with automated API tests in `backend/tests/test_task5_multi_plan.py`.
+- Subscriber API now handles multiple plan objects with individual billing dates and discounts.
+- Invoice API accepts multiple line items and calculates aggregate totals.
+- Cron billing logic groups plans with identical billing dates into single combined multi-line invoices.
 
-### Admin Wallet Operations in Code
-
-#### Task 8: Admin Wallet Operations (implemented, pending live verification)
-- Backend: Added `WalletAdjustmentRequest` and `WalletSuspendRequest` models. Added three endpoints: `POST /admin/wallets/{operator_id}/credit`, `debit`, and `suspend`.
-- Frontend: Upgraded `Wallets.jsx` with Credit/Debit/Suspend buttons, a shared adjustment modal, a suspend confirmation dialog, and full list/transaction refreshing after actions.
-- Behavior: Debits > balance fail. Debits that drop balance < 100 auto-suspend. Credits that restore balance >= 100 auto-unsuspend.
-- Validation: All actions capture reasons and write full audit logs.
-- Tests: Added test suite in `backend/tests/test_task8_admin_wallet.py`.
-
-## 2025-07-18
-
-### Batch 8: Codebase Cleanup & Removal
-- Settlement system removed from frontend, backend, and cron.
-- Platform fee logic removed from plan models and related endpoints.
-- Dead files deleted, including legacy landing and KYC test files.
-- Dead constants and landing-page route cleanup completed.
-
-## 2026-03-18
-
-### Task 1: Referral + Wallet System
-- Added `operator_wallets` and `wallet_transactions` collections.
-- Operators receive unique referral codes on registration.
-- Referral discounts and rewards were added to initial wallet flow.
-- Wallet deduction, reminder, suspension, top-up, and admin wallet views were introduced.
-
-### Task 2: Basic/Pro Plan Revamp
-- Added Basic/Pro plan revamp with legacy plan-type pricing model at that time.
-- Checkout and admin plan creation were updated around that older pricing structure.
-
-### Task 5: Support Ticket System
-- Added threaded support ticket flows for operator/staff/admin.
-- Added `/operator/support` and `/admin/support`.
-
-### Task 7: Remove Landing Page
-- Root `/` now redirects to `/login`.
-- Admin landing-page builder remains available for future use.
+#### Task 8: Admin Wallet Operations
+- Added admin wallet credit, debit, and suspend endpoints.
+- Added wallet adjustment UI in admin wallet management.
+- Debits below threshold auto-suspend; restorative credits can auto-unsuspend.
 
 ## 2026-03-22
 
-### Bug Fixes & Feature Additions (Branch V7.14-4)
-
-#### Fix 1: Invoice Add-Row Crash & Calendar Popover
-- Missing `Trash2` lucide icon import in `Invoices.jsx` was crashing React when a second line item was added.
-- Added `modal={true}` to all three `<Popover>` date pickers (due date, service start, service end) inside the invoice Dialog so they no longer close immediately.
-- Fixed `Select` value to use `undefined` instead of `""` for empty plan_id so the placeholder renders.
-
-#### Fix 2 & 3: PDF Invoice Logo Visibility
-- `pdf_service.py` `_build_logo()` now has a dedicated `/uploads/` path branch.
-- Resolves logo filename against both the local dev path (`../../frontend/public/uploads/`) and the Docker path (`/app/frontend/public/uploads/`) with clear fallback.
-
-#### Fix 4: SaaS Plans GST Text (Admin Panel)
-- `SaaSPlans.jsx` header subtitle changed from "GST inclusive" → "exclusive of GST — 18% GST will be added at checkout".
-- Per-plan card badge changed from "GST Inclusive" → "Excl. GST".
-- Form helper text updated to reflect exclusive pricing.
-
-#### Fix 5: Remove Landing Page from Admin Navbar
-- Removed `Landing Page` link entry from `AdminSidebar` in `Layout.jsx`.
-- Removed unused `Layout` icon import.
-
-#### Feature: Global Email API Keys in Admin Panel
-- Added `GET /admin/email-settings` — returns configured Resend from-email and masked API key preview.
-- Added `PUT /admin/email-settings` — stores `resend_api_key` + `resend_from_email` in `global_settings` collection in MongoDB.
-- Added `get_email_service_async()` to `email_service.py` — checks DB first, falls back to OS env vars.
-- Added `Email API` tab to Admin → Settings with:
-  - Masked Resend API Key field with show/hide toggle.
-  - From Email input.
-  - Green "configured" badge when a key exists.
-  - Link to resend.com/api-keys.
-
-#### Subscription GST & Wallet Credit (Previous Session)
-- SaaS subscription checkout now adds 18% GST to the plan price (exclusive, not inclusive).
-- On successful payment verification, the pre-GST plan amount is credited to the operator wallet.
-- Operator Settings page crash bug fixed — removed leftover Reminders tab state/JSX that caused crashes during admin impersonation.
-
-#### Fix 6: Subscription Wallet Top-up Removal
-- Removed the "Wallet Top-up" tab and UI block from the `Subscription.jsx` operator screen to streamline flows.
-
-#### Fix 7: PDF Invoice Download (Client-Side Print Replacement)
-- Replaced backend ReportLab PDF generation with a `window.print()` implementation via the `PublicInvoice.jsx` layout.
-- This ensures downloaded PDFs exactly match the beautiful Tailwind CSS layout of the modern public invoice.
-- Added `@media print:hidden` CSS utility classes to hide navigation/header bars and "Pay Now" actions on the printed PDF.
-- Added `payment_id` and `paid_at` data to `public.py` so the "Payment Received" confirmation block reliably displays the Date Paid and Transaction Ref on the printed receipt acting as proof of payment.
-
-#### Fix 8: Public Invoice Link Visibility for New Invoices
-- Identified that newly created multi-line invoices threw a 500 Internal Server error on the `PublicInvoice` API because `plan_id` and `service_start_date` no longer exist at the root level.
-- Updated `public.py` and `invoice_view_service.py` to use `.get()` with safe defaults and graceful fallbacks to the first `line_item`.
-- Resolves the "no invoice available" bug completely for recently generated invoices.
-
+### V7.14-4 / V7.14-5 Fixes
+- Fixed invoice add-row crash and create-invoice calendar popovers.
+- Fixed invoice logo visibility in PDF and logo path resolution.
+- Updated SaaS plan GST text to exclusive-of-GST wording.
+- Removed Landing Page link from admin sidebar.
+- Added global email API settings in admin panel.
+- Removed Wallet Top-up tab from operator Subscription page.
+- Improved public invoice printing and paid-invoice receipt display.
+- Fixed public invoice loading for newer multi-line invoices.

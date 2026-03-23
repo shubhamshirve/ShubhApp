@@ -1,148 +1,161 @@
-# Multi-Tenant SaaS Billing Platform
+# E-Bill Multi-Tenant Billing Platform
 
-A production-grade billing platform for ISP/broadband operators. Built with React, FastAPI, and MongoDB.
+Production-oriented billing platform for ISP, broadband, and cable operators. The stack uses React on the frontend, FastAPI on the backend, MongoDB for persistence, and Docker Compose with Caddy for deployment.
+
+## Current Version
+
+- Documentation updated for branch line `V7.14-8`
+- Latest feature delivery implemented on `V7.14-7`
+- Current release focus:
+  - single active session per user
+  - email-only password recovery OTP
+  - pending invoice edit support
+  - payment confirmation dialog with mode/date capture
 
 ## Architecture
 
-```
-/app/
-├── backend/
-│   ├── routers/        # API routes (admin, auth, operator, backup, webhooks)
-│   ├── services/       # Business logic (cron, PDF, Razorpay, WhatsApp)
-│   ├── tests/          # Pytest test suites
-│   ├── server.py       # FastAPI entry point + scheduler
-│   ├── models.py       # Pydantic schemas
-│   ├── database.py     # MongoDB connection
-│   ├── config.py       # JWT config
-│   ├── dependencies.py # Auth guards
-│   ├── audit.py        # Audit logging
-│   └── utils.py        # Helpers (ID gen, passwords, invoice numbers)
-├── frontend/
-│   └── src/
-│       ├── pages/admin/     # Admin dashboard pages
-│       ├── pages/operator/  # Operator dashboard pages
-│       ├── components/      # Layout + Shadcn UI components
-│       └── App.js           # Auth provider + routing
-└── memory/
-    └── PRD.md               # Product requirements
+```text
+d:\eBill
+|-- backend/
+|   |-- routers/          FastAPI route modules
+|   |-- services/         email, PDF, cron, Razorpay, WhatsApp helpers
+|   |-- tests/            pytest suites
+|   |-- server.py         FastAPI entrypoint + scheduler bootstrap
+|   |-- models.py         Pydantic models
+|   |-- dependencies.py   auth/session/role guards
+|   |-- database.py       Mongo connection
+|   `-- utils.py          JWT, password, ids, invoice helpers
+|-- frontend/
+|   |-- src/
+|   |   |-- pages/admin/
+|   |   |-- pages/operator/
+|   |   |-- components/
+|   |   `-- App.js
+|   `-- package.json
+|-- docker/
+|-- memory/
+|   |-- PRD.md
+|   |-- ROADMAP.md
+|   |-- CHANGELOG.md
+|   |-- PENDING_TESTS.md
+|   `-- agent-handoff.md
+|-- docker-compose.yml
+|-- Caddyfile
+`-- .env.example
 ```
 
 ## Roles
 
-| Role     | Access                                              |
-|----------|-----------------------------------------------------|
-| Admin    | Platform management, operator CRUD, SaaS plans, cron triggers |
-| Operator | Subscriber billing, invoices, plans, staff, settings |
-| Staff    | Read-only access to operator data (no delete)       |
+| Role | Access |
+|------|--------|
+| Admin | platform settings, operators, plans, addons, wallets, reports, support, impersonation |
+| Operator | subscribers, plans, invoices, staff, settings, subscription, reports |
+| Staff | operator-side access with permission limits; destructive delete routes remain blocked |
 
 ## Key Features
 
-- SaaS subscription billing with Razorpay
-- Feature-gating via add-on system
-- Auto invoice generation (daily cron at 06:00 UTC)
-- Payment reminder scheduling (daily cron at 07:00 UTC)
-- Subscription expiry checks (daily at 01:00 UTC)
-- Wallet balance check & auto-suspend (daily at 08:00 UTC)
-- WhatsApp Business API integration
-- PDF invoice generation (Classic & Modern templates)
-- Admin impersonation for operator support
-- Admin manual wallet operations (credit/debit/suspend) with full audit logging
-- Audit logging with search/filter/pagination
-- Backup & restore system
-- KYC management (business type, PAN, GST, bank details)
-- Support ticket system (operator ↔ admin threaded conversations)
-- Referral & wallet system
-- Discount codes for subscription checkout
+- JWT auth with admin, operator, and staff roles
+- configurable session timeout plus single-session enforcement
+- admin impersonation and return flow
+- email OTP registration and password recovery
+- multi-plan subscribers and multi-line invoices
+- operator invoice branding, logo upload, and public invoice links
+- invoice-number based public invoice URLs with legacy fallback
+- operator payment links and public payment verification
+- payment mode/date capture when invoices are manually marked paid
+- admin wallet credit, debit, and suspend operations
+- maintenance mode with app-wide read-only behavior
+- global reminder scheduling and IST-based cron execution
+- WhatsApp notifications and reminders
+- support tickets, audit logs, backups, discount codes, referral wallet flows
 
-## Credentials
+## Recent Functional Changes
 
-- **Admin**: admin@saas.com / admin123
-- **Seed**: `POST /api/seed`
+### Auth and Sessions
+- A user can be active on only one session/device at a time.
+- Logging in on a second device invalidates the previous session.
+- Password change and password reset also invalidate prior sessions.
+- Forgot-password recovery OTP is now email-only.
 
-## Local Setup
+### Invoices
+- Pending invoices can now be edited.
+- Operators cannot cancel a paid invoice.
+- Admin can still cancel a paid invoice through the status API.
+- When an operator marks an invoice as paid, the UI now requires:
+  - payment mode: `Cash`, `Own UPI`, `Bank Transfer`, or `Cheque`
+  - payment date
 
-See `requirements_local.txt` in both `backend/` and `frontend/` for dependency lists.
+## Scheduled Jobs
+
+All core cron jobs now run on `Asia/Kolkata` time in the backend scheduler.
+
+| Job | Schedule (IST) | Description |
+|------|----------------|-------------|
+| Auto Backup | 03:00 | create daily backup |
+| Expiry Check | 00:05 | expire trials/subscriptions |
+| Invoice Generation | 08:00 | create upcoming invoices |
+| Reminder Processing | 10:00 | send reminders |
+| Wallet Check | 09:00 | low-wallet checks and actions |
+
+## Local Development
+
+### Backend
+
+Use the local requirements file if needed:
+
+```bash
+cd backend
+pip install -r requirements_local.txt
+uvicorn server:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+### Tests
+
+```bash
+cd backend
+pytest -v
+```
+
+```bash
+cd frontend
+npm run build
+```
 
 ## Docker Deployment
-
-The app is Docker-ready with Caddy in front of the React frontend and FastAPI backend.
-
-1. Set a public DNS record for your domain to this server's IP.
-2. Start the stack once. Docker will create a missing root `.env` automatically with placeholder values.
-3. Update the generated `.env` with your real domain, secrets, and provider credentials.
-4. Restart the stack:
 
 ```bash
 docker compose up -d --build
 ```
 
-Seed the default data any time with:
+Seed the environment after startup if needed:
 
 ```bash
 docker compose exec backend python -c "import asyncio, json; from server import seed_data; print(json.dumps(asyncio.run(seed_data()), indent=2))"
 ```
 
-This runs seeding inside the already-running backend container, which avoids Docker DNS and dependency startup issues.
-
 Notes:
-- Caddy serves HTTPS automatically on port `443` and redirects/provisions certificates for `DOMAIN`.
-- Caddy now loads `DOMAIN` and `SERVER_IP` from the generated root `.env` at container startup, so first boot picks up the created env file automatically.
-- Keep ports `80` and `443` open publicly for automatic certificate issuance and renewal.
-- Backend and frontend are only exposed inside the Docker network; Caddy is the only public entrypoint.
-- MongoDB now uses credentials from `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD`.
-- Docker passes Mongo host, username, and password separately so special characters in the password are handled safely.
-- MongoDB bind address is controlled by `MONGO_BIND_ADDRESS`.
-- Default is `127.0.0.1`, which only allows server-local admin access.
-- Set `MONGO_BIND_ADDRESS=0.0.0.0` if you intentionally want remote desktop access from outside the server.
-- Example local Mongo shell URI: `mongodb://admin:your-password@127.0.0.1:27017/saas_db?authSource=admin`
-- Example remote desktop URI: `mongodb://admin:your-password@YOUR_SERVER_IP:27017/saas_db?authSource=admin`
-- If you expose Mongo remotely, restrict port `27017` in your firewall to your desktop IP only.
-- All app settings now live in the root `.env`; `backend/.env` and `frontend/.env.local` are no longer required.
-- Default env templates are also available in `.env.example`.
+- Caddy is the public entrypoint.
+- Root `.env` is the main configuration source.
+- `backend/.env` and `frontend/.env.local` are no longer required.
+- Mongo credentials are read from the root env and passed safely into containers.
 
-## Input Validation
+## Credentials
 
-The backend now applies shared sanitization and stricter validation for common request fields:
+- Admin: `admin@saas.com / admin123`
+- Seed endpoint: `POST /api/seed`
 
-- trims and sanitizes incoming text through a shared Pydantic base model
-- preserves sensitive fields like passwords, tokens, and secrets without destructive trimming
-- validates Indian phone and WhatsApp numbers
-- validates GSTIN, IFSC, and PAN number formats
-- validates business type (Sole Proprietorship, Partnership, LLP, Private Limited, Public Limited, Others)
-- constrains invoice prefixes to a safe format
-- sanitizes uploaded filenames before writing them to disk
+## Documentation Map
 
-Main files involved:
-- `backend/sanitization.py`
-- `backend/models.py`
-- `backend/routers/auth.py`
-- `backend/routers/admin.py`
-- `backend/routers/operator.py`
-- `backend/routers/backup.py`
-
-## KYC Features (Added Mar 2026)
-
-### Operator KYC Details
-Operators can now provide complete KYC (Know Your Customer) information:
-
-**Registration Form** (`/register`):
-- Business Type dropdown (Sole Proprietorship, Partnership, LLP, Private Limited, Public Limited, Others)
-- PAN Number with validation (format: ABCDE1234F)
-- GST Number (GSTIN) with validation
-- Business Address
-- Collapsible Bank Details section (optional, for payment gateway users):
-  - Account Holder Name
-  - Bank Name
-  - Account Number
-  - IFSC Code with validation
-
-**Admin Operator Management** (`/admin/operators`):
-- **View Details**: Shows complete operator information including KYC, bank details, and subscription info
-- **Edit Operator**: Allows updating all operator details including KYC and bank information
-- **Create Operator**: Supports all KYC fields when creating operators manually
-
-**Backend API Changes**:
-- `POST /api/auth/register-init` - Accepts KYC fields (business_type, pan_number, address, bank details)
-- `POST /api/admin/operators/create` - Supports full KYC details
-- `PUT /api/admin/operators/{id}` - Updates KYC fields
-- `GET /api/admin/operators` - Returns all KYC fields in response
+- Product and architecture summary: [PRD.md](/d:/eBill/memory/PRD.md)
+- Active roadmap and pending work: [ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
+- Release history: [CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
+- Validation backlog: [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md)
+- Handoff summary: [agent-handoff.md](/d:/eBill/memory/agent-handoff.md)
