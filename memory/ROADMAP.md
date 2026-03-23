@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-12`
+Latest shipped functional branch: `V7.14-13`
 
 What is now live in code:
 - single active session per user
@@ -41,6 +41,10 @@ What is now live in code:
 - admin display-name updates from settings
 - Resend and SMTP test mail actions
 - SMTP fallback compatibility when AUTH is unavailable
+- operator invoice bulk upload with sample CSV/XLSX flow
+- invoice settings address fallback from registration/profile data
+- invoice logo preview/persistence/render fixes
+- backend-served `/api/uploads` asset URLs
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
@@ -95,6 +99,17 @@ What is still mostly pending:
   - allowed admin name updates
   - added test email actions for Resend and fallback SMTP
   - made fallback SMTP tolerant of servers without AUTH support
+
+### 2D. Invoice Bulk Upload and Branding Fixes
+- Status: `completed`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `S-M`
+- Scope:
+  - added operator invoice bulk upload with sample CSV/XLSX flow
+  - added invoice address fallback from registration/profile data
+  - fixed invoice logo preview, persistence, and public rendering
+  - served uploaded assets through backend `/api/uploads` URLs
 
 ### 2A. Delivery Reliability and Scheduler Configuration
 - Status: `completed`
@@ -190,6 +205,10 @@ These are implemented in code but still need more manual/live verification in so
 - link previews across social/messaging platforms
 - install prompt/add-to-home-screen behavior on supported browsers
 - admin payment gateway assignment regression and payment-link verification
+- operator invoice bulk upload sample-file flow
+- invoice address fallback when company address is empty
+- invoice logo preview/render behavior on operator/public pages
+- backend `/api/uploads` asset serving
 - public payment and branded PDF/print receipt consistency
 
 Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).

@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-12`
-**Latest Feature Branch:** `V7.14-12`
+**Active Branch:** `V7.14-13`
+**Latest Feature Branch:** `V7.14-13`
 
 ---
 
@@ -37,6 +37,9 @@ The codebase now includes:
 - admin display-name changes are supported from settings
 - Resend and SMTP test mail actions are available
 - SMTP fallback now tolerates servers without AUTH support
+- operator invoice bulk upload with sample CSV/XLSX flow is now available
+- invoice settings fall back to the registration/profile address when the company address is empty
+- invoice logos persist immediately and render correctly via `/api/uploads`
 
 ---
 
@@ -93,6 +96,24 @@ Implemented behavior:
 - Email settings now include Resend test mail and SMTP test mail actions.
 - SMTP fallback now skips login when `AUTH` is not offered by the server.
 
+### V7.14-13 Changes
+
+Primary files:
+- [frontend/src/pages/operator/Invoices.jsx](/d:/eBill/frontend/src/pages/operator/Invoices.jsx)
+- [frontend/src/pages/operator/Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
+- [frontend/src/pages/PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
+- [frontend/src/lib/mediaUrl.js](/d:/eBill/frontend/src/lib/mediaUrl.js)
+- [backend/server.py](/d:/eBill/backend/server.py)
+- [backend/routers/operator.py](/d:/eBill/backend/routers/operator.py)
+- [backend/services/invoice_view_service.py](/d:/eBill/backend/services/invoice_view_service.py)
+- [backend/services/pdf_service.py](/d:/eBill/backend/services/pdf_service.py)
+
+Implemented behavior:
+- Added operator invoice bulk upload with sample CSV/XLSX flow.
+- Added invoice company-address fallback from the operator registration/profile address when invoice address is empty.
+- Persisted uploaded invoice logos immediately and served them through backend `/api/uploads` URLs.
+- Fixed invoice logo preview in operator settings and logo rendering on the public invoice page.
+
 ---
 
 ## Validation Completed Locally
@@ -123,7 +144,7 @@ Highest-value remaining checks:
 
 ## Current Documentation State
 
-The following files were refreshed on `V7.14-12`:
+The following files were refreshed on `V7.14-13`:
 - [README.md](/d:/eBill/README.md)
 - [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
 - [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
@@ -136,13 +157,13 @@ The following files were refreshed on `V7.14-12`:
 
 ## Recommended Next Work
 
-1. Continue payment receipt and messaging improvements.
-2. Verify cache clearing, admin-name updates, and email test tooling in a live environment.
+1. Verify invoice bulk upload, address fallback, and logo rendering in a live environment.
+2. Continue payment receipt and messaging improvements.
 3. Keep refining operator/admin gateway workflows where needed.
 
 ---
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-12`
-- Feature baseline under docs branch: `V7.14-12`
+- Current branch: `V7.14-13`
+- Feature baseline under docs branch: `V7.14-13`

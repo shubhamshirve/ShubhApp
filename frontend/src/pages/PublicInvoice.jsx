@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { toast, Toaster } from "sonner";
+import { resolveMediaUrl } from "../lib/mediaUrl";
 import {
   FileText, Download, CreditCard, CheckCircle2, Clock, XCircle,
   Building2, User, MapPin, Phone, Mail, Calendar, IndianRupee,
@@ -250,7 +251,7 @@ export default function PublicInvoice() {
                 <div className="flex items-center gap-3">
                   {visibleFields.show_logo !== false && operator.logo_url && (
                     <img
-                      src={operator.logo_url}
+                      src={resolveMediaUrl(operator.logo_url)}
                       alt={`${invoice_settings?.company_name || operator.company_name} logo`}
                       className="h-10 w-auto rounded bg-white/95 p-1"
                     />

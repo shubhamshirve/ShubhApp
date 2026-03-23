@@ -20,8 +20,8 @@ Modules:
     cron_service.py
 """
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
@@ -100,6 +100,26 @@ app.include_router(backup_router,    prefix="/api")
 app.include_router(public_router,    prefix="/api")
 app.include_router(wallet_router,    prefix="/api")
 app.include_router(support_router,   prefix="/api")
+
+
+def _upload_search_dirs() -> list[Path]:
+    backend_dir = Path(__file__).resolve().parent
+    return [
+        backend_dir / "uploads",
+        backend_dir.parent / "frontend" / "public" / "uploads",
+        Path("/app/frontend/public/uploads"),
+        Path("/frontend/public/uploads"),
+    ]
+
+
+@app.get("/api/uploads/{filename:path}")
+async def get_uploaded_file(filename: str):
+    safe_name = Path(filename).name
+    for base_dir in _upload_search_dirs():
+        candidate = (base_dir / safe_name).resolve()
+        if candidate.exists() and candidate.is_file():
+            return FileResponse(candidate)
+    raise HTTPException(status_code=404, detail="Upload not found")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(

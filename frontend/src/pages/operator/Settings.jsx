@@ -16,6 +16,7 @@ import {
 } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { toast } from "sonner";
+import { resolveMediaUrl } from "../../lib/mediaUrl";
 import { 
   Building2, 
   Save,
@@ -595,7 +596,7 @@ const OperatorSettings = () => {
                       </div>
                       {invoiceForm.logo_url && (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 inline-flex">
-                          <img src={invoiceForm.logo_url} alt="Invoice logo preview" className="max-h-12 w-auto" />
+                          <img src={resolveMediaUrl(invoiceForm.logo_url)} alt="Invoice logo preview" className="max-h-12 w-auto" />
                         </div>
                       )}
                     </div>

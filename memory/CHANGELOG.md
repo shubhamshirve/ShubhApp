@@ -2,6 +2,27 @@
 
 ## 2026-03-24
 
+### V7.14-13: Invoice Bulk Upload, Address Fallback, and Logo Rendering
+
+#### Invoice Import
+- Added bulk upload support for operator invoices.
+- Bulk invoice upload now includes sample CSV/XLSX flow similar to the subscriber bulk upload experience.
+
+#### Invoice Settings
+- Invoice settings now fall back to the operator registration/profile address when the invoice company address is empty.
+
+#### Invoice Branding
+- Uploaded invoice logos now persist immediately.
+- Uploaded logos now preview correctly in operator settings.
+- Uploaded logos now render correctly on the public invoice page.
+- Backend now serves uploaded assets through `/api/uploads` URLs.
+
+#### Validation
+- Bulk invoice upload sample-file flow should be verified against the operator import path.
+- Invoice address fallback should be verified on blank-address invoices.
+- Logo preview/rendering should be verified in operator settings and public invoice views.
+- Uploaded asset URLs should be verified over `/api/uploads`.
+
 ### V7.14-12: Cache Clearing, Admin Profile, and Email Test Actions
 
 #### Cache Management

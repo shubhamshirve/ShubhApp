@@ -22,9 +22,14 @@ def normalize_invoice_settings(settings: Optional[Dict[str, Any]], operator: Opt
     operator = operator or {}
     settings = settings or {}
     visible_fields = {**DEFAULT_VISIBLE_FIELDS, **(settings.get("visible_fields") or {})}
+    operator_address = (
+        operator.get("company_address")
+        or operator.get("address")
+        or ""
+    )
     return {
         "company_name": settings.get("company_name") or operator.get("company_name", ""),
-        "company_address": settings.get("company_address") or operator.get("company_address", ""),
+        "company_address": settings.get("company_address") or operator_address,
         "company_phone": settings.get("company_phone") or operator.get("phone", ""),
         "company_email": settings.get("company_email") or operator.get("email", ""),
         "logo_url": settings.get("logo_url"),

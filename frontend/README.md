@@ -45,6 +45,9 @@ React frontend for the E-Bill platform.
 - admin settings now allow updating the admin display name
 - email settings now include Resend and SMTP test mail actions
 - SMTP fallback now tolerates servers without AUTH support
+- operator invoice bulk upload now includes sample CSV/XLSX flow
+- invoice settings fall back to the registration/profile address when the company address is blank
+- uploaded invoice logos now preview and persist correctly using backend `/api/uploads` URLs
 
 ## Scripts
 

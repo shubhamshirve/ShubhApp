@@ -281,27 +281,28 @@ class InvoicePDFService:
         if not logo_url:
             return None
         try:
+            backend_upload_dir = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "uploads")
+            )
             if logo_url.startswith(("http://", "https://")):
                 with urlopen(logo_url, timeout=5) as resp:
                     content = resp.read()
                 img = Image(io.BytesIO(content))
-            elif logo_url.startswith("/uploads/"):
-                # Resolve using UPLOAD_DIR (same logic as operator.py)
-                filename = logo_url[len("/uploads/"):]
-                upload_dir = os.path.abspath(
-                    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "uploads")
-                )
-                local_path = os.path.join(upload_dir, filename)
-                if os.path.exists(local_path):
-                    img = Image(local_path)
-                else:
-                    # In Docker the path might be /app/frontend/public/uploads
-                    docker_path = f"/app/frontend/public/uploads/{filename}"
-                    if os.path.exists(docker_path):
-                        img = Image(docker_path)
-                    else:
-                        logger.warning(f"Logo file not found locally: {local_path}")
-                        return None
+            elif logo_url.startswith("/api/uploads/") or logo_url.startswith("/uploads/"):
+                filename = logo_url.rsplit("/", 1)[-1]
+                candidate_paths = [
+                    os.path.join(backend_upload_dir, filename),
+                    os.path.abspath(
+                        os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "uploads", filename)
+                    ),
+                    f"/app/frontend/public/uploads/{filename}",
+                    f"/frontend/public/uploads/{filename}",
+                ]
+                local_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+                if not local_path:
+                    logger.warning("Logo file not found locally for %s", logo_url)
+                    return None
+                img = Image(local_path)
             elif logo_url.startswith("/"):
                 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public"))
                 img = Image(os.path.join(root, logo_url.lstrip("/").replace("/", os.sep)))

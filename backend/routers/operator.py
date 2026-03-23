@@ -32,7 +32,7 @@ from services.invoice_view_service import normalize_invoice_settings, build_publ
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
-UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "public", "uploads"))
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -204,7 +204,16 @@ async def upload_invoice_logo(
     with open(filepath, "wb") as f:
         f.write(content)
 
-    public_url = f"/uploads/{filename}"
+    public_url = f"/api/uploads/{filename}"
+    await db.invoice_settings.update_one(
+        {"operator_id": current_user["operator_id"]},
+        {"$set": {
+            "operator_id": current_user["operator_id"],
+            "logo_url": public_url,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
     await log_audit(
         current_user["id"],
         current_user["name"],
@@ -1413,6 +1422,186 @@ async def _build_invoice_payload(operator_id: str, data: InvoiceCreate | Invoice
         "tax_amount": round(total_tax, 2),
         "final_amount": round(total_final, 2),
         "due_date": data.due_date.isoformat(),
+    }
+
+
+def _parse_bulk_invoice_date(value: str, field_name: str) -> datetime:
+    raw = (value or "").strip()
+    if not raw:
+        raise ValueError(f"{field_name} is required")
+
+    normalized = raw.replace("T", " ")
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+    ):
+        try:
+            parsed = datetime.strptime(normalized, fmt)
+            return parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
+    try:
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except ValueError as exc:
+        raise ValueError(f"Invalid {field_name}. Use YYYY-MM-DD format") from exc
+
+
+@router.get("/invoices/sample-csv")
+async def get_invoices_sample_csv(current_user: dict = Depends(require_operator)):
+    """Download a sample CSV template for bulk invoice upload."""
+    rows = [
+        ["subscriber_whatsapp_number", "plan_name", "base_amount", "discount", "service_start_date", "service_end_date", "due_date"],
+        ["9876543210", "Monthly Basic", "599", "0", "2026-03-01", "2026-03-31", "2026-04-05"],
+        ["9123456789", "Monthly Basic", "699", "50", "2026-03-01", "2026-03-31", "2026-04-05"],
+        ["9988776655", "Fiber Pro", "", "0", "2026-03-15", "2026-04-14", "2026-04-20"],
+    ]
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(rows)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=invoices_sample.csv"}
+    )
+
+
+@router.post("/invoices/bulk-upload")
+async def bulk_upload_invoices(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_operator)
+):
+    """Bulk upload invoices from a CSV or XLSX file."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot upload invoices")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    content = await file.read()
+    filename = sanitize_filename(file.filename or "", default="invoices").lower()
+    rows = []
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content))
+            ws = wb.active
+            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+        else:
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+            for row in reader:
+                rows.append({(k or "").strip().lower(): (v or "").strip() for k, v in row.items()})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
+
+    subscribers = await db.subscribers.find(
+        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0, "id": 1, "name": 1, "whatsapp_number": 1}
+    ).to_list(5000)
+    subscriber_map = {
+        (s.get("whatsapp_number") or "").strip(): s
+        for s in subscribers if (s.get("whatsapp_number") or "").strip()
+    }
+    plans = await db.operator_plans.find(
+        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    ).to_list(1000)
+    plan_map = {p["name"].strip().lower(): p for p in plans}
+
+    now = datetime.now(timezone.utc)
+    created, skipped, errors = [], [], []
+
+    for idx, row in enumerate(rows, start=2):
+        try:
+            whatsapp_number = (row.get("subscriber_whatsapp_number") or row.get("whatsapp_number") or "").strip()
+            plan_name = (row.get("plan_name") or "").strip().lower()
+
+            if not whatsapp_number or not plan_name:
+                raise ValueError("subscriber_whatsapp_number and plan_name are required")
+
+            subscriber = subscriber_map.get(whatsapp_number)
+            if not subscriber:
+                raise ValueError(f"Subscriber with WhatsApp {whatsapp_number} not found")
+
+            plan = plan_map.get(plan_name)
+            if not plan:
+                raise ValueError(f"Plan '{row.get('plan_name', '')}' not found")
+
+            service_start_date = _parse_bulk_invoice_date(row.get("service_start_date", ""), "service_start_date")
+            service_end_date = _parse_bulk_invoice_date(row.get("service_end_date", ""), "service_end_date")
+            due_date = _parse_bulk_invoice_date(row.get("due_date", ""), "due_date")
+            if service_end_date <= service_start_date:
+                raise ValueError("service_end_date must be after service_start_date")
+
+            base_amount_raw = (row.get("base_amount") or "").strip()
+            discount_raw = (row.get("discount") or "").strip()
+            base_amount = float(base_amount_raw) if base_amount_raw else float(plan.get("price", 0))
+            discount = float(discount_raw) if discount_raw else 0.0
+            if base_amount <= 0:
+                raise ValueError("base_amount must be greater than 0")
+            if discount < 0 or discount > base_amount:
+                raise ValueError("discount must be between 0 and base_amount")
+
+            payload = await _build_invoice_payload(
+                current_user["operator_id"],
+                InvoiceCreate(
+                    subscriber_id=subscriber["id"],
+                    due_date=due_date,
+                    line_items=[{
+                        "plan_id": plan["id"],
+                        "base_amount": base_amount,
+                        "discount": discount,
+                        "service_start_date": service_start_date,
+                        "service_end_date": service_end_date,
+                    }],
+                ),
+            )
+
+            invoice = {
+                "id": generate_id(),
+                "invoice_number": await generate_invoice_number_atomic(db),
+                "subscriber_id": subscriber["id"],
+                "subscriber_name": subscriber["name"],
+                "line_items": payload["line_items"],
+                "base_amount": payload["base_amount"],
+                "discount": payload["discount"],
+                "tax_amount": payload["tax_amount"],
+                "final_amount": payload["final_amount"],
+                "due_date": payload["due_date"],
+                "status": "pending",
+                "payment_id": None,
+                "operator_id": current_user["operator_id"],
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "deleted_at": None,
+            }
+            await db.invoices.insert_one(invoice)
+
+            try:
+                from routers.wallet import deduct_wallet_for_invoice
+                await deduct_wallet_for_invoice(current_user["operator_id"], invoice["id"])
+            except Exception as wallet_error:
+                logger.warning("Wallet deduction failed for invoice %s: %s", invoice["id"], wallet_error)
+
+            created.append(invoice["invoice_number"])
+        except ValueError as exc:
+            errors.append({"row": idx, "reason": str(exc)})
+        except HTTPException as exc:
+            errors.append({"row": idx, "reason": exc.detail})
+        except Exception as exc:
+            errors.append({"row": idx, "reason": f"Unexpected error: {exc}"})
+
+    return {
+        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
+        "created": len(created),
+        "skipped": len(skipped),
+        "errors": errors[:20],
     }
 
 

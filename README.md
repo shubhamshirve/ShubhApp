@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-12`
-- Latest feature and fix delivery implemented through `V7.14-12`
+- Documentation updated for branch line `V7.14-13`
+- Latest feature and fix delivery implemented through `V7.14-13`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP
@@ -27,6 +27,10 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - admin display-name edits from settings
   - Resend and SMTP test mail actions
   - SMTP fallback compatibility when AUTH is unavailable
+  - operator invoice bulk upload with sample CSV/XLSX flow
+  - invoice address fallback from registration/profile data
+  - invoice logo preview/persistence/render fixes
+  - backend-served `/api/uploads` asset URLs
 
 ## Architecture
 
@@ -93,6 +97,10 @@ d:\eBill
 - admin display-name management
 - email test actions for Resend and SMTP fallback
 - SMTP fallback compatibility for servers without AUTH support
+- operator invoice bulk upload with sample file support
+- invoice settings address fallback from registration/profile data
+- invoice logo preview and public invoice rendering fixes
+- backend-served `/api/uploads` URLs for uploaded assets
 
 ## Recent Functional Changes
 
@@ -135,6 +143,12 @@ d:\eBill
 - Admins can update the admin display name from settings.
 - Email settings now support sending test mail through Resend and SMTP fallback.
 - SMTP fallback now skips login when the server does not advertise `AUTH`.
+
+### Invoice Upload and Branding
+- Operator invoices now support bulk upload with sample CSV/XLSX flow similar to subscriber import.
+- Invoice settings now fall back to the operator registration/profile address when the invoice company address is empty.
+- Uploaded invoice logos now persist immediately, preview correctly in operator settings, and render correctly on the public invoice page.
+- Uploaded assets are now served through backend `/api/uploads` URLs.
 
 ### SEO and Installable Web App
 - The app shell now includes stronger SEO metadata in `frontend/public/index.html`.

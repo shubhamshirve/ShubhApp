@@ -2,6 +2,15 @@
 
 ## High Priority
 
+### V7.14-13 Invoice Bulk Upload / Branding Validation
+- Verify operator invoice bulk upload accepts sample CSV and XLSX files.
+- Verify bulk-uploaded invoices create the expected invoice records.
+- Verify invoice company address falls back to the operator registration/profile address when empty.
+- Verify uploaded invoice logos persist immediately after save.
+- Verify invoice logo preview renders correctly in operator settings.
+- Verify invoice logo renders correctly on the public invoice page.
+- Verify uploaded assets are served correctly through `/api/uploads`.
+
 ### V7.14-12 Cache / Admin / Email Validation
 - Verify cache-clear tools remove stale dashboard data after login/session switch.
 - Verify service worker no longer caches `/api` responses.

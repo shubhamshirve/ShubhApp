@@ -58,6 +58,8 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - field visibility toggles
 - branded public invoice view
 - branded PDF/print output using shared invoice view data
+- invoice settings address fallback from operator registration/profile data
+- invoice logo preview/persistence/rendering using backend-served uploaded assets
 
 ### Payments, Wallets, and Platform Billing
 - SaaS subscription checkout
@@ -86,6 +88,8 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - automatic cache clear on login/session switch
 - Resend and SMTP test mail actions
 - SMTP fallback compatibility when `AUTH` is unavailable
+- operator invoice bulk upload with sample CSV/XLSX support
+- backend-served `/api/uploads` URLs for uploaded invoice assets
 
 ### Discovery and Distribution
 - SEO-ready homepage metadata
@@ -165,3 +169,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-10` app title, email fallback, and cron settings delivery
 - `V7.14-11` metadata, previews, and web app installability delivery
 - `V7.14-12` cache clearing, admin profile, and email test tooling delivery
+- `V7.14-13` invoice bulk upload, address fallback, and logo rendering delivery
