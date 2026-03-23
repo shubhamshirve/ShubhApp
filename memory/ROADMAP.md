@@ -31,6 +31,9 @@ What is now live in code:
 - admin-configurable cron timings with live scheduler reschedule
 - richer SEO metadata and social preview tags
 - installable web app support via manifest and service worker
+- cron settings persistence refresh in the admin UI
+- auto-backup list refresh after cron completion
+- email settings refresh after save/reload
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
@@ -75,6 +78,8 @@ What is still mostly pending:
   - changed app/browser title to the requested product wording
   - added fallback mail delivery when Resend API fails
   - exposed cron timing configuration in admin settings
+  - fixed settings refresh so saved cron/email values reload correctly
+  - fixed auto-backup visibility in the backup list
 
 ### 3. Import/Export Enhancements
 - Status: `planned`
@@ -153,6 +158,8 @@ These are implemented in code but still need more manual/live verification in so
 - provider-backed OTP delivery using valid email credentials
 - Resend-to-SMTP fallback email delivery with valid credentials
 - admin cron-setting persistence and live scheduler reschedule behavior
+- backup list refresh behavior after scheduled auto-backup runs
+- email settings refresh behavior after save/reload
 - link previews across social/messaging platforms
 - install prompt/add-to-home-screen behavior on supported browsers
 - public payment and branded PDF/print receipt consistency

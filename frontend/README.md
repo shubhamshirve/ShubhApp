@@ -37,6 +37,8 @@ React frontend for the E-Bill platform.
 - backend cron scheduler was hardened in `V7.14-9` for VPS reliability; check backend logs for scheduled job registration lines after deploy
 - homepage metadata now includes canonical, Open Graph, Twitter, and JSON-LD schema markup
 - installable web app support is enabled via `manifest.json`, generated icons, and `sw.js` registration in production
+- cron timing and email settings pages now reload saved values correctly after refresh
+- automatic backups now appear in the backup list after the job completes
 
 ## Scripts
 

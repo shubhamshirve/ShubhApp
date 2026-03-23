@@ -78,6 +78,8 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - support tickets
 - Resend email delivery with SMTP fallback transport support
 - installable web app support through manifest and service worker
+- admin settings and email settings refresh persisted values after save
+- auto-backup runs surface in the backup list after completion
 
 ### Discovery and Distribution
 - SEO-ready homepage metadata
@@ -141,7 +143,6 @@ The scheduler now uses `Asia/Kolkata`, with admin-editable default times.
 
 ## Current Gaps / Next Product Work
 
-- richer homepage metadata, social previews, and installable web app polish
 - dedicated payment receipt generation and delivery
 - broader email + WhatsApp confirmation workflows
 - richer import/export coverage

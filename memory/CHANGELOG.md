@@ -2,6 +2,17 @@
 
 ## 2026-03-24
 
+### V7.14-11 Follow-Up: Settings Refresh and Backup List Sync
+
+#### Fixes
+- Cron timing settings now persist visually after save and show the stored value on refresh.
+- Email API settings now reload correctly after save and page refresh.
+- Auto-backup entries now show up in the backup list after cron completion.
+
+#### Validation
+- Manual settings refresh confirmed for cron and email pages.
+- Backup list refresh now reflects the latest scheduled backup run.
+
 ### V7.14-11: SEO Metadata, Link Previews, and PWA Installability
 
 #### Release Workflow

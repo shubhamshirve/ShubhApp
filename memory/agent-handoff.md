@@ -27,6 +27,9 @@ The codebase now includes:
 - admin-configurable cron timings with live scheduler reschedule
 - richer SEO/Open Graph/Twitter/schema metadata
 - installable web app support with manifest, icons, and service worker
+- cron settings persistence now refreshes correctly in the UI
+- auto-backup entries now appear in the backup list after cron completion
+- email settings now reload the latest saved values after save/refresh
 
 ---
 
@@ -57,6 +60,8 @@ Implemented behavior:
 - Added web app manifest and install icons.
 - Added lightweight service worker registration for installability support.
 - Enabled supported browsers to surface install/add-to-home-screen UI on deployed HTTPS builds.
+- Settings saves now rehydrate the persisted cron/email values in the UI.
+- Backup list refresh now shows scheduled auto-backups after completion.
 
 ---
 
@@ -78,6 +83,7 @@ Highest-value remaining checks:
 - verify manifest/service worker behavior on production HTTPS
 - verify install/add-to-home-screen UI appears on supported browsers/devices
 - continue VPS scheduler and email fallback verification from `V7.14-10`
+- verify settings save/reload and backup list refresh behavior in a deployed environment
 
 ---
 

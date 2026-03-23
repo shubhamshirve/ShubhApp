@@ -17,6 +17,9 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - admin-configurable cron timings in settings
   - richer SEO metadata, Open Graph, Twitter cards, and schema markup
   - installable web app support with manifest, icons, and service worker
+  - cron timing persistence refresh in settings after save
+  - auto-backup entries refresh correctly in the backup list
+  - email settings refresh correctly after save/reload
 
 ## Architecture
 
@@ -110,6 +113,8 @@ d:\eBill
   - wallet checks
   - reminder processing
 - Saving cron settings reschedules APScheduler jobs immediately, and invoice generation now respects the configured `auto_invoice_days_before` value during cron/manual runs.
+- Saved cron and email settings now reload the current persisted values in the UI after refresh.
+- Auto-generated backup jobs now appear in the backup list after completion.
 
 ### SEO and Installable Web App
 - The app shell now includes stronger SEO metadata in `frontend/public/index.html`.

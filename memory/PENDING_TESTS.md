@@ -11,7 +11,9 @@
 
 ### V7.14-10 Delivery Validation
 - Verify the browser tab title shows `E-Bill | Invoice Automation Software`.
-- In admin settings, save new cron times and confirm they persist after page reload.
+- Confirm cron timing values persist in the settings UI after save and reload.
+- Confirm auto-backup entries appear in the backup list after the cron job completes.
+- Confirm email settings page reloads the latest saved values after save or refresh.
 - After saving cron times, confirm backend logs or scheduler state reflect the updated next run times.
 - Verify manual and scheduled invoice generation both use the configured `auto_invoice_days_before` value.
 - Configure Resend and SMTP together, force a Resend failure, and confirm SMTP fallback sends successfully.
