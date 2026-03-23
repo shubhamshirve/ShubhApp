@@ -170,3 +170,8 @@
 - Added `@media print:hidden` CSS utility classes to hide navigation/header bars and "Pay Now" actions on the printed PDF.
 - Added `payment_id` and `paid_at` data to `public.py` so the "Payment Received" confirmation block reliably displays the Date Paid and Transaction Ref on the printed receipt acting as proof of payment.
 
+#### Fix 8: Public Invoice Link Visibility for New Invoices
+- Identified that newly created multi-line invoices threw a 500 Internal Server error on the `PublicInvoice` API because `plan_id` and `service_start_date` no longer exist at the root level.
+- Updated `public.py` and `invoice_view_service.py` to use `.get()` with safe defaults and graceful fallbacks to the first `line_item`.
+- Resolves the "no invoice available" bug completely for recently generated invoices.
+
