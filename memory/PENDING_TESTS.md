@@ -2,6 +2,14 @@
 
 ## High Priority
 
+### V7.14-10 Delivery Validation
+- Verify the browser tab title shows `E-Bill | Invoice Automation Software`.
+- In admin settings, save new cron times and confirm they persist after page reload.
+- After saving cron times, confirm backend logs or scheduler state reflect the updated next run times.
+- Verify manual and scheduled invoice generation both use the configured `auto_invoice_days_before` value.
+- Configure Resend and SMTP together, force a Resend failure, and confirm SMTP fallback sends successfully.
+- Verify SMTP-only configuration works when Resend is left blank.
+
 ### VPS Cron / Scheduler Verification
 - Deploy `V7.14-9` to the VPS and restart the backend container/service.
 - Check backend logs for `Scheduled job registered: id=... next_run=...` lines on startup.
@@ -92,6 +100,6 @@
 
 ## Next Requested Batch
 
-- Verify browser tab title updates to `E-Bill | Invoice Automation Software`.
-- Verify Resend failure path falls back to alternate email delivery successfully.
-- Verify admin can save cron timings and scheduler uses updated values after restart/startup.
+- Payment receipt generation and delivery flow
+- Messaging/reporting polish
+- Import/export refinement

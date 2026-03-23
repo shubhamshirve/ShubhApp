@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-9`
+Latest shipped functional branch: `V7.14-10`
 
 What is now live in code:
 - single active session per user
@@ -26,13 +26,15 @@ What is now live in code:
 - paid invoice protection against operator cancellation
 - payment mode and payment date confirmation when operators mark invoices as paid
 - hardened APScheduler startup for VPS cron reliability with explicit job registration logging
+- app title update to `E-Bill | Invoice Automation Software`
+- Resend plus SMTP fallback email delivery
+- admin-configurable cron timings with live scheduler reschedule
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
 - broader messaging improvements
 - import/export polishing
 - advanced reporting and reconciliation work
-- configurable scheduler settings and delivery fallback hardening
 
 ---
 
@@ -63,14 +65,14 @@ What is still mostly pending:
   - hide GST-specific reporting UX where operator GST is not enabled
 
 ### 2A. Delivery Reliability and Scheduler Configuration
-- Status: `requested`
+- Status: `completed`
 - Priority: `P1`
 - Importance: `High`
 - Effort: `M`
 - Scope:
-  - change app/browser title to the requested product wording
-  - add fallback mail delivery when Resend API fails
-  - expose cron timing configuration in admin settings
+  - changed app/browser title to the requested product wording
+  - added fallback mail delivery when Resend API fails
+  - exposed cron timing configuration in admin settings
 
 ### 3. Import/Export Enhancements
 - Status: `planned`
@@ -147,6 +149,8 @@ These are implemented in code but still need more manual/live verification in so
 - pending-invoice edit regression with line items and totals
 - manual payment mode/date storage and reporting consistency
 - provider-backed OTP delivery using valid email credentials
+- Resend-to-SMTP fallback email delivery with valid credentials
+- admin cron-setting persistence and live scheduler reschedule behavior
 - public payment and branded PDF/print receipt consistency
 
 Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
@@ -155,7 +159,7 @@ Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PE
 
 ## Recommended Next Execution Order
 
-1. Verify `V7.14-7` flows in browser and with real/test providers.
+1. Verify `V7.14-10` flows in browser and with real/test providers.
 2. Build payment receipt generation on top of the new stored payment metadata.
 3. Expand confirmation delivery through WhatsApp/email.
 4. Finish messaging/reporting polish.

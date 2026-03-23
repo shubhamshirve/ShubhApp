@@ -37,6 +37,7 @@ from routers.backup import router as backup_router, _do_backup
 from routers.public import router as public_router
 from routers.wallet import router as wallet_router
 from routers.support import router as support_router
+from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -71,6 +72,12 @@ def _ensure_env_files():
                     "RAZORPAY_KEY_SECRET=your_razorpay_key_secret",
                     "RESEND_API_KEY=",
                     "RESEND_FROM_EMAIL=",
+                    "SMTP_HOST=",
+                    "SMTP_PORT=587",
+                    "SMTP_USERNAME=",
+                    "SMTP_PASSWORD=",
+                    "SMTP_FROM_EMAIL=",
+                    "SMTP_USE_TLS=true",
                     "WHATSAPP_PHONE_NUMBER_ID=",
                     "WHATSAPP_ACCESS_TOKEN=",
                     "WHATSAPP_BUSINESS_ACCOUNT_ID=",
@@ -306,6 +313,15 @@ async def startup_event():
         else:
             logger.info("Scheduled job '%s' completed successfully", event.job_id)
 
+    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    schedule = merge_cron_schedule_settings(platform_settings)
+
+    backup_hour, backup_minute = split_cron_time(schedule["cron_backup_time"])
+    expiry_hour, expiry_minute = split_cron_time(schedule["cron_expiry_time"])
+    invoice_hour, invoice_minute = split_cron_time(schedule["cron_invoice_time"])
+    wallet_hour, wallet_minute = split_cron_time(schedule["cron_wallet_time"])
+    reminder_hour, reminder_minute = split_cron_time(schedule["cron_reminder_time"])
+
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     scheduler.add_listener(scheduler_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
@@ -313,8 +329,8 @@ async def startup_event():
     scheduler.add_job(
         run_daily_backup_job,
         "cron",
-        hour=3,
-        minute=0,
+        hour=backup_hour,
+        minute=backup_minute,
         id="daily_backup",
         coalesce=True,
         misfire_grace_time=3600,
@@ -324,8 +340,8 @@ async def startup_event():
     scheduler.add_job(
         run_daily_invoice_generation,
         "cron",
-        hour=8,
-        minute=0,
+        hour=invoice_hour,
+        minute=invoice_minute,
         id="daily_invoices",
         args=[db],
         coalesce=True,
@@ -336,8 +352,8 @@ async def startup_event():
     scheduler.add_job(
         run_daily_reminder_processing,
         "cron",
-        hour=10,
-        minute=0,
+        hour=reminder_hour,
+        minute=reminder_minute,
         id="daily_reminders",
         args=[db],
         coalesce=True,
@@ -348,8 +364,8 @@ async def startup_event():
     scheduler.add_job(
         run_daily_expiry_check,
         "cron",
-        hour=0,
-        minute=5,
+        hour=expiry_hour,
+        minute=expiry_minute,
         id="daily_expiry",
         args=[db],
         coalesce=True,
@@ -360,8 +376,8 @@ async def startup_event():
     scheduler.add_job(
         run_daily_wallet_check,
         "cron",
-        hour=9,
-        minute=0,
+        hour=wallet_hour,
+        minute=wallet_minute,
         id="daily_wallet_check",
         args=[db],
         coalesce=True,
@@ -372,7 +388,14 @@ async def startup_event():
     app.state.scheduler = scheduler
     for job in scheduler.get_jobs():
         logger.info("Scheduled job registered: id=%s next_run=%s", job.id, job.next_run_time)
-    logger.info("Scheduled jobs started (Asia/Kolkata IST): backup(03:00), expiry(00:05), invoices(08:00), reminders(10:00), wallet_check(09:00)")
+    logger.info(
+        "Scheduled jobs started (Asia/Kolkata IST): backup(%s), expiry(%s), invoices(%s), reminders(%s), wallet_check(%s)",
+        schedule["cron_backup_time"],
+        schedule["cron_expiry_time"],
+        schedule["cron_invoice_time"],
+        schedule["cron_reminder_time"],
+        schedule["cron_wallet_time"],
+    )
 
 
 @app.on_event("shutdown")

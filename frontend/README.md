@@ -31,8 +31,10 @@ React frontend for the E-Bill platform.
 - old session is logged out when the same account logs in elsewhere
 - pending invoices can be edited
 - marking invoice paid requires payment mode and payment date
+- app/browser title is `E-Bill | Invoice Automation Software`
+- admin settings now allow editing cron times in IST for backup, expiry, invoice, wallet, and reminder jobs
+- admin email settings now support Resend plus SMTP fallback configuration
 - backend cron scheduler was hardened in `V7.14-9` for VPS reliability; check backend logs for scheduled job registration lines after deploy
-- next requested frontend-visible change is the app title update to `E-Bill | Invoice Automation Software`
 
 ## Scripts
 
@@ -52,4 +54,4 @@ npm test
 
 - Production build currently succeeds.
 - The repo still has existing `react-hooks/exhaustive-deps` warnings in several files.
-- Those warnings are not new to `V7.14-7` and do not block the build.
+- Those warnings are not new to `V7.14-10` and do not block the build.

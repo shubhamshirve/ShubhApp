@@ -37,10 +37,47 @@ import {
   Database, RefreshCw, RotateCcw, HardDrive, Clock, AlertTriangle, Shield, MessageCircle, Eye, EyeOff, Download, Lock, CheckCircle2, ExternalLink
 } from "lucide-react";
 
+const DEFAULT_SETTINGS = {
+  active_payment_gateway: "razorpay",
+  auto_invoice_days_before: 3,
+  gst_rate: 18,
+  late_fee_percentage: 0,
+  maintenance_mode: false,
+  maintenance_message: "The app is under maintenance. Updates and automation are temporarily paused.",
+  session_timeout_hours: 24,
+  cron_backup_time: "03:00",
+  cron_expiry_time: "00:05",
+  cron_invoice_time: "08:00",
+  cron_wallet_time: "09:00",
+  cron_reminder_time: "10:00",
+};
+
+const DEFAULT_EMAIL_CONFIG = {
+  resend_api_key: "",
+  resend_from_email: "",
+  resend_api_key_preview: "",
+  is_configured: false,
+  smtp_host: "",
+  smtp_port: 587,
+  smtp_username: "",
+  smtp_password: "",
+  smtp_from_email: "",
+  smtp_use_tls: true,
+  is_smtp_configured: false,
+};
+
+const CRON_FIELDS = [
+  { key: "cron_backup_time", label: "Auto Backup Time", help: "Creates the daily system backup." },
+  { key: "cron_expiry_time", label: "Expiry Check Time", help: "Checks expired and read-only operators." },
+  { key: "cron_invoice_time", label: "Invoice Generation Time", help: "Creates upcoming invoices automatically." },
+  { key: "cron_wallet_time", label: "Wallet Check Time", help: "Checks operator balances and applies suspension rules." },
+  { key: "cron_reminder_time", label: "Reminder Processing Time", help: "Sends scheduled WhatsApp payment reminders." },
+];
+
 const AdminSettings = () => {
   const { authAxios } = useAuth();
   const navigate = useNavigate();
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [gateways, setGateways] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGatewayDialog, setShowGatewayDialog] = useState(false);
@@ -96,12 +133,7 @@ const AdminSettings = () => {
   const [reminderSaving, setReminderSaving] = useState(false);
 
   // Email config state
-  const [emailConfig, setEmailConfig] = useState({
-    resend_api_key: "",
-    resend_from_email: "",
-    resend_api_key_preview: "",
-    is_configured: false,
-  });
+  const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
   const [emailSaving, setEmailSaving] = useState(false);
   const [showEmailKey, setShowEmailKey] = useState(false);
 
@@ -113,7 +145,7 @@ const AdminSettings = () => {
   const fetchSettings = async () => {
     try {
       const res = await authAxios.get("/admin/settings");
-      setSettings(res.data);
+      setSettings({ ...DEFAULT_SETTINGS, ...res.data });
     } catch { /* ignore */ }
   };
 
@@ -134,27 +166,52 @@ const AdminSettings = () => {
     try {
       const res = await authAxios.get("/admin/email-settings");
       setEmailConfig(prev => ({
+        ...DEFAULT_EMAIL_CONFIG,
         ...prev,
         resend_api_key_preview: res.data.resend_api_key_preview || "",
         resend_from_email: res.data.resend_from_email || "",
+        smtp_host: res.data.smtp_host || "",
+        smtp_port: res.data.smtp_port || 587,
+        smtp_username: res.data.smtp_username || "",
+        smtp_from_email: res.data.smtp_from_email || "",
+        smtp_use_tls: res.data.smtp_use_tls ?? true,
         is_configured: res.data.is_configured || false,
+        is_smtp_configured: res.data.is_smtp_configured || false,
       }));
     } catch { /* ignore */ }
   };
 
   const handleSaveEmailConfig = async (e) => {
     e.preventDefault();
-    if (!emailConfig.resend_from_email) {
-      toast.error("From Email is required"); return;
+    const hasResend = Boolean(emailConfig.resend_api_key || emailConfig.is_configured || emailConfig.resend_api_key_preview);
+    const hasSmtp = Boolean(emailConfig.smtp_host?.trim());
+
+    if (!hasResend && !hasSmtp) {
+      toast.error("Configure either Resend or SMTP to save email settings");
+      return;
+    }
+    if (emailConfig.resend_api_key && !emailConfig.resend_from_email?.trim()) {
+      toast.error("Resend from email is required when using Resend");
+      return;
+    }
+    if (emailConfig.smtp_host?.trim() && !((emailConfig.smtp_from_email || emailConfig.resend_from_email || "").trim())) {
+      toast.error("SMTP from email is required when SMTP is configured");
+      return;
     }
     setEmailSaving(true);
     try {
       await authAxios.put("/admin/email-settings", {
         resend_api_key: emailConfig.resend_api_key,
         resend_from_email: emailConfig.resend_from_email,
+        smtp_host: emailConfig.smtp_host,
+        smtp_port: Number(emailConfig.smtp_port) || 587,
+        smtp_username: emailConfig.smtp_username,
+        smtp_password: emailConfig.smtp_password,
+        smtp_from_email: emailConfig.smtp_from_email,
+        smtp_use_tls: emailConfig.smtp_use_tls,
       });
       toast.success("Email settings updated successfully");
-      setEmailConfig(prev => ({ ...prev, resend_api_key: "" }));
+      setEmailConfig(prev => ({ ...prev, resend_api_key: "", smtp_password: "" }));
       fetchEmailConfig();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save email settings");
@@ -491,6 +548,27 @@ const AdminSettings = () => {
                       value={settings?.session_timeout_hours || 24}
                       onChange={(e) => setSettings(s => ({ ...s, session_timeout_hours: parseFloat(e.target.value) || 24 }))}
                     />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
+                  <div>
+                    <p className="font-medium text-slate-900">Cron Schedule Times</p>
+                    <p className="text-sm text-slate-600">
+                      All scheduled jobs use Asia/Kolkata time and update immediately after saving.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {CRON_FIELDS.map((field) => (
+                      <div key={field.key} className="space-y-2">
+                        <Label>{field.label}</Label>
+                        <Input
+                          type="time"
+                          value={settings?.[field.key] || ""}
+                          onChange={(e) => setSettings((s) => ({ ...s, [field.key]: e.target.value }))}
+                        />
+                        <p className="text-xs text-slate-500">{field.help}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
@@ -883,7 +961,7 @@ const AdminSettings = () => {
                   <Clock className="w-8 h-8 text-emerald-600" />
                   <div>
                     <p className="text-sm font-bold text-emerald-700">{backups.filter(b => b.type === "auto").length} Auto</p>
-                    <p className="text-xs text-emerald-600">Daily at 02:00 UTC</p>
+                    <p className="text-xs text-emerald-600">Daily at {settings?.cron_backup_time || DEFAULT_SETTINGS.cron_backup_time} IST</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1060,50 +1138,127 @@ const AdminSettings = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings className="w-5 h-5" />
-                  Email API Configuration (Resend)
+                  Email Delivery Configuration
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {emailConfig.is_configured && (
-                  <div className="mb-4 flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-lg text-sm">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Email API is configured and active.</span>
-                    {emailConfig.resend_api_key_preview && (
-                      <span className="text-green-500 ml-1 font-mono text-xs">(Key: {emailConfig.resend_api_key_preview})</span>
-                    )}
+                {(emailConfig.is_configured || emailConfig.is_smtp_configured) && (
+                  <div className="mb-4 grid gap-3 md:grid-cols-2">
+                    <div className={`flex items-center gap-2 border px-4 py-2.5 rounded-lg text-sm ${
+                      emailConfig.is_configured ? "bg-green-50 border-green-200 text-green-700" : "bg-slate-50 border-slate-200 text-slate-500"
+                    }`}>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Resend {emailConfig.is_configured ? "configured" : "not configured"}</span>
+                      {emailConfig.resend_api_key_preview && (
+                        <span className="ml-1 font-mono text-xs">({emailConfig.resend_api_key_preview})</span>
+                      )}
+                    </div>
+                    <div className={`flex items-center gap-2 border px-4 py-2.5 rounded-lg text-sm ${
+                      emailConfig.is_smtp_configured ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-slate-50 border-slate-200 text-slate-500"
+                    }`}>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>SMTP fallback {emailConfig.is_smtp_configured ? "configured" : "not configured"}</span>
+                    </div>
                   </div>
                 )}
                 <form onSubmit={handleSaveEmailConfig} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Resend API Key</Label>
-                    <div className="relative">
-                      <Input
-                        type={showEmailKey ? "text" : "password"}
-                        value={emailConfig.resend_api_key}
-                        onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_api_key: e.target.value }))}
-                        placeholder={emailConfig.is_configured ? "Enter new key to update" : "re_......"}
-                        className="pr-10"
-                        data-testid="email-api-key-input"
-                      />
-                      <button type="button" tabIndex={-1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        onClick={() => setShowEmailKey(v => !v)}>
-                        {showEmailKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                  <div className="rounded-lg border border-slate-200 p-4 space-y-4">
+                    <div>
+                      <p className="font-medium text-slate-900">Primary Provider: Resend</p>
+                      <p className="text-sm text-slate-500">Used first for transactional emails. If delivery fails, SMTP fallback is tried next.</p>
                     </div>
-                    <p className="text-xs text-slate-400">Get your API key from <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline text-blue-500">resend.com/api-keys <ExternalLink className="inline w-3 h-3" /></a></p>
+                    <div className="space-y-2">
+                      <Label>Resend API Key</Label>
+                      <div className="relative">
+                        <Input
+                          type={showEmailKey ? "text" : "password"}
+                          value={emailConfig.resend_api_key}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_api_key: e.target.value }))}
+                          placeholder={emailConfig.is_configured ? "Enter new key to update" : "re_......"}
+                          className="pr-10"
+                          data-testid="email-api-key-input"
+                        />
+                        <button type="button" tabIndex={-1}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          onClick={() => setShowEmailKey(v => !v)}>
+                          {showEmailKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-400">Get your API key from <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline text-blue-500">resend.com/api-keys <ExternalLink className="inline w-3 h-3" /></a></p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Resend From Email</Label>
+                      <Input
+                        type="email"
+                        value={emailConfig.resend_from_email}
+                        onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_from_email: e.target.value }))}
+                        placeholder="noreply@yourdomain.com"
+                        data-testid="email-from-input"
+                      />
+                      <p className="text-xs text-slate-400">Required if you provide a Resend API key.</p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>From Email Address *</Label>
-                    <Input
-                      type="email"
-                      value={emailConfig.resend_from_email}
-                      onChange={(e) => setEmailConfig(prev => ({ ...prev, resend_from_email: e.target.value }))}
-                      placeholder="noreply@yourdomain.com"
-                      required
-                      data-testid="email-from-input"
-                    />
-                    <p className="text-xs text-slate-400">Must be a verified sender domain in Resend.</p>
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-4">
+                    <div>
+                      <p className="font-medium text-slate-900">Fallback Provider: SMTP</p>
+                      <p className="text-sm text-slate-500">Used automatically if Resend fails. You can also keep only SMTP configured.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>SMTP Host</Label>
+                        <Input
+                          value={emailConfig.smtp_host}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_host: e.target.value }))}
+                          placeholder="smtp.yourdomain.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>SMTP Port</Label>
+                        <Input
+                          type="number"
+                          value={emailConfig.smtp_port}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_port: e.target.value }))}
+                          placeholder="587"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>SMTP Username</Label>
+                        <Input
+                          value={emailConfig.smtp_username}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_username: e.target.value }))}
+                          placeholder="mailer@yourdomain.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>SMTP Password</Label>
+                        <Input
+                          type="password"
+                          value={emailConfig.smtp_password}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_password: e.target.value }))}
+                          placeholder={emailConfig.is_smtp_configured ? "Enter new password to update" : "SMTP password"}
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>SMTP From Email</Label>
+                        <Input
+                          type="email"
+                          value={emailConfig.smtp_from_email}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_from_email: e.target.value }))}
+                          placeholder="smtp@yourdomain.com"
+                        />
+                        <p className="text-xs text-slate-400">If left blank, the Resend from email will be reused.</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 md:col-span-2">
+                        <div>
+                          <p className="font-medium text-slate-900">Use TLS</p>
+                          <p className="text-xs text-slate-500">Enable STARTTLS for secure SMTP delivery.</p>
+                        </div>
+                        <Switch
+                          checked={!!emailConfig.smtp_use_tls}
+                          onCheckedChange={(checked) => setEmailConfig(prev => ({ ...prev, smtp_use_tls: checked }))}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <Button type="submit" disabled={emailSaving} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="save-email-btn">
                     {emailSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Saving...</> : "Save Email Settings"}

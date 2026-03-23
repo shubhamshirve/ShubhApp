@@ -4,20 +4,17 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-9`
-- Latest feature and fix delivery implemented through `V7.14-9`
+- Documentation updated for branch line `V7.14-10`
+- Latest feature and fix delivery implemented through `V7.14-10`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP
   - pending invoice edit support
   - payment confirmation dialog with mode/date capture
   - VPS cron scheduler reliability fix
-
-## Next Requested Work
-
-- change app title to `E-Bill | Invoice Automation Software`
-- add fallback email delivery when Resend API fails
-- add admin-configurable cron timings in settings
+  - app title updated to `E-Bill | Invoice Automation Software`
+  - Resend email fallback via SMTP/local transport support
+  - admin-configurable cron timings in settings
 
 ## Architecture
 
@@ -73,8 +70,10 @@ d:\eBill
 - admin wallet credit, debit, and suspend operations
 - maintenance mode with app-wide read-only behavior
 - global reminder scheduling and IST-based cron execution
+- admin-configurable cron timings for backup, expiry, invoices, wallet checks, and reminders
 - WhatsApp notifications and reminders
 - support tickets, audit logs, backups, discount codes, referral wallet flows
+- Resend email delivery with SMTP fallback support
 
 ## Recent Functional Changes
 
@@ -96,17 +95,31 @@ d:\eBill
 - Backend cron jobs now register async APScheduler jobs directly instead of wrapping them in manual `lambda` task creation.
 - Scheduler startup now logs registered jobs and job execution failures/successes more clearly for VPS troubleshooting.
 
+### Email Delivery and Cron Controls
+- Browser app title is now `E-Bill | Invoice Automation Software`.
+- Email delivery now tries Resend first and automatically falls back to SMTP if the API call fails.
+- Email settings now support SMTP host, port, username, password, from-address, and TLS controls.
+- Admin platform settings now expose cron times for:
+  - backup
+  - expiry checks
+  - invoice generation
+  - wallet checks
+  - reminder processing
+- Saving cron settings reschedules APScheduler jobs immediately, and invoice generation now respects the configured `auto_invoice_days_before` value during cron/manual runs.
+
 ## Scheduled Jobs
 
 All core cron jobs now run on `Asia/Kolkata` time in the backend scheduler.
 
-| Job | Schedule (IST) | Description |
+| Job | Default Schedule (IST) | Description |
 |------|----------------|-------------|
 | Auto Backup | 03:00 | create daily backup |
 | Expiry Check | 00:05 | expire trials/subscriptions |
 | Invoice Generation | 08:00 | create upcoming invoices |
 | Reminder Processing | 10:00 | send reminders |
 | Wallet Check | 09:00 | low-wallet checks and actions |
+
+These times are now editable in admin settings and reschedule the running backend scheduler after save.
 
 ## Local Development
 

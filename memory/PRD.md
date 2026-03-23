@@ -71,14 +71,16 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - maintenance mode with banner/read-only behavior
 - global reminder settings
 - IST-based cron scheduling
+- admin-configurable cron timing controls with live APScheduler reschedule on save
 - scheduler startup logging and async APScheduler registration for better VPS reliability
 - audit logs
 - backup and restore
 - support tickets
+- Resend email delivery with SMTP fallback transport support
 
 ## Scheduled Jobs
 
-The scheduler now uses `Asia/Kolkata`.
+The scheduler now uses `Asia/Kolkata`, with admin-editable default times.
 
 | Job | IST Time | Purpose |
 |-----|----------|---------|
@@ -136,7 +138,6 @@ The scheduler now uses `Asia/Kolkata`.
 - broader email + WhatsApp confirmation workflows
 - richer import/export coverage
 - deeper reporting and GST reconciliation
-- configurable scheduler timing controls and stronger email delivery fallback behavior
 
 ## Version Notes
 
@@ -145,3 +146,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-7` feature delivery
 - `V7.14-8` documentation alignment
 - `V7.14-9` scheduler reliability fix
+- `V7.14-10` app title, email fallback, and cron settings delivery

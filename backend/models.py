@@ -523,6 +523,30 @@ class GlobalSettingsUpdate(SanitizedModel):
     maintenance_mode: bool = False
     maintenance_message: Optional[str] = "The app is under maintenance. Updates and automation are temporarily paused."
     session_timeout_hours: float = 24.0
+    cron_backup_time: str = "03:00"
+    cron_expiry_time: str = "00:05"
+    cron_invoice_time: str = "08:00"
+    cron_wallet_time: str = "09:00"
+    cron_reminder_time: str = "10:00"
+
+    @field_validator("cron_backup_time", "cron_expiry_time", "cron_invoice_time", "cron_wallet_time", "cron_reminder_time")
+    @classmethod
+    def validate_cron_time(cls, value):
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value or ""):
+            raise ValueError("Cron time must be in HH:MM 24-hour format")
+        return value
+
+
+class EmailSettingsUpdate(SanitizedModel):
+    _unsanitized_fields = {"resend_api_key", "smtp_password"}
+    resend_api_key: Optional[str] = None
+    resend_from_email: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_use_tls: bool = True
 
 
 class AdminPaymentGatewayConfig(SanitizedModel):

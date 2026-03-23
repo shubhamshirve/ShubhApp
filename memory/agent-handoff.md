@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-9`  
-**Latest Feature Branch:** `V7.14-9`
+**Active Branch:** `V7.14-10`
+**Latest Feature Branch:** `V7.14-10`
 
 ---
 
@@ -22,6 +22,9 @@ The codebase now includes:
 - pending invoice edit support
 - payment mode and payment date confirmation when operators manually mark invoices paid
 - VPS cron scheduler reliability fix with direct async job registration and startup/job logging
+- app title update to `E-Bill | Invoice Automation Software`
+- Resend email delivery with SMTP fallback
+- admin-configurable cron timings with live scheduler reschedule
 
 ---
 
@@ -32,23 +35,32 @@ The codebase now includes:
 - `V7.14-7` was created and pushed from `V7.14-6`
 - `V7.14-8` is the documentation update branch based on `V7.14-7`
 - `V7.14-9` is the scheduler reliability fix branch based on `V7.14-8`
+- `V7.14-10` is the title, email fallback, and cron-settings branch based on `V7.14-9`
 
-### V7.14-9 Changes
+### V7.14-10 Changes
 
 Primary files:
+- [frontend/public/index.html](/d:/eBill/frontend/public/index.html)
+- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+- [backend/services/email_service.py](/d:/eBill/backend/services/email_service.py)
+- [backend/services/scheduler_settings.py](/d:/eBill/backend/services/scheduler_settings.py)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/server.py](/d:/eBill/backend/server.py)
 - [backend/server.py](/d:/eBill/backend/server.py)
 
 Implemented behavior:
-- Replaced lambda-based APScheduler job wrappers with direct async job registration.
-- Added scheduler listeners for job completion and job failure logging.
-- Added startup logs for registered jobs and next run times.
-- Added scheduler coalescing and misfire grace period for better VPS/container resilience.
+- Updated the browser title to the requested product name.
+- Added Resend-first email delivery with SMTP fallback support.
+- Added SMTP credentials to admin settings and env templates.
+- Added admin-configurable cron timing fields and live job rescheduling on save.
+- Updated invoice-generation cron/manual triggers to use the configured advance-day value.
 
 ---
 
 ## Validation Completed Locally
 
-- `python -m py_compile backend\server.py backend\services\cron_service.py`
+- `python -m py_compile backend\models.py backend\routers\admin.py backend\services\cron_service.py backend\services\email_service.py backend\services\scheduler_settings.py backend\server.py`
+- `npm run build` in `frontend/`
 
 Build result:
 - backend compile check succeeded
@@ -60,15 +72,16 @@ Build result:
 See [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md) for the live list.
 
 Highest-value remaining checks:
-- deploy `V7.14-9` to VPS and verify scheduler registration logs on startup
+- deploy `V7.14-10` to VPS and verify scheduler registration logs on startup
+- verify cron-setting changes update next-run times cleanly on the running VPS
+- verify Resend failure falls back to SMTP with real credentials
 - verify cron jobs actually fire on VPS
-- verify job failure/success logs appear cleanly in backend logs
 
 ---
 
 ## Current Documentation State
 
-The following files were refreshed on `V7.14-9`:
+The following files were refreshed on `V7.14-10`:
 - [README.md](/d:/eBill/README.md)
 - [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
 - [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
@@ -81,14 +94,14 @@ The following files were refreshed on `V7.14-9`:
 
 ## Recommended Next Work
 
-1. Push current `V7.14-9` state before starting the next task batch.
-2. Implement requested app title update.
-3. Add fallback mail delivery when Resend API fails.
-4. Add configurable cron timings in admin settings.
+1. Deploy and verify `V7.14-10` on VPS.
+2. Build payment receipt generation and delivery.
+3. Expand payment confirmations through email/WhatsApp.
+4. Continue messaging and reporting polish.
 
 ---
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-9`
-- Feature baseline under docs branch: `V7.14-9`
+- Current branch: `V7.14-10`
+- Feature baseline under docs branch: `V7.14-10`

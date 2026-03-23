@@ -1,5 +1,5 @@
 """Admin: SaaS Plans, Operators, Settings, Gateways, Addons, Dashboard, Audit, Cron, Reports."""
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import os
@@ -16,12 +16,13 @@ from models import (
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
-    ReminderSettingsUpdate,
+    ReminderSettingsUpdate, EmailSettingsUpdate,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
 from audit import log_audit
 from sanitization import SanitizedModel, sanitize_filename, sanitize_text
+from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -39,6 +40,22 @@ def _parse_operator(o: dict) -> OperatorResponse:
         "trial_ends_at": datetime.fromisoformat(o["trial_ends_at"]) if o.get("trial_ends_at") else None,
         "subscription_ends_at": datetime.fromisoformat(o["subscription_ends_at"]) if o.get("subscription_ends_at") else None,
     })
+
+
+def _reschedule_platform_jobs(scheduler, settings: dict):
+    if not scheduler:
+        return
+    schedule = merge_cron_schedule_settings(settings)
+    job_map = {
+        "daily_backup": schedule["cron_backup_time"],
+        "daily_expiry": schedule["cron_expiry_time"],
+        "daily_invoices": schedule["cron_invoice_time"],
+        "daily_wallet_check": schedule["cron_wallet_time"],
+        "daily_reminders": schedule["cron_reminder_time"],
+    }
+    for job_id, time_value in job_map.items():
+        hour, minute = split_cron_time(time_value)
+        scheduler.reschedule_job(job_id, trigger="cron", hour=hour, minute=minute)
 
 
 # ─── SaaS Plans ──────────────────────────────────────────────────────────────
@@ -473,16 +490,31 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
             "maintenance_mode": False,
             "maintenance_message": "The app is under maintenance. Updates and automation are temporarily paused.",
             "session_timeout_hours": 24.0,
+            **DEFAULT_CRON_SCHEDULES,
         }
-    return settings
+    return {**settings, **merge_cron_schedule_settings(settings)}
 
 
 @router.put("/settings")
-async def update_global_settings(data: GlobalSettingsUpdate, current_user: dict = Depends(require_admin)):
+async def update_global_settings(
+    data: GlobalSettingsUpdate,
+    request: Request,
+    current_user: dict = Depends(require_admin)
+):
     now = datetime.now(timezone.utc)
     old_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
-    settings = {"type": "platform", **data.model_dump(), "updated_at": now.isoformat(), "updated_by": current_user["id"]}
+    normalized_schedule = merge_cron_schedule_settings(data.model_dump())
+    settings = {
+        "type": "platform",
+        **data.model_dump(),
+        **normalized_schedule,
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"],
+    }
     await db.global_settings.update_one({"type": "platform"}, {"$set": settings}, upsert=True)
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        _reschedule_platform_jobs(scheduler, settings)
     await log_audit(current_user["id"], current_user["name"], current_user["role"],
                     "update", "global_settings", old_settings, data.model_dump(),
                     ip_address=current_user.get("_ip_address"))
@@ -981,8 +1013,10 @@ async def get_saas_subscriptions(
 @router.post("/cron/generate-invoices")
 async def trigger_invoice_generation(current_user: dict = Depends(require_admin)):
     from services.cron_service import CronJobService
+    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    days_before = int(platform_settings.get("auto_invoice_days_before", 3) or 3)
     service = CronJobService(db)
-    results = await service.generate_upcoming_invoices(days_before=3)
+    results = await service.generate_upcoming_invoices(days_before=days_before)
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "trigger", "cron_jobs", None, {"action": "generate_invoices", "results": results},
@@ -1390,42 +1424,73 @@ async def upload_logo(
 
 @router.get("/email-settings")
 async def get_email_settings(current_user: dict = Depends(require_admin)):
-    """Get current email API configuration (Resend)."""
+    """Get current email API configuration (Resend with SMTP fallback)."""
     doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
     if doc:
         return {
             "resend_api_key_preview": (doc.get("resend_api_key") or "")[:8] + "****" if doc.get("resend_api_key") else "",
             "resend_from_email": doc.get("resend_from_email", ""),
+            "smtp_host": doc.get("smtp_host", ""),
+            "smtp_port": doc.get("smtp_port", 587),
+            "smtp_username": doc.get("smtp_username", ""),
+            "smtp_from_email": doc.get("smtp_from_email", ""),
+            "smtp_use_tls": doc.get("smtp_use_tls", True),
             "is_configured": bool(doc.get("resend_api_key")),
+            "is_smtp_configured": bool(doc.get("smtp_host")),
         }
     # Fall back to env vars
     env_key = os.environ.get("RESEND_API_KEY", "")
     return {
         "resend_api_key_preview": env_key[:8] + "****" if env_key else "",
         "resend_from_email": os.environ.get("RESEND_FROM_EMAIL", ""),
+        "smtp_host": os.environ.get("SMTP_HOST", ""),
+        "smtp_port": int(os.environ.get("SMTP_PORT", "587")),
+        "smtp_username": os.environ.get("SMTP_USERNAME", ""),
+        "smtp_from_email": os.environ.get("SMTP_FROM_EMAIL", ""),
+        "smtp_use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
         "is_configured": bool(env_key),
+        "is_smtp_configured": bool(os.environ.get("SMTP_HOST", "")),
     }
 
 
 @router.put("/email-settings")
 async def update_email_settings(
-    data: dict,
+    data: EmailSettingsUpdate,
     current_user: dict = Depends(require_admin)
 ):
-    """Update Resend email API credentials stored in DB."""
-    resend_api_key = (data.get("resend_api_key") or "").strip()
-    resend_from_email = (data.get("resend_from_email") or "").strip()
+    """Update email credentials stored in DB, including SMTP fallback settings."""
+    resend_api_key = (data.resend_api_key or "").strip()
+    resend_from_email = (data.resend_from_email or "").strip()
+    smtp_host = (data.smtp_host or "").strip()
+    smtp_from_email = (data.smtp_from_email or "").strip()
 
-    if not resend_from_email:
-        raise HTTPException(status_code=400, detail="From Email is required")
+    has_resend = bool(resend_api_key or resend_from_email)
+    has_smtp = bool(smtp_host)
+
+    if not has_resend and not has_smtp:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure either Resend or SMTP to enable email delivery",
+        )
+    if resend_api_key and not resend_from_email:
+        raise HTTPException(status_code=400, detail="Resend from email is required when using Resend")
+    if smtp_host and not smtp_from_email and not resend_from_email:
+        raise HTTPException(status_code=400, detail="SMTP from email is required when SMTP is configured")
 
     update_doc = {
         "key": "email_settings",
         "resend_from_email": resend_from_email,
+        "smtp_host": smtp_host,
+        "smtp_port": data.smtp_port,
+        "smtp_username": data.smtp_username or "",
+        "smtp_from_email": smtp_from_email,
+        "smtp_use_tls": data.smtp_use_tls,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if resend_api_key:
         update_doc["resend_api_key"] = resend_api_key
+    if data.smtp_password:
+        update_doc["smtp_password"] = data.smtp_password
 
     await db.global_settings.update_one(
         {"key": "email_settings"},
@@ -1435,7 +1500,13 @@ async def update_email_settings(
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "update", "email_settings", None,
-        {"resend_from_email": resend_from_email},
+        {
+            "resend_from_email": resend_from_email,
+            "resend_enabled": has_resend,
+            "smtp_host": smtp_host,
+            "smtp_from_email": smtp_from_email,
+            "smtp_use_tls": data.smtp_use_tls,
+        },
         ip_address=current_user.get("_ip_address")
     )
     return {"message": "Email settings updated successfully"}

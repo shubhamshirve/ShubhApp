@@ -1,6 +1,9 @@
-"""Email delivery helpers backed by Resend."""
+"""Email delivery helpers backed by Resend with SMTP fallback support."""
+import asyncio
 import logging
 import os
+import smtplib
+from email.message import EmailMessage
 
 import httpx
 
@@ -45,36 +48,168 @@ class ResendEmailService:
 
         if response.status_code >= 400:
             logger.warning("Resend email send failed: %s %s", response.status_code, response.text)
-            raise EmailServiceError("Failed to send email OTP")
+            raise EmailServiceError("Failed to send email with Resend")
 
-        return response.json()
+        return {"provider": "resend", "response": response.json()}
 
 
-def get_email_service() -> ResendEmailService:
-    """Build a Resend email client from env vars."""
-    return ResendEmailService(
-        api_key=os.environ.get("RESEND_API_KEY", ""),
-        from_email=os.environ.get("RESEND_FROM_EMAIL", ""),
+class SMTPEmailService:
+    """SMTP fallback transport using standard library smtplib."""
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        username: str = "",
+        password: str = "",
+        from_email: str,
+        use_tls: bool = True,
+    ):
+        self.host = (host or "").strip()
+        self.port = int(port or 0)
+        self.username = (username or "").strip()
+        self.password = password or ""
+        self.from_email = (from_email or "").strip()
+        self.use_tls = bool(use_tls)
+        if not self.host:
+            raise EmailServiceError("SMTP host is not configured")
+        if not self.port:
+            raise EmailServiceError("SMTP port is not configured")
+        if not self.from_email:
+            raise EmailServiceError("SMTP from email is not configured")
+
+    async def send_email(self, *, to_email: str, subject: str, html: str, text: str = ""):
+        return await asyncio.to_thread(
+            self._send_sync,
+            to_email=to_email,
+            subject=subject,
+            html=html,
+            text=text,
+        )
+
+    def _send_sync(self, *, to_email: str, subject: str, html: str, text: str = ""):
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = self.from_email
+        message["To"] = to_email
+        message.set_content(text or "Please view this email in an HTML-compatible client.")
+        message.add_alternative(html, subtype="html")
+
+        with smtplib.SMTP(self.host, self.port, timeout=20) as smtp:
+            if self.use_tls:
+                smtp.starttls()
+            if self.username:
+                smtp.login(self.username, self.password)
+            smtp.send_message(message)
+
+        return {"provider": "smtp"}
+
+
+class FallbackEmailService:
+    """Primary email service with optional fallback transport."""
+
+    def __init__(self, primary=None, fallback=None):
+        self.primary = primary
+        self.fallback = fallback
+        if not self.primary and not self.fallback:
+            raise EmailServiceError("No email delivery provider is configured")
+
+    async def send_email(self, *, to_email: str, subject: str, html: str, text: str = ""):
+        primary_error = None
+        if self.primary:
+            try:
+                return await self.primary.send_email(
+                    to_email=to_email,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                )
+            except Exception as exc:
+                primary_error = exc
+                logger.warning("Primary email delivery failed, trying fallback: %s", exc)
+
+        if self.fallback:
+            try:
+                return await self.fallback.send_email(
+                    to_email=to_email,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                )
+            except Exception as exc:
+                logger.warning("Fallback email delivery failed: %s", exc)
+                if primary_error:
+                    raise EmailServiceError(f"Primary and fallback email delivery failed: {exc}") from exc
+                raise EmailServiceError("Fallback email delivery failed") from exc
+
+        if primary_error:
+            raise EmailServiceError(str(primary_error)) from primary_error
+        raise EmailServiceError("No email delivery provider is configured")
+
+
+def _build_smtp_service_from_settings(settings: dict):
+    host = (settings.get("smtp_host") or "").strip()
+    from_email = (settings.get("smtp_from_email") or settings.get("resend_from_email") or "").strip()
+    if not host:
+        return None
+    try:
+        return SMTPEmailService(
+            host=host,
+            port=int(settings.get("smtp_port") or 587),
+            username=settings.get("smtp_username", ""),
+            password=settings.get("smtp_password", ""),
+            from_email=from_email,
+            use_tls=bool(settings.get("smtp_use_tls", True)),
+        )
+    except EmailServiceError:
+        return None
+
+
+def _build_resend_service_from_settings(settings: dict):
+    api_key = (settings.get("resend_api_key") or os.environ.get("RESEND_API_KEY", "")).strip()
+    from_email = (settings.get("resend_from_email") or os.environ.get("RESEND_FROM_EMAIL", "")).strip()
+    if not api_key:
+        return None
+    try:
+        return ResendEmailService(api_key=api_key, from_email=from_email)
+    except EmailServiceError:
+        return None
+
+
+def get_email_service():
+    """Build the email service using environment variables only."""
+    settings = {
+        "resend_api_key": os.environ.get("RESEND_API_KEY", ""),
+        "resend_from_email": os.environ.get("RESEND_FROM_EMAIL", ""),
+        "smtp_host": os.environ.get("SMTP_HOST", ""),
+        "smtp_port": os.environ.get("SMTP_PORT", "587"),
+        "smtp_username": os.environ.get("SMTP_USERNAME", ""),
+        "smtp_password": os.environ.get("SMTP_PASSWORD", ""),
+        "smtp_from_email": os.environ.get("SMTP_FROM_EMAIL", ""),
+        "smtp_use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
+    }
+    return FallbackEmailService(
+        primary=_build_resend_service_from_settings(settings),
+        fallback=_build_smtp_service_from_settings(settings),
     )
 
 
-async def get_email_service_async() -> ResendEmailService:
+async def get_email_service_async():
     """
-    Build a Resend email client, checking the DB first (global_settings key='email_settings'),
-    then falling back to OS environment variables.
+    Build the email service, checking DB first (`global_settings.key = email_settings`)
+    and then falling back to environment variables.
     """
+    settings = {}
     try:
         from database import db
         doc = await db.global_settings.find_one({"key": "email_settings"}, {"_id": 0})
-        if doc and doc.get("resend_api_key"):
-            return ResendEmailService(
-                api_key=doc["resend_api_key"],
-                from_email=doc.get("resend_from_email", os.environ.get("RESEND_FROM_EMAIL", "")),
-            )
-    except Exception:
-        pass
-    # Fall back to env vars
-    return ResendEmailService(
-        api_key=os.environ.get("RESEND_API_KEY", ""),
-        from_email=os.environ.get("RESEND_FROM_EMAIL", ""),
+        if doc:
+            settings.update(doc)
+    except Exception as exc:
+        logger.warning("Failed to load email settings from DB, falling back to env: %s", exc)
+
+    return FallbackEmailService(
+        primary=_build_resend_service_from_settings(settings),
+        fallback=_build_smtp_service_from_settings(settings),
     )

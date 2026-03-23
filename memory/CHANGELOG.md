@@ -2,12 +2,39 @@
 
 ## 2026-03-24
 
-### Pre-Task Documentation Sync
-- Refreshed project memory and readme files before starting the next requested work batch.
-- Captured the next requested scope:
-  - app title update
-  - Resend email fallback delivery
-  - configurable cron timings in admin settings
+### V7.14-10: App Title, Email Fallback, and Configurable Cron Timings
+
+#### Release Workflow
+- Synced all memory/readme files on `V7.14-9` before starting feature work, then created `V7.14-10` for this delivery batch.
+
+#### Frontend
+- Updated the browser/app title to `E-Bill | Invoice Automation Software`.
+- Expanded admin settings UI with editable cron timing controls for:
+  - auto backup
+  - expiry checks
+  - invoice generation
+  - wallet checks
+  - reminder processing
+- Updated backup settings UI copy to reflect configured IST timing instead of stale fixed UTC wording.
+- Expanded admin email settings UI to support SMTP fallback fields and TLS toggle.
+
+#### Email Delivery
+- Added `FallbackEmailService` that tries Resend first and automatically falls back to SMTP on failure.
+- Added SMTP transport support using Python `smtplib`.
+- Added DB-backed SMTP configuration support in admin email settings.
+- Allowed email delivery to be configured via Resend, SMTP, or both.
+- Added SMTP environment keys to generated/default env templates.
+
+#### Scheduler / Cron Controls
+- Added reusable cron schedule normalization helpers.
+- Backend scheduler startup now reads cron times from platform settings, falling back to defaults when unset.
+- Saving admin platform settings now reschedules APScheduler jobs immediately without restart.
+- Daily and manual invoice-generation flows now respect the configured `auto_invoice_days_before` setting instead of a hardcoded value.
+
+#### Validation
+- `python -m py_compile backend\\models.py backend\\routers\\admin.py backend\\services\\cron_service.py backend\\services\\email_service.py backend\\services\\scheduler_settings.py backend\\server.py` passed.
+- `npm run build` passed in `frontend/`.
+- Existing frontend `react-hooks/exhaustive-deps` warnings remain, but build output succeeded.
 
 ## 2026-03-23
 
@@ -32,6 +59,7 @@
 - Created, implemented, and pushed `V7.14-7`
 - Documentation alignment prepared on `V7.14-8`
 - Created and pushed `V7.14-9` for the VPS cron fix
+- Created and pushed `V7.14-10` for title, email fallback, and configurable cron timings
 
 ### V7.14-7: Single Session, Recovery, and Invoice Control
 

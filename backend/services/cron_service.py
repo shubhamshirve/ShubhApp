@@ -603,8 +603,10 @@ class CronJobService:
 
 async def run_daily_invoice_generation(db):
     """Daily cron job for invoice generation"""
+    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    days_before = int(platform_settings.get("auto_invoice_days_before", 3) or 3)
     service = CronJobService(db)
-    results = await service.generate_upcoming_invoices(days_before=3)
+    results = await service.generate_upcoming_invoices(days_before=days_before)
     logger.info(f"Daily invoice generation: {results}")
     return results
 
