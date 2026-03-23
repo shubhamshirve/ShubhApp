@@ -14,7 +14,7 @@ from models import (
     OperatorResponse, OperatorUpdate, InvoiceCustomization,
     AnnouncementCreate, OperatorPlanCreate, OperatorPlanResponse,
     SubscriberCreate, SubscriberResponse,
-    InvoiceCreate, InvoiceResponse, PaymentLinkResponse,
+    InvoiceCreate, InvoiceUpdate, InvoiceStatusUpdate, InvoiceResponse, PaymentLinkResponse,
     StaffCreate, StaffResponse, AuditLogResponse,
     PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
     ReminderSettingsUpdate,
@@ -1358,22 +1358,19 @@ async def bulk_upload_subscribers(
 
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
-@router.post("/invoices", response_model=InvoiceResponse)
-async def create_invoice(data: InvoiceCreate, request: Request, current_user: dict = Depends(require_operator)):
-    if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot create invoices")
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    
+PAYMENT_MODES = {"cash", "own_upi", "bank_transfer", "cheque"}
+
+
+async def _build_invoice_payload(operator_id: str, data: InvoiceCreate | InvoiceUpdate):
     subscriber = await db.subscribers.find_one(
-        {"id": data.subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+        {"id": data.subscriber_id, "operator_id": operator_id, "deleted_at": None}, {"_id": 0}
     )
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
-    
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
     can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
-    
+
     total_base = 0
     total_discount = 0
     total_tax = 0
@@ -1384,7 +1381,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         plan = await db.operator_plans.find_one({"id": item.plan_id, "deleted_at": None}, {"_id": 0})
         if not plan:
             raise HTTPException(status_code=404, detail=f"Plan {item.plan_id} not found")
-        
+
         tax_amount = 0
         if can_charge_gst and plan.get("tax_percentage", 0) > 0:
             taxable = item.base_amount - item.discount
@@ -1392,9 +1389,9 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                 tax_amount = taxable * (plan["tax_percentage"] / 100)
             elif plan.get("tax_type") == "inclusive":
                 tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
-        
+
         final_amount = item.base_amount - item.discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
-        
+
         enriched_item = item.model_dump()
         enriched_item["plan_name"] = plan["name"]
         enriched_item["tax_amount"] = round(tax_amount, 2)
@@ -1402,23 +1399,57 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         enriched_item["service_start_date"] = item.service_start_date.isoformat()
         enriched_item["service_end_date"] = item.service_end_date.isoformat()
         line_items.append(enriched_item)
-        
+
         total_base += item.base_amount
         total_discount += item.discount
         total_tax += tax_amount
         total_final += final_amount
+
+    return {
+        "subscriber": subscriber,
+        "line_items": line_items,
+        "base_amount": round(total_base, 2),
+        "discount": round(total_discount, 2),
+        "tax_amount": round(total_tax, 2),
+        "final_amount": round(total_final, 2),
+        "due_date": data.due_date.isoformat(),
+    }
+
+
+def _parse_invoice_document(inv: dict) -> InvoiceResponse:
+    inv_data = {**inv}
+    inv_data["due_date"] = datetime.fromisoformat(inv["due_date"])
+    if inv.get("paid_at"):
+        inv_data["paid_at"] = datetime.fromisoformat(inv["paid_at"])
+    if inv.get("cancelled_at"):
+        inv_data["cancelled_at"] = datetime.fromisoformat(inv["cancelled_at"])
+    if "line_items" in inv_data:
+        for item in inv_data["line_items"]:
+            item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
+            item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
+    return InvoiceResponse(**inv_data)
+
+
+@router.post("/invoices", response_model=InvoiceResponse)
+async def create_invoice(data: InvoiceCreate, request: Request, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot create invoices")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    payload = await _build_invoice_payload(current_user["operator_id"], data)
+    subscriber = payload["subscriber"]
 
     now = datetime.now(timezone.utc)
     invoice = {
         "id": generate_id(),
         "invoice_number": await generate_invoice_number_atomic(db),
         "subscriber_id": data.subscriber_id, "subscriber_name": subscriber["name"],
-        "line_items": line_items,
-        "base_amount": round(total_base, 2),
-        "discount": round(total_discount, 2),
-        "tax_amount": round(total_tax, 2),
-        "final_amount": round(total_final, 2),
-        "due_date": data.due_date.isoformat(), "status": "pending", "payment_id": None,
+        "line_items": payload["line_items"],
+        "base_amount": payload["base_amount"],
+        "discount": payload["discount"],
+        "tax_amount": payload["tax_amount"],
+        "final_amount": payload["final_amount"],
+        "due_date": payload["due_date"], "status": "pending", "payment_id": None,
         "operator_id": current_user["operator_id"],
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
@@ -1457,13 +1488,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
             logger.warning(f"Auto WhatsApp send failed: {e}")
 
     # Convert back to InvoiceResponse compatible dict
-    response_data = {**invoice}
-    response_data["due_date"] = data.due_date
-    for item in response_data["line_items"]:
-        item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
-        item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
-    
-    response = InvoiceResponse(**response_data)
+    response = _parse_invoice_document(invoice)
     result = response.model_dump()
     result["auto_wa_sent"] = auto_wa_sent
     result["has_whatsapp_addon"] = await _has_addon(current_user["operator_id"], "whatsapp_notifications")
@@ -1488,32 +1513,95 @@ async def get_invoices(
     
     parsed_invoices = []
     for inv in invoices:
-        inv_data = {**inv}
-        inv_data["due_date"] = datetime.fromisoformat(inv["due_date"])
-        if "line_items" in inv_data:
-            for item in inv_data["line_items"]:
-                item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
-                item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
-        parsed_invoices.append(InvoiceResponse(**inv_data))
+        parsed_invoices.append(_parse_invoice_document(inv))
     
     return parsed_invoices
 
 
+@router.put("/invoices/{invoice_id}", response_model=InvoiceResponse)
+async def update_invoice(
+    invoice_id: str,
+    data: InvoiceUpdate,
+    current_user: dict = Depends(require_operator)
+):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot edit operator invoices")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Only pending invoices can be edited")
+
+    payload = await _build_invoice_payload(current_user["operator_id"], data)
+    now = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "subscriber_id": data.subscriber_id,
+        "subscriber_name": payload["subscriber"]["name"],
+        "line_items": payload["line_items"],
+        "base_amount": payload["base_amount"],
+        "discount": payload["discount"],
+        "tax_amount": payload["tax_amount"],
+        "final_amount": payload["final_amount"],
+        "due_date": payload["due_date"],
+        "updated_at": now,
+    }
+    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+    updated_invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    return _parse_invoice_document(updated_invoice)
+
+
 @router.put("/invoices/{invoice_id}/status")
 async def update_invoice_status(
-    invoice_id: str, status: str = Query(...), current_user: dict = Depends(require_operator)
+    invoice_id: str, data: InvoiceStatusUpdate, current_user: dict = Depends(require_operator)
 ):
-    status = sanitize_text(status)
-    if await check_operator_read_only(current_user["operator_id"]):
+    status = sanitize_text(data.status).lower()
+    operator_id = current_user.get("operator_id")
+    if operator_id and await check_operator_read_only(operator_id):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     if status not in ["pending", "paid", "overdue", "cancelled"]:
         raise HTTPException(status_code=400, detail="Invalid status")
-    result = await db.invoices.update_one(
-        {"id": invoice_id, "operator_id": current_user["operator_id"], "deleted_at": None},
-        {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+
+    query = {"id": invoice_id, "deleted_at": None}
+    if current_user["role"] != "admin":
+        query["operator_id"] = operator_id
+    invoice = await db.invoices.find_one(query, {"_id": 0})
+    if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if invoice["status"] == "cancelled":
+        raise HTTPException(status_code=400, detail="Cancelled invoice cannot be changed")
+    if invoice["status"] == "paid":
+        if status == "cancelled" and current_user["role"] == "admin":
+            pass
+        elif status != "paid":
+            raise HTTPException(status_code=403, detail="Paid invoice cannot be changed by operator")
+    if status == "cancelled" and invoice["status"] == "paid" and current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can cancel a paid invoice")
+
+    now = datetime.now(timezone.utc)
+    updates = {"status": status, "updated_at": now.isoformat()}
+    if status == "paid":
+        payment_mode = sanitize_text(data.payment_mode or "").lower().replace(" ", "_")
+        if payment_mode not in PAYMENT_MODES:
+            raise HTTPException(status_code=400, detail="Valid payment mode is required")
+        payment_date = data.payment_date or now
+        updates["payment_mode"] = payment_mode
+        updates["paid_at"] = payment_date.isoformat()
+        updates["cancelled_at"] = None
+        updates["cancelled_by_role"] = None
+    elif status == "cancelled":
+        updates["cancelled_at"] = now.isoformat()
+        updates["cancelled_by_role"] = current_user["role"]
+    else:
+        updates["cancelled_at"] = None
+        updates["cancelled_by_role"] = None
+
+    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
     return {"message": f"Invoice marked as {status}"}
 
 

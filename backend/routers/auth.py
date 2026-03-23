@@ -88,6 +88,29 @@ async def _send_recovery_otp_email(email: str, otp: str):
     )
 
 
+async def _issue_user_session(user: dict, *, update_fields=None) -> str:
+    settings = await db.global_settings.find_one({"type": "platform"}) or {}
+    timeout = float(settings.get("session_timeout_hours", 24.0))
+    session_id = generate_id()
+    fields = {
+        "active_session_id": session_id,
+        "last_login_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if update_fields:
+        fields.update(update_fields)
+    await db.users.update_one({"id": user["id"]}, {"$set": fields})
+    return create_token(
+        {
+            "id": user["id"],
+            "email": user["email"],
+            "role": user["role"],
+            "operator_id": user.get("operator_id"),
+            "session_id": session_id,
+        },
+        expiration_hours=timeout,
+    )
+
+
 def _parse_dt(value: str) -> datetime:
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
@@ -227,6 +250,7 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
     now = datetime.now(timezone.utc)
     operator_id = generate_id()
     user_id = generate_id()
+    session_id = generate_id()
     trial_end = (now + timedelta(days=3)).isoformat()
 
     # Validate referral code if provided
@@ -283,6 +307,7 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
         "role": "operator",
         "operator_id": operator_id,
         "status": "active",
+        "active_session_id": session_id,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
         "deleted_at": None
@@ -294,7 +319,16 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
 
     settings = await db.global_settings.find_one({"type": "platform"}) or {}
     timeout = float(settings.get("session_timeout_hours", 24.0))
-    token = create_token({"id": user_id, "email": pending["email"], "role": "operator", "operator_id": operator_id}, expiration_hours=timeout)
+    token = create_token(
+        {
+            "id": user_id,
+            "email": pending["email"],
+            "role": "operator",
+            "operator_id": operator_id,
+            "session_id": session_id,
+        },
+        expiration_hours=timeout,
+    )
 
     return TokenResponse(
         access_token=token,
@@ -374,6 +408,7 @@ async def register_operator(data: OperatorCreate):
     now = datetime.now(timezone.utc)
     operator_id = generate_id()
     user_id = generate_id()
+    session_id = generate_id()
 
     # Set subscription to expire in 3 days
     trial_end = (now + timedelta(days=3)).isoformat()
@@ -431,6 +466,7 @@ async def register_operator(data: OperatorCreate):
         "role": "operator",
         "operator_id": operator_id,
         "status": "active",
+        "active_session_id": session_id,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
         "deleted_at": None
@@ -439,7 +475,16 @@ async def register_operator(data: OperatorCreate):
 
     settings = await db.global_settings.find_one({"type": "platform"}) or {}
     timeout = float(settings.get("session_timeout_hours", 24.0))
-    token = create_token({"id": user_id, "email": data.email, "role": "operator", "operator_id": operator_id}, expiration_hours=timeout)
+    token = create_token(
+        {
+            "id": user_id,
+            "email": data.email,
+            "role": "operator",
+            "operator_id": operator_id,
+            "session_id": session_id,
+        },
+        expiration_hours=timeout,
+    )
 
     return TokenResponse(
         access_token=token,
@@ -464,12 +509,7 @@ async def login(data: UserLogin):
     if user["status"] != "active":
         raise HTTPException(status_code=401, detail="Account is not active")
 
-    settings = await db.global_settings.find_one({"type": "platform"}) or {}
-    timeout = float(settings.get("session_timeout_hours", 24.0))
-    token = create_token({
-        "id": user["id"], "email": user["email"],
-        "role": user["role"], "operator_id": user.get("operator_id")
-    }, expiration_hours=timeout)
+    token = await _issue_user_session(user)
 
     return TokenResponse(
         access_token=token,
@@ -514,13 +554,17 @@ async def change_password(
     new_hashed = hash_password(data.new_password)
     await db.users.update_one(
         {"id": current_user["id"]},
-        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "password": new_hashed,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "active_session_id": generate_id(),
+        }}
     )
     return {"message": "Password changed successfully"}
 
 class ForgotPasswordRequest(SanitizedModel):
     email: str
-    method: str = "email"  # "email" or "whatsapp"
+    method: str = "email"
 
 
 class VerifyRecoveryOTPRequest(SanitizedModel):
@@ -536,7 +580,9 @@ class ResetPasswordRequest(SanitizedModel):
 
 @router.post("/forgot-password")
 async def forgot_password(data: ForgotPasswordRequest):
-    """Step 1: Initiate password recovery. Send OTP via email or WhatsApp."""
+    """Step 1: Initiate password recovery. Send OTP via email."""
+    if data.method != "email":
+        raise HTTPException(status_code=400, detail="Password recovery OTP is available only via email.")
     user = await db.users.find_one({"email": data.email, "deleted_at": None}, {"_id": 0})
     otp = _generate_otp()
     now = datetime.now(timezone.utc)
@@ -587,44 +633,19 @@ async def forgot_password(data: ForgotPasswordRequest):
     await db.password_recovery.delete_many({"email": data.email})
     await db.password_recovery.insert_one(recovery)
 
-    phone_last4 = ""
-
-    if data.method == "whatsapp" and user.get("phone"):
-        try:
-            wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
-            if wa_config and wa_config.get("access_token"):
-                from services.whatsapp_service import WhatsAppService
-                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-                await wa_service.send_text_message(
-                    recipient_phone=user["phone"],
-                    message=(
-                        f"Your E-Bill password recovery OTP is: {otp}. "
-                        f"Valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes. Do not share this code."
-                    )
-                )
-                phone_last4 = user["phone"][-4:]
-                logger.info(f"Recovery OTP sent via WhatsApp to {phone_last4}")
-            else:
-                await db.password_recovery.delete_one({"id": recovery_id})
-                raise HTTPException(status_code=500, detail="WhatsApp OTP service is not configured.")
-        except Exception as e:
-            logger.warning(f"Failed to send recovery OTP via WhatsApp: {e}")
-            await db.password_recovery.delete_one({"id": recovery_id})
-            raise HTTPException(status_code=500, detail="Failed to send recovery OTP.")
-    else:
-        try:
-            await _send_recovery_otp_email(data.email, otp)
-            logger.info("Recovery OTP sent via email to %s", email_masked)
-        except EmailServiceError as exc:
-            await db.password_recovery.delete_one({"id": recovery_id})
-            raise HTTPException(status_code=500, detail=str(exc))
+    try:
+        await _send_recovery_otp_email(data.email, otp)
+        logger.info("Recovery OTP sent via email to %s", email_masked)
+    except EmailServiceError as exc:
+        await db.password_recovery.delete_one({"id": recovery_id})
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return {
         "recovery_id": recovery_id,
         "message": "Recovery code sent",
         "otp_sent": True,
-        "method": data.method,
-        "phone_last4": phone_last4,
+        "method": "email",
+        "phone_last4": "",
         "email_masked": email_masked,
     }
 
@@ -694,7 +715,11 @@ async def reset_password(data: ResetPasswordRequest):
     new_hashed = hash_password(data.new_password)
     await db.users.update_one(
         {"id": recovery["user_id"]},
-        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "password": new_hashed,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "active_session_id": generate_id(),
+        }}
     )
 
     # Delete recovery session
@@ -735,30 +760,11 @@ async def resend_recovery_otp(recovery_id: str = ""):
             "otp_sent": True,
             "email_masked": _mask_email(recovery["email"]),
         }
-    if recovery.get("method") == "whatsapp" and recovery.get("phone"):
-        try:
-            wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
-            if wa_config and wa_config.get("access_token"):
-                from services.whatsapp_service import WhatsAppService
-                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-                await wa_service.send_text_message(
-                    recipient_phone=recovery["phone"],
-                    message=(
-                        f"Your E-Bill password recovery OTP is: {new_otp}. "
-                        f"Valid for {RECOVERY_OTP_EXPIRY_MINUTES} minutes."
-                    )
-                )
-            else:
-                raise HTTPException(status_code=500, detail="WhatsApp OTP service is not configured.")
-        except Exception as e:
-            logger.warning(f"Failed to resend recovery OTP: {e}")
-            raise HTTPException(status_code=500, detail="Failed to resend recovery OTP.")
-    else:
-        try:
-            await _send_recovery_otp_email(recovery["email"], new_otp)
-            logger.info("Recovery OTP resent via email to %s", _mask_email(recovery["email"]))
-        except EmailServiceError as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+    try:
+        await _send_recovery_otp_email(recovery["email"], new_otp)
+        logger.info("Recovery OTP resent via email to %s", _mask_email(recovery["email"]))
+    except EmailServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return {
         "message": "Recovery code resent",

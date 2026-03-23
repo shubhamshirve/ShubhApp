@@ -416,6 +416,18 @@ class InvoiceCreate(SanitizedModel):
     due_date: datetime
 
 
+class InvoiceUpdate(SanitizedModel):
+    subscriber_id: str
+    line_items: List[InvoiceLineItem]
+    due_date: datetime
+
+
+class InvoiceStatusUpdate(SanitizedModel):
+    status: str
+    payment_mode: Optional[str] = None
+    payment_date: Optional[datetime] = None
+
+
 class InvoiceResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
@@ -430,6 +442,10 @@ class InvoiceResponse(SanitizedModel):
     due_date: datetime
     status: str  # pending, paid, overdue, cancelled
     payment_id: Optional[str] = None
+    payment_mode: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_by_role: Optional[str] = None
     operator_id: str
     created_at: datetime
 

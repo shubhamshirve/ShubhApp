@@ -19,6 +19,14 @@ async def get_current_user(
     user = await db.users.find_one({"id": payload["sub"], "deleted_at": None}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+
+    token_session_id = payload.get("sid")
+    active_session_id = user.get("active_session_id")
+    if not payload.get("impersonated_by") and active_session_id and token_session_id != active_session_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired. You have been logged out because your account was used on another device.",
+        )
     
     # Carry impersonated_by from JWT payload if present
     if payload.get("impersonated_by"):

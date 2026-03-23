@@ -200,6 +200,7 @@ async def verify_public_payment(
         {"$set": {
             "status": "paid",
             "payment_id": razorpay_payment_id,
+            "payment_mode": "online",
             "razorpay_order_id": razorpay_order_id,
             "paid_at": now.isoformat(),
             "updated_at": now.isoformat(),

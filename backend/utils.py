@@ -30,6 +30,8 @@ def create_token(user_data: dict, expiration_hours: float = JWT_EXPIRATION_HOURS
         "operator_id": user_data.get("operator_id"),
         "exp": datetime.now(timezone.utc) + timedelta(hours=expiration_hours)
     }
+    if user_data.get("session_id"):
+        payload["sid"] = user_data["session_id"]
     if user_data.get("impersonated_by"):
         payload["impersonated_by"] = user_data["impersonated_by"]
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

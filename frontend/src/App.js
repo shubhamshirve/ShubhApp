@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";import { Toaster } from "sonner";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster, toast } from "sonner";
 import { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 
@@ -84,6 +85,33 @@ const AuthProvider = ({ children }) => {
     };
     initAuth();
   }, []);
+
+  useEffect(() => {
+    if (!token) return undefined;
+
+    const verifySession = async () => {
+      try {
+        const response = await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setUser(response.data);
+      } catch (error) {
+        if (error.response?.status === 401) {
+          toast.error("Session expired. Please log in again.");
+          logout();
+        }
+      }
+    };
+
+    const intervalId = window.setInterval(verifySession, 60000);
+    const handleFocus = () => verifySession();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [token]);
 
   const login = async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });

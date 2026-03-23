@@ -54,7 +54,7 @@ import {
   Bell,
   MessageCircle,
   ExternalLink,
-  Eye,
+  Pencil,
   Trash2
 } from "lucide-react";
 
@@ -83,6 +83,13 @@ const PopoverDatePicker = ({ date, onSelect, label }) => {
   );
 };
 
+const PAYMENT_MODE_OPTIONS = [
+  { value: "cash", label: "Cash" },
+  { value: "own_upi", label: "Own UPI" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "cheque", label: "Cheque" },
+];
+
 const OperatorInvoices = () => {
   const { authAxios, features } = useAuth();
   const [invoices, setInvoices] = useState([]);
@@ -92,9 +99,17 @@ const OperatorInvoices = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDialog, setShowDialog] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [savingInvoice, setSavingInvoice] = useState(false);
   const [showPaymentLinkDialog, setShowPaymentLinkDialog] = useState(false);
   const [paymentLinkData, setPaymentLinkData] = useState(null);
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [showPaymentConfirmDialog, setShowPaymentConfirmDialog] = useState(false);
+  const [paymentTargetInvoice, setPaymentTargetInvoice] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({
+    payment_mode: "cash",
+    payment_date: new Date(),
+  });
   const [dashboardStats, setDashboardStats] = useState(null);
   const [formData, setFormData] = useState({
     subscriber_id: "",
@@ -173,6 +188,7 @@ const OperatorInvoices = () => {
     
     if (!formData.due_date) { toast.error("Please select a due date"); return; }
     
+    setSavingInvoice(true);
     try {
       const payload = {
         subscriber_id: formData.subscriber_id,
@@ -184,13 +200,20 @@ const OperatorInvoices = () => {
         }))
       };
       
-      await authAxios.post("/operator/invoices", payload);
-      toast.success("Invoice created successfully");
+      if (editingInvoice) {
+        await authAxios.put(`/operator/invoices/${editingInvoice.id}`, payload);
+        toast.success("Invoice updated successfully");
+      } else {
+        await authAxios.post("/operator/invoices", payload);
+        toast.success("Invoice created successfully");
+      }
       setShowDialog(false);
       resetForm();
       fetchInvoices();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to create invoice");
+      toast.error(error.response?.data?.detail || `Failed to ${editingInvoice ? "update" : "create"} invoice`);
+    } finally {
+      setSavingInvoice(false);
     }
   };
 
@@ -230,6 +253,7 @@ const OperatorInvoices = () => {
   };
 
   const resetForm = () => {
+    setEditingInvoice(null);
     setFormData({
       subscriber_id: "",
       line_items: [{
@@ -243,14 +267,49 @@ const OperatorInvoices = () => {
     });
   };
 
-  const handleStatusUpdate = async (invoiceId, status) => {
+  const handleEditInvoice = (invoice) => {
+    setEditingInvoice(invoice);
+    setFormData({
+      subscriber_id: invoice.subscriber_id,
+      line_items: (invoice.line_items || []).map((item) => ({
+        plan_id: item.plan_id,
+        base_amount: item.base_amount ?? 0,
+        discount: item.discount ?? 0,
+        service_start_date: new Date(item.service_start_date),
+        service_end_date: new Date(item.service_end_date),
+      })),
+      due_date: new Date(invoice.due_date),
+    });
+    setShowDialog(true);
+  };
+
+  const handleStatusUpdate = async (invoiceId, status, extra = {}) => {
     try {
-      await authAxios.put(`/operator/invoices/${invoiceId}/status?status=${status}`);
+      await authAxios.put(`/operator/invoices/${invoiceId}/status`, { status, ...extra });
       toast.success(`Invoice marked as ${status}`);
       fetchInvoices();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update status");
     }
+  };
+
+  const openPaymentConfirmDialog = (invoice) => {
+    setPaymentTargetInvoice(invoice);
+    setPaymentForm({
+      payment_mode: "cash",
+      payment_date: new Date(),
+    });
+    setShowPaymentConfirmDialog(true);
+  };
+
+  const submitPaymentConfirmation = async () => {
+    if (!paymentTargetInvoice) return;
+    await handleStatusUpdate(paymentTargetInvoice.id, "paid", {
+      payment_mode: paymentForm.payment_mode,
+      payment_date: paymentForm.payment_date.toISOString(),
+    });
+    setShowPaymentConfirmDialog(false);
+    setPaymentTargetInvoice(null);
   };
 
   const handleGeneratePaymentLink = async (invoiceId) => {
@@ -484,6 +543,12 @@ const OperatorInvoices = () => {
                               <Download className="w-4 h-4 mr-2 text-slate-600" />
                               Download PDF
                             </DropdownMenuItem>
+                            {invoice.status === "pending" && (
+                              <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
+                                <Pencil className="w-4 h-4 mr-2 text-blue-600" />
+                                Edit Invoice
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               onClick={() => window.open(`/invoice/${invoice.invoice_number || invoice.id}`, '_blank')}
                             >
@@ -507,7 +572,7 @@ const OperatorInvoices = () => {
                               </DropdownMenuItem>
                             )}
                             {invoice.status === "pending" && (
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "paid")}>
+                              <DropdownMenuItem onClick={() => openPaymentConfirmDialog(invoice)}>
                                 <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" />
                                 Mark as Paid
                               </DropdownMenuItem>
@@ -518,7 +583,7 @@ const OperatorInvoices = () => {
                                 Mark as Overdue
                               </DropdownMenuItem>
                             )}
-                            {invoice.status !== "cancelled" && (
+                            {invoice.status !== "cancelled" && invoice.status !== "paid" && (
                               <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "cancelled")}>
                                 Cancel Invoice
                               </DropdownMenuItem>
@@ -535,11 +600,21 @@ const OperatorInvoices = () => {
         </Card>
 
         {/* Create Dialog */}
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <Dialog
+          open={showDialog}
+          onOpenChange={(open) => {
+            setShowDialog(open);
+            if (!open) {
+              resetForm();
+            }
+          }}
+        >
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create Invoice</DialogTitle>
-              <DialogDescription>Generate a new invoice with multiple line items</DialogDescription>
+              <DialogTitle>{editingInvoice ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
+              <DialogDescription>
+                {editingInvoice ? "Update the pending invoice details before payment is collected" : "Generate a new invoice with multiple line items"}
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-4">
@@ -665,11 +740,66 @@ const OperatorInvoices = () => {
                 <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" data-testid="save-invoice-btn">
-                  Create Invoice
+                <Button type="submit" data-testid="save-invoice-btn" disabled={savingInvoice}>
+                  {savingInvoice ? "Saving..." : (editingInvoice ? "Update Invoice" : "Create Invoice")}
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={showPaymentConfirmDialog}
+          onOpenChange={(open) => {
+            setShowPaymentConfirmDialog(open);
+            if (!open) setPaymentTargetInvoice(null);
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Confirm Payment</DialogTitle>
+              <DialogDescription>
+                Record how this invoice was paid before marking it as paid.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Payment Mode *</Label>
+                <Select
+                  value={paymentForm.payment_mode}
+                  onValueChange={(value) => setPaymentForm(prev => ({ ...prev, payment_mode: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Payment Date *</Label>
+                <PopoverDatePicker
+                  date={paymentForm.payment_date}
+                  onSelect={(date) => setPaymentForm(prev => ({ ...prev, payment_date: date }))}
+                  label="Select payment date"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowPaymentConfirmDialog(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={submitPaymentConfirmation}>
+                  Confirm Payment
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 

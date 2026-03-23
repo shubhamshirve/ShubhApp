@@ -6,20 +6,18 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { ArrowLeft, Mail, MessageCircle, KeyRound, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, KeyRound, Check, Loader2 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 
 const ForgotPassword = () => {
   const [step, setStep] = useState(1); // 1: email, 2: otp, 3: new password
   const [email, setEmail] = useState("");
-  const [method, setMethod] = useState("email");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [recoveryId, setRecoveryId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [phoneLast4, setPhoneLast4] = useState("");
   const [emailMasked, setEmailMasked] = useState("");
   const navigate = useNavigate();
 
@@ -30,9 +28,8 @@ const ForgotPassword = () => {
     
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/auth/forgot-password`, { email, method });
+      const res = await axios.post(`${API}/auth/forgot-password`, { email, method: "email" });
       setRecoveryId(res.data.recovery_id);
-      setPhoneLast4(res.data.phone_last4 || "");
       setEmailMasked(res.data.email_masked || "");
       toast.success("Recovery code sent!");
       setStep(2);
@@ -161,7 +158,7 @@ const ForgotPassword = () => {
               </CardTitle>
               <CardDescription>
                 {step === 1 && "Enter your email to receive a recovery code"}
-                {step === 2 && `Enter the 6-digit code sent to your ${method === 'whatsapp' ? `WhatsApp (****${phoneLast4})` : (emailMasked || 'email address')}`}
+                {step === 2 && `Enter the 6-digit code sent to ${emailMasked || 'your email address'}`}
                 {step === 3 && "Create a new secure password for your account"}
               </CardDescription>
             </CardHeader>
@@ -182,33 +179,10 @@ const ForgotPassword = () => {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-[#004080]">Receive OTP via</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setMethod("email")}
-                        className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                          method === "email" 
-                            ? "border-[#0066B2] bg-[#0066B2]/5" 
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
-                      >
-                        <Mail className={`w-5 h-5 ${method === "email" ? "text-[#0066B2]" : "text-slate-400"}`} />
-                        <span className={method === "email" ? "text-[#0066B2] font-medium" : "text-slate-600"}>Email</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMethod("whatsapp")}
-                        className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                          method === "whatsapp" 
-                            ? "border-[#44AB62] bg-[#44AB62]/5" 
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
-                      >
-                        <MessageCircle className={`w-5 h-5 ${method === "whatsapp" ? "text-[#44AB62]" : "text-slate-400"}`} />
-                        <span className={method === "whatsapp" ? "text-[#44AB62] font-medium" : "text-slate-600"}>WhatsApp</span>
-                      </button>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <div className="flex items-center gap-2 font-medium text-[#004080]">
+                      <Mail className="w-4 h-4" />
+                      Recovery OTP will be sent to your email.
                     </div>
                   </div>
 

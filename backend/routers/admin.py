@@ -171,6 +171,7 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
         "id": user_id, "email": data.email, "name": data.owner_name, "phone": data.phone,
         "password": hash_password(data.password), "role": "operator",
         "operator_id": operator_id, "status": "active",
+        "active_session_id": generate_id(),
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.users.insert_one(user)
@@ -322,7 +323,15 @@ async def return_from_impersonate(current_user: dict = Depends(get_current_user)
         
     settings = await db.global_settings.find_one({"type": "platform"}) or {}
     timeout = float(settings.get("session_timeout_hours", 24.0))
-    token = create_token({"id": admin_user["id"], "email": admin_user["email"], "role": "admin"}, expiration_hours=timeout)
+    session_id = generate_id()
+    await db.users.update_one(
+        {"id": admin_user["id"]},
+        {"$set": {"active_session_id": session_id, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    token = create_token(
+        {"id": admin_user["id"], "email": admin_user["email"], "role": "admin", "session_id": session_id},
+        expiration_hours=timeout,
+    )
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -352,7 +361,11 @@ async def admin_change_operator_password(
     new_hashed = hash_password(data.new_password)
     await db.users.update_one(
         {"id": user["id"]},
-        {"$set": {"password": new_hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "password": new_hashed,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "active_session_id": generate_id(),
+        }}
     )
 
     await log_audit(
