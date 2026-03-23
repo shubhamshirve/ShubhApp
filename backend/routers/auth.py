@@ -541,6 +541,38 @@ class ChangePasswordRequest(SanitizedModel):
     new_password: str
 
 
+class UpdateProfileRequest(SanitizedModel):
+    name: str
+
+
+@router.put("/profile", response_model=UserResponse)
+async def update_profile(
+    data: UpdateProfileRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update the current user's display name."""
+    name = sanitize_text(data.name)
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
+
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {
+            "name": name,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    updated_user = await db.users.find_one({"id": current_user["id"]}, {"_id": 0})
+    return UserResponse(
+        id=updated_user["id"], email=updated_user["email"],
+        name=updated_user["name"], phone=updated_user.get("phone"),
+        role=updated_user["role"], operator_id=updated_user.get("operator_id"),
+        status=updated_user.get("status", "active"),
+        impersonated_by=updated_user.get("impersonated_by"),
+        created_at=datetime.fromisoformat(updated_user["created_at"])
+    )
+
+
 @router.put("/change-password")
 async def change_password(
     data: ChangePasswordRequest,

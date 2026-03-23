@@ -75,7 +75,7 @@ const CRON_FIELDS = [
 ];
 
 const AdminSettings = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, user, refreshCurrentUser, clearBrowserCache } = useAuth();
   const navigate = useNavigate();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [gateways, setGateways] = useState([]);
@@ -94,9 +94,12 @@ const AdminSettings = () => {
   const [restoring, setRestoring] = useState(false);
 
   // Change-password state
+  const [adminProfileForm, setAdminProfileForm] = useState({ name: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
   const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [pwLoading, setPwLoading] = useState(false);
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
+  const [cacheClearing, setCacheClearing] = useState(false);
 
   // WhatsApp config state
   const [waConfig, setWaConfig] = useState({
@@ -137,6 +140,13 @@ const AdminSettings = () => {
   const [emailConfig, setEmailConfig] = useState(DEFAULT_EMAIL_CONFIG);
   const [emailSaving, setEmailSaving] = useState(false);
   const [showEmailKey, setShowEmailKey] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [emailTestSending, setEmailTestSending] = useState({ resend: false, smtp: false });
+
+  useEffect(() => {
+    setAdminProfileForm({ name: user?.name || "" });
+    setTestEmail((prev) => prev || user?.email || "");
+  }, [user]);
 
   useEffect(() => {
     Promise.all([fetchSettings(), fetchGateways(), fetchOperators(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings(), fetchEmailConfig()])
@@ -474,6 +484,58 @@ const AdminSettings = () => {
       toast.error(err.response?.data?.detail || "Failed to change password");
     } finally {
       setPwLoading(false);
+    }
+  };
+
+  const handleUpdateAdminProfile = async (e) => {
+    e.preventDefault();
+    if (!adminProfileForm.name.trim() || adminProfileForm.name.trim().length < 2) {
+      toast.error("Admin name must be at least 2 characters");
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      await authAxios.put("/auth/profile", {
+        name: adminProfileForm.name.trim(),
+      });
+      await refreshCurrentUser();
+      toast.success("Admin name updated successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update admin name");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleClearBrowserCache = async () => {
+    setCacheClearing(true);
+    try {
+      await clearBrowserCache();
+      toast.success("Browser cache cleared. Reloading fresh data...");
+      window.setTimeout(() => window.location.reload(), 200);
+    } catch (error) {
+      toast.error("Failed to clear browser cache");
+    } finally {
+      setCacheClearing(false);
+    }
+  };
+
+  const handleSendEmailTest = async (provider) => {
+    const normalizedEmail = testEmail.trim();
+    if (!normalizedEmail) {
+      toast.error("Enter a test email address first");
+      return;
+    }
+
+    setEmailTestSending((prev) => ({ ...prev, [provider]: true }));
+    try {
+      const endpoint = provider === "resend" ? "/admin/email-settings/test-resend" : "/admin/email-settings/test-smtp";
+      const res = await authAxios.post(endpoint, { email: normalizedEmail });
+      toast.success(res.data.message || "Test email sent successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to send test email");
+    } finally {
+      setEmailTestSending((prev) => ({ ...prev, [provider]: false }));
     }
   };
 
@@ -1066,81 +1128,125 @@ const AdminSettings = () => {
 
           {/* Security Tab */}
           <TabsContent value="security" className="mt-6">
-            <Card className="max-w-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="w-5 h-5" /> Change Password
-                </CardTitle>
-                <p className="text-sm text-slate-500">Update your admin account password.</p>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleChangePassword} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="current_password">Current Password</Label>
-                    <div className="relative">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" /> Admin Profile
+                  </CardTitle>
+                  <p className="text-sm text-slate-500">Update the display name shown across the admin panel.</p>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleUpdateAdminProfile} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="admin_name">Admin Name</Label>
                       <Input
-                        id="current_password"
-                        type={showPw.current ? "text" : "password"}
-                        value={pwForm.current_password}
-                        onChange={(e) => setPwForm(f => ({ ...f, current_password: e.target.value }))}
-                        required
-                        placeholder="Enter current password"
+                        id="admin_name"
+                        value={adminProfileForm.name}
+                        onChange={(e) => setAdminProfileForm({ name: e.target.value })}
+                        placeholder="Enter admin name"
                       />
-                      <button type="button" tabIndex={-1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}>
-                        {showPw.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
                     </div>
+                    <Button type="submit" disabled={profileSaving} className="w-full">
+                      {profileSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save Admin Name"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="w-5 h-5" /> Browser Cache
+                  </CardTitle>
+                  <p className="text-sm text-slate-500">Clear stale dashboard and API data stored in this browser.</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Use this if dashboard values look outdated after login. Login now also clears the app cache automatically.
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new_password">New Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="new_password"
-                        type={showPw.new ? "text" : "password"}
-                        value={pwForm.new_password}
-                        onChange={(e) => setPwForm(f => ({ ...f, new_password: e.target.value }))}
-                        required
-                        placeholder="At least 6 characters"
-                      />
-                      <button type="button" tabIndex={-1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        onClick={() => setShowPw(s => ({ ...s, new: !s.new }))}>
-                        {showPw.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirm_password">Confirm New Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="confirm_password"
-                        type={showPw.confirm ? "text" : "password"}
-                        value={pwForm.confirm_password}
-                        onChange={(e) => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
-                        required
-                        placeholder="Repeat new password"
-                      />
-                      <button type="button" tabIndex={-1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}>
-                        {showPw.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  {pwForm.new_password && pwForm.confirm_password && (
-                    <p className={`text-sm flex items-center gap-1 ${pwForm.new_password === pwForm.confirm_password ? "text-green-600" : "text-red-500"}`}>
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {pwForm.new_password === pwForm.confirm_password ? "Passwords match" : "Passwords do not match"}
-                    </p>
-                  )}
-                  <Button type="submit" disabled={pwLoading} className="w-full">
-                    {pwLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Changing...</> : <><Shield className="w-4 h-4 mr-2" /> Change Password</>}
+                  <Button type="button" onClick={handleClearBrowserCache} disabled={cacheClearing} className="w-full">
+                    {cacheClearing ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Clearing...</> : "Clear Browser Cache"}
                   </Button>
-                </form>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2 max-w-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lock className="w-5 h-5" /> Change Password
+                  </CardTitle>
+                  <p className="text-sm text-slate-500">Update your admin account password.</p>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleChangePassword} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="current_password">Current Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="current_password"
+                          type={showPw.current ? "text" : "password"}
+                          value={pwForm.current_password}
+                          onChange={(e) => setPwForm(f => ({ ...f, current_password: e.target.value }))}
+                          required
+                          placeholder="Enter current password"
+                        />
+                        <button type="button" tabIndex={-1}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}>
+                          {showPw.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new_password">New Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="new_password"
+                          type={showPw.new ? "text" : "password"}
+                          value={pwForm.new_password}
+                          onChange={(e) => setPwForm(f => ({ ...f, new_password: e.target.value }))}
+                          required
+                          placeholder="At least 6 characters"
+                        />
+                        <button type="button" tabIndex={-1}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          onClick={() => setShowPw(s => ({ ...s, new: !s.new }))}>
+                          {showPw.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm_password">Confirm New Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="confirm_password"
+                          type={showPw.confirm ? "text" : "password"}
+                          value={pwForm.confirm_password}
+                          onChange={(e) => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
+                          required
+                          placeholder="Repeat new password"
+                        />
+                        <button type="button" tabIndex={-1}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}>
+                          {showPw.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    {pwForm.new_password && pwForm.confirm_password && (
+                      <p className={`text-sm flex items-center gap-1 ${pwForm.new_password === pwForm.confirm_password ? "text-green-600" : "text-red-500"}`}>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {pwForm.new_password === pwForm.confirm_password ? "Passwords match" : "Passwords do not match"}
+                      </p>
+                    )}
+                    <Button type="submit" disabled={pwLoading} className="w-full">
+                      {pwLoading ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Changing...</> : <><Shield className="w-4 h-4 mr-2" /> Change Password</>}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Email API Tab */}
@@ -1270,6 +1376,42 @@ const AdminSettings = () => {
                         />
                       </div>
                     </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-4 space-y-4">
+                    <div>
+                      <p className="font-medium text-slate-900">Send Test Email</p>
+                      <p className="text-sm text-slate-500">Verify Resend and SMTP separately with the currently saved settings.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 items-end">
+                      <div className="space-y-2">
+                        <Label>Test Email Address</Label>
+                        <Input
+                          type="email"
+                          value={testEmail}
+                          onChange={(e) => setTestEmail(e.target.value)}
+                          placeholder="admin@example.com"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleSendEmailTest("resend")}
+                        disabled={emailTestSending.resend}
+                      >
+                        {emailTestSending.resend ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : "Send Resend Test"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleSendEmailTest("smtp")}
+                        disabled={emailTestSending.smtp}
+                      >
+                        {emailTestSending.smtp ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : "Send SMTP Test"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      If your SMTP server does not support AUTH, E-Bill will now skip SMTP login and still attempt delivery.
+                    </p>
                   </div>
                   <Button type="submit" disabled={emailSaving} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="save-email-btn">
                     {emailSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Saving...</> : "Save Email Settings"}

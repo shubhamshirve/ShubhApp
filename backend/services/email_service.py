@@ -98,10 +98,21 @@ class SMTPEmailService:
         message.add_alternative(html, subtype="html")
 
         with smtplib.SMTP(self.host, self.port, timeout=20) as smtp:
+            smtp.ehlo()
             if self.use_tls:
+                if not smtp.has_extn("starttls"):
+                    raise EmailServiceError("SMTP server does not support STARTTLS. Disable TLS or use a TLS-capable SMTP server.")
                 smtp.starttls()
+                smtp.ehlo()
             if self.username:
-                smtp.login(self.username, self.password)
+                if smtp.has_extn("auth"):
+                    smtp.login(self.username, self.password)
+                else:
+                    logger.warning(
+                        "SMTP server %s:%s does not advertise AUTH; continuing without SMTP login.",
+                        self.host,
+                        self.port,
+                    )
             smtp.send_message(message)
 
         return {"provider": "smtp"}
@@ -213,3 +224,31 @@ async def get_email_service_async():
         primary=_build_resend_service_from_settings(settings),
         fallback=_build_smtp_service_from_settings(settings),
     )
+
+
+async def get_email_providers_async():
+    """
+    Load and build the primary and fallback email providers using DB settings first
+    and environment variables as a fallback.
+    """
+    settings = {
+        "resend_api_key": os.environ.get("RESEND_API_KEY", ""),
+        "resend_from_email": os.environ.get("RESEND_FROM_EMAIL", ""),
+        "smtp_host": os.environ.get("SMTP_HOST", ""),
+        "smtp_port": os.environ.get("SMTP_PORT", "587"),
+        "smtp_username": os.environ.get("SMTP_USERNAME", ""),
+        "smtp_password": os.environ.get("SMTP_PASSWORD", ""),
+        "smtp_from_email": os.environ.get("SMTP_FROM_EMAIL", ""),
+        "smtp_use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
+    }
+    try:
+        doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
+        if doc:
+            settings.update(doc)
+    except Exception as exc:
+        logger.warning("Failed to load email settings from DB, falling back to env: %s", exc)
+
+    return {
+        "primary": _build_resend_service_from_settings(settings),
+        "fallback": _build_smtp_service_from_settings(settings),
+    }

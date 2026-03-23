@@ -36,6 +36,7 @@ import PublicInvoice from "./pages/PublicInvoice";
 
 // Theme Context
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { clearBrowserCache } from "./lib/browserCache";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 export const API = `${BACKEND_URL}/api`;
@@ -51,9 +52,10 @@ const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [features, setFeatures] = useState({});
 
-  const applyAccessToken = async (accessToken) => {
-    localStorage.setItem("token", accessToken);
-    setToken(accessToken);
+  const refreshCurrentUser = async (accessToken = token) => {
+    if (!accessToken) {
+      return null;
+    }
 
     const response = await axios.get(`${API}/auth/me`, {
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -61,6 +63,13 @@ const AuthProvider = ({ children }) => {
     setUser(response.data);
     await loadFeatures(accessToken, response.data.role);
     return response.data;
+  };
+
+  const applyAccessToken = async (accessToken) => {
+    await clearBrowserCache();
+    localStorage.setItem("token", accessToken);
+    setToken(accessToken);
+    return await refreshCurrentUser(accessToken);
   };
 
   const loadFeatures = async (tkn, role) => {
@@ -84,8 +93,8 @@ const AuthProvider = ({ children }) => {
           const response = await axios.get(`${API}/auth/me`, {
             headers: { Authorization: `Bearer ${storedToken}` }
           });
-          setUser(response.data);
           setToken(storedToken);
+          setUser(response.data);
           await loadFeatures(storedToken, response.data.role);
         } catch (error) {
           localStorage.removeItem("token");
@@ -163,7 +172,7 @@ const AuthProvider = ({ children }) => {
   );
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features, applyAccessToken }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features, applyAccessToken, refreshCurrentUser, clearBrowserCache }}>
       {children}
     </AuthContext.Provider>
   );

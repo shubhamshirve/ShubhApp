@@ -16,7 +16,7 @@ from models import (
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
-    ReminderSettingsUpdate, EmailSettingsUpdate,
+    ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
 )
 from utils import generate_id, hash_password, create_token
 from dependencies import require_admin, get_current_user
@@ -24,6 +24,7 @@ from audit import log_audit
 from sanitization import SanitizedModel, sanitize_filename, sanitize_text
 from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
+from services.email_service import EmailServiceError, get_email_providers_async
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -57,6 +58,53 @@ def _reschedule_platform_jobs(scheduler, settings: dict):
     for job_id, time_value in job_map.items():
         hour, minute = split_cron_time(time_value)
         scheduler.reschedule_job(job_id, trigger="cron", hour=hour, minute=minute)
+
+
+async def _send_email_settings_test(
+    *,
+    provider_key: str,
+    to_email: str,
+    current_user: dict,
+):
+    providers = await get_email_providers_async()
+    provider = providers.get(provider_key)
+    if not provider:
+        if provider_key == "primary":
+            raise HTTPException(status_code=400, detail="Resend is not configured. Please save Resend settings first.")
+        raise HTTPException(status_code=400, detail="SMTP fallback is not configured. Please save SMTP settings first.")
+
+    try:
+        result = await provider.send_email(
+            to_email=to_email,
+            subject=f"E-Bill {('Resend' if provider_key == 'primary' else 'SMTP')} test email",
+            text=(
+                "This is a test email from E-Bill admin settings. "
+                f"It was sent using {'Resend' if provider_key == 'primary' else 'SMTP fallback'}."
+            ),
+            html=(
+                "<p>This is a test email from <strong>E-Bill</strong> admin settings.</p>"
+                f"<p>Provider used: <strong>{'Resend' if provider_key == 'primary' else 'SMTP fallback'}</strong>.</p>"
+                f"<p>Requested by: <strong>{current_user.get('name', 'Admin')}</strong>.</p>"
+            ),
+        )
+    except EmailServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "test", "email_settings", None,
+        {
+            "provider": "resend" if provider_key == "primary" else "smtp",
+            "to_email": to_email,
+        },
+        ip_address=current_user.get("_ip_address")
+    )
+    return {
+        "message": f"Test email sent successfully via {'Resend' if provider_key == 'primary' else 'SMTP fallback'}",
+        "provider": result.get("provider", "unknown"),
+    }
 
 
 # ─── SaaS Plans ──────────────────────────────────────────────────────────────
@@ -1529,4 +1577,28 @@ async def update_email_settings(
         ip_address=current_user.get("_ip_address")
     )
     return {"message": "Email settings updated successfully"}
+
+
+@router.post("/email-settings/test-resend")
+async def send_resend_test_email(
+    data: EmailTestRequest,
+    current_user: dict = Depends(require_admin)
+):
+    return await _send_email_settings_test(
+        provider_key="primary",
+        to_email=data.email,
+        current_user=current_user,
+    )
+
+
+@router.post("/email-settings/test-smtp")
+async def send_smtp_test_email(
+    data: EmailTestRequest,
+    current_user: dict = Depends(require_admin)
+):
+    return await _send_email_settings_test(
+        provider_key="fallback",
+        to_email=data.email,
+        current_user=current_user,
+    )
 

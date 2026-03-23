@@ -41,7 +41,10 @@ React frontend for the E-Bill platform.
 - operator settings no longer expose payment gateway key configuration
 - cron timing and email settings pages now reload saved values correctly after refresh
 - automatic backups now appear in the backup list after the job completes
-- next frontend scope is admin-assigned payment gateway keys and removal of operator-side gateway settings
+- admin/operator settings now expose cache-clear controls and auto-clear on login/session switch
+- admin settings now allow updating the admin display name
+- email settings now include Resend and SMTP test mail actions
+- SMTP fallback now tolerates servers without AUTH support
 
 ## Scripts
 

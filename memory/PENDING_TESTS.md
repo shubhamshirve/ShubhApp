@@ -2,14 +2,15 @@
 
 ## High Priority
 
-### Next Requested Batch
-- Verify the new cache clear action removes stale dashboard data after login.
-- Verify changing the admin name persists and reflects in the admin UI after refresh/login.
+### V7.14-12 Cache / Admin / Email Validation
+- Verify cache-clear tools remove stale dashboard data after login/session switch.
+- Verify service worker no longer caches `/api` responses.
+- Verify admin display-name changes persist and surface in the UI after refresh/login.
 - Verify Resend test mail works from admin settings.
-- Verify fallback SMTP test mail works from admin settings.
-- Verify non-auth SMTP servers work without triggering `SMTP AUTH extension not supported by server`.
+- Verify SMTP test mail works from admin settings.
+- Verify SMTP fallback succeeds when the server does not advertise `AUTH`.
 
-### V7.14-11 Metadata / PWA Validation
+### Next Requested Batch
 - Verify homepage source contains canonical, Open Graph, Twitter card, and JSON-LD metadata.
 - Test link preview output using WhatsApp, Facebook Sharing Debugger, LinkedIn Post Inspector, and X Card Validator.
 - Verify `manifest.json` loads correctly and install icons render properly.

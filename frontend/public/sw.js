@@ -1,5 +1,6 @@
-const CACHE_NAME = "ebill-shell-v1";
+const CACHE_NAME = "ebill-shell-v2";
 const APP_SHELL = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const STATIC_ASSET_PATTERN = /\.(?:js|css|png|jpg|jpeg|svg|gif|webp|ico|woff2?)$/i;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -19,6 +20,22 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CLEAR_EBILL_CACHE") {
+    return;
+  }
+
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith("ebill-"))
+          .map((key) => caches.delete(key))
+      )
+    )
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") {
@@ -30,10 +47,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (url.pathname.startsWith("/api/")) {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(() => caches.match("/"))
     );
+    return;
+  }
+
+  const isStaticShellRequest = APP_SHELL.includes(url.pathname);
+  const isStaticAssetRequest = STATIC_ASSET_PATTERN.test(url.pathname);
+  if (!isStaticShellRequest && !isStaticAssetRequest) {
     return;
   }
 

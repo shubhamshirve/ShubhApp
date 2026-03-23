@@ -549,6 +549,10 @@ class EmailSettingsUpdate(SanitizedModel):
     smtp_use_tls: bool = True
 
 
+class EmailTestRequest(SanitizedModel):
+    email: EmailStr
+
+
 class AdminPaymentGatewayConfig(SanitizedModel):
     _unsanitized_fields = {"api_secret", "webhook_secret"}
     gateway_type: str  # razorpay, cashfree, phonepe

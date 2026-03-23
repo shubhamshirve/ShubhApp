@@ -2,6 +2,26 @@
 
 ## 2026-03-24
 
+### V7.14-12: Cache Clearing, Admin Profile, and Email Test Actions
+
+#### Cache Management
+- Added cache-clear tools in admin and operator settings for clearing stale dashboard data.
+- Login/session switching now automatically clears browser/app cache.
+- Service worker caching no longer stores `/api` responses.
+
+#### Admin Profile
+- Admin settings now allow changing the admin display name.
+
+#### Email Testing and SMTP Compatibility
+- Email settings now support Resend test mail actions.
+- Email settings now support SMTP test mail actions.
+- SMTP fallback now skips login when the server does not advertise `AUTH`.
+
+#### Validation
+- Browser refresh/login cache behavior verified in the UI flow.
+- Resend and SMTP test-email flows now have validation coverage.
+- SMTP servers without AUTH support are tracked for fallback verification.
+
 ### Pre-Task Documentation Sync
 - Refreshed docs on `V7.14-11` before starting the next cache/admin-profile/email task batch.
 - Captured the next requested scope:

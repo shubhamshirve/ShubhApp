@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-11`
-**Latest Feature Branch:** `V7.14-11`
+**Active Branch:** `V7.14-12`
+**Latest Feature Branch:** `V7.14-12`
 
 ---
 
@@ -32,7 +32,11 @@ The codebase now includes:
 - email settings now reload the latest saved values after save/refresh
 - admin can assign payment gateway keys directly to operators
 - operator settings no longer expose payment gateway configuration
-- next requested scope is cache clearing, admin-name updates, and email test tooling
+- browser cache clear tools now exist in admin/operator settings
+- login/session switching now clears stale cache automatically
+- admin display-name changes are supported from settings
+- Resend and SMTP test mail actions are available
+- SMTP fallback now tolerates servers without AUTH support
 
 ---
 
@@ -68,6 +72,27 @@ Implemented behavior:
 - Admin can assign payment gateway credentials to specific operators from the admin settings dialog.
 - Operator payment gateway configuration is now admin-managed and removed from the operator panel.
 
+### V7.14-12 Changes
+
+Primary files:
+- [frontend/src/App.js](/d:/eBill/frontend/src/App.js)
+- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+- [frontend/src/pages/operator/Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
+- [frontend/public/sw.js](/d:/eBill/frontend/public/sw.js)
+- [frontend/src/lib/browserCache.js](/d:/eBill/frontend/src/lib/browserCache.js)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/routers/auth.py](/d:/eBill/backend/routers/auth.py)
+- [backend/services/email_service.py](/d:/eBill/backend/services/email_service.py)
+- [backend/models.py](/d:/eBill/backend/models.py)
+
+Implemented behavior:
+- Added browser/app cache clear actions in admin and operator settings.
+- Automatically clears browser/app cache when login state changes or sessions switch.
+- Service worker no longer caches `/api` responses.
+- Admin settings now allow changing the admin display name.
+- Email settings now include Resend test mail and SMTP test mail actions.
+- SMTP fallback now skips login when `AUTH` is not offered by the server.
+
 ---
 
 ## Validation Completed Locally
@@ -90,12 +115,15 @@ Highest-value remaining checks:
 - continue VPS scheduler and email fallback verification from `V7.14-10`
 - verify settings save/reload and backup list refresh behavior in a deployed environment
 - verify admin-assigned operator gateway keys work for subscriber payment links
+- verify cache clear behavior across login/session switches
+- verify admin display-name updates persist after refresh/login
+- verify Resend and SMTP test mail actions against live providers
 
 ---
 
 ## Current Documentation State
 
-The following files were refreshed on `V7.14-11`:
+The following files were refreshed on `V7.14-12`:
 - [README.md](/d:/eBill/README.md)
 - [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
 - [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
@@ -108,14 +136,13 @@ The following files were refreshed on `V7.14-11`:
 
 ## Recommended Next Work
 
-1. Add UI/browser cache clearing for stale dashboard data.
-2. Allow admin name updates.
-3. Add Resend and fallback SMTP test mail actions and smooth non-AUTH SMTP behavior.
-4. Continue payment receipt and messaging improvements.
+1. Continue payment receipt and messaging improvements.
+2. Verify cache clearing, admin-name updates, and email test tooling in a live environment.
+3. Keep refining operator/admin gateway workflows where needed.
 
 ---
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-11`
-- Feature baseline under docs branch: `V7.14-11`
+- Current branch: `V7.14-12`
+- Feature baseline under docs branch: `V7.14-12`

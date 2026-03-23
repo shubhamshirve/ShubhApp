@@ -82,6 +82,10 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - admin settings and email settings refresh persisted values after save
 - auto-backup runs surface in the backup list after completion
 - admin profile/name management
+- browser/app cache clear tools for admin and operator dashboards
+- automatic cache clear on login/session switch
+- Resend and SMTP test mail actions
+- SMTP fallback compatibility when `AUTH` is unavailable
 
 ### Discovery and Distribution
 - SEO-ready homepage metadata
@@ -160,3 +164,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-9` scheduler reliability fix
 - `V7.14-10` app title, email fallback, and cron settings delivery
 - `V7.14-11` metadata, previews, and web app installability delivery
+- `V7.14-12` cache clearing, admin profile, and email test tooling delivery

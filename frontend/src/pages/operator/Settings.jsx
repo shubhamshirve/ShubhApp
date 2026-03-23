@@ -27,13 +27,15 @@ import {
   Palette,
   Loader2,
   Upload,
+  Database,
 } from "lucide-react";
 
 const OperatorSettings = () => {
-  const { authAxios } = useAuth();
+  const { authAxios, clearBrowserCache } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [cacheClearing, setCacheClearing] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
 
   // Theme state
@@ -186,6 +188,19 @@ const OperatorSettings = () => {
     }
   };
 
+  const handleClearBrowserCache = async () => {
+    setCacheClearing(true);
+    try {
+      await clearBrowserCache();
+      toast.success("Browser cache cleared. Reloading fresh data...");
+      window.setTimeout(() => window.location.reload(), 200);
+    } catch (error) {
+      toast.error("Failed to clear browser cache");
+    } finally {
+      setCacheClearing(false);
+    }
+  };
+
   const handleInvoiceLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -231,6 +246,22 @@ const OperatorSettings = () => {
   return (
     <OperatorLayout title="Settings" isReadOnly={isReadOnly}>
       <div className="max-w-4xl animate-fade-in">
+        <Card className="mb-6 border-amber-200 bg-amber-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Database className="w-5 h-5 text-amber-700" />
+              Browser Cache
+            </CardTitle>
+            <CardDescription>
+              Clear stale dashboard data stored in this browser. Login now also clears the app cache automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" onClick={handleClearBrowserCache} disabled={cacheClearing}>
+              {cacheClearing ? "Clearing..." : "Clear Browser Cache"}
+            </Button>
+          </CardContent>
+        </Card>
         <Tabs defaultValue="profile" className="space-y-6">
           <TabsList>
             <TabsTrigger value="profile" data-testid="tab-profile">

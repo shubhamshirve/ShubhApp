@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-11`
-- Latest feature and fix delivery implemented through `V7.14-11`
+- Documentation updated for branch line `V7.14-12`
+- Latest feature and fix delivery implemented through `V7.14-12`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP
@@ -22,12 +22,11 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - email settings refresh correctly after save/reload
   - admin can assign payment gateway keys directly to operators
   - operator-side payment gateway settings removed from the panel
-
-## Next Requested Work
-
-- add a UI/browser cache clear method so users can clear stale dashboard data
-- allow changing the admin user's display name
-- improve email delivery fallback/testing, including test mail actions for Resend and SMTP fallback
+  - browser and app cache clear tools in admin/operator settings
+  - automatic cache clear on login/session switch
+  - admin display-name edits from settings
+  - Resend and SMTP test mail actions
+  - SMTP fallback compatibility when AUTH is unavailable
 
 ## Architecture
 
@@ -90,6 +89,10 @@ d:\eBill
 - richer homepage metadata for search and link previews
 - installable web app support for supported browsers/devices
 - admin-managed operator payment gateway assignment
+- browser cache clear tools and stale-cache protection on login/session switch
+- admin display-name management
+- email test actions for Resend and SMTP fallback
+- SMTP fallback compatibility for servers without AUTH support
 
 ## Recent Functional Changes
 
@@ -124,6 +127,14 @@ d:\eBill
 - Saving cron settings reschedules APScheduler jobs immediately, and invoice generation now respects the configured `auto_invoice_days_before` value during cron/manual runs.
 - Saved cron and email settings now reload the current persisted values in the UI after refresh.
 - Auto-generated backup jobs now appear in the backup list after completion.
+
+### Cache, Admin Profile, and Email Testing
+- Admin and operator settings now include cache-clear tools for refreshing stale dashboard data.
+- Login/session switching now clears browser/app cache automatically.
+- Service worker caching no longer stores `/api` responses.
+- Admins can update the admin display name from settings.
+- Email settings now support sending test mail through Resend and SMTP fallback.
+- SMTP fallback now skips login when the server does not advertise `AUTH`.
 
 ### SEO and Installable Web App
 - The app shell now includes stronger SEO metadata in `frontend/public/index.html`.
