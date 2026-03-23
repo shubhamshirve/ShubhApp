@@ -16,6 +16,12 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - Resend email fallback via SMTP/local transport support
   - admin-configurable cron timings in settings
 
+## Next Requested Work
+
+- improve `frontend/public/index.html` with richer SEO metadata and schema
+- improve social/link preview metadata for shared URLs
+- add installable web app support so the site can prompt for add-to-home-screen / install
+
 ## Architecture
 
 ```text

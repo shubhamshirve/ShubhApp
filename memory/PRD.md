@@ -134,6 +134,7 @@ The scheduler now uses `Asia/Kolkata`, with admin-editable default times.
 
 ## Current Gaps / Next Product Work
 
+- richer homepage metadata, social previews, and installable web app polish
 - dedicated payment receipt generation and delivery
 - broader email + WhatsApp confirmation workflows
 - richer import/export coverage

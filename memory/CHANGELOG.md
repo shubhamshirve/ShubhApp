@@ -2,6 +2,13 @@
 
 ## 2026-03-24
 
+### Pre-Task Documentation Sync
+- Refreshed docs on `V7.14-10` before starting the next requested UI/platform shell update.
+- Captured the next requested scope:
+  - richer SEO metadata in `frontend/public/index.html`
+  - better social/link preview metadata
+  - installable web app support for add-to-home-screen / install prompts
+
 ### V7.14-10: App Title, Email Fallback, and Configurable Cron Timings
 
 #### Release Workflow

@@ -94,10 +94,10 @@ The following files were refreshed on `V7.14-10`:
 
 ## Recommended Next Work
 
-1. Deploy and verify `V7.14-10` on VPS.
-2. Build payment receipt generation and delivery.
-3. Expand payment confirmations through email/WhatsApp.
-4. Continue messaging and reporting polish.
+1. Add richer SEO/social preview metadata to `frontend/public/index.html`.
+2. Add installable web app support with manifest/service worker wiring.
+3. Deploy and verify `V7.14-10` on VPS.
+4. Continue payment receipt and messaging improvements.
 
 ---
 

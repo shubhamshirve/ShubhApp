@@ -100,6 +100,9 @@
 
 ## Next Requested Batch
 
+- Verify homepage/link preview metadata on WhatsApp, LinkedIn, Facebook, and X preview tools.
+- Verify JSON-LD/schema markup is present in the built page source.
+- Verify manifest and service worker allow install prompt or add-to-home-screen behavior on supported browsers/devices.
 - Payment receipt generation and delivery flow
 - Messaging/reporting polish
 - Import/export refinement

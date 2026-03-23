@@ -35,6 +35,7 @@ What is still mostly pending:
 - broader messaging improvements
 - import/export polishing
 - advanced reporting and reconciliation work
+- public metadata / SEO / web app installability polish
 
 ---
 

@@ -35,6 +35,7 @@ React frontend for the E-Bill platform.
 - admin settings now allow editing cron times in IST for backup, expiry, invoice, wallet, and reminder jobs
 - admin email settings now support Resend plus SMTP fallback configuration
 - backend cron scheduler was hardened in `V7.14-9` for VPS reliability; check backend logs for scheduled job registration lines after deploy
+- next requested frontend-visible work is SEO/social preview metadata plus installable web app support
 
 ## Scripts
 
