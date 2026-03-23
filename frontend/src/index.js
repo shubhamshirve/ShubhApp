@@ -19,3 +19,11 @@ root.render(
     <App />
   </React.StrictMode>,
 );
+
+if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Ignore registration failures so the app still loads normally.
+    });
+  });
+}

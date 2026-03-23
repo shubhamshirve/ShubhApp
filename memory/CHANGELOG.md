@@ -2,12 +2,36 @@
 
 ## 2026-03-24
 
-### Pre-Task Documentation Sync
-- Refreshed docs on `V7.14-10` before starting the next requested UI/platform shell update.
-- Captured the next requested scope:
-  - richer SEO metadata in `frontend/public/index.html`
-  - better social/link preview metadata
-  - installable web app support for add-to-home-screen / install prompts
+### V7.14-11: SEO Metadata, Link Previews, and PWA Installability
+
+#### Release Workflow
+- Synced documentation on `V7.14-10`, pushed that branch, then created `V7.14-11` for the metadata and installability update.
+
+#### Frontend Metadata
+- Enriched `frontend/public/index.html` with:
+  - canonical URL
+  - improved description and keyword metadata
+  - Open Graph tags
+  - Twitter card tags
+  - Apple/mobile web app capability tags
+  - theme and tile color metadata
+- Added JSON-LD schema for:
+  - `Organization`
+  - `SoftwareApplication`
+
+#### PWA / Install Support
+- Added `frontend/public/manifest.json`.
+- Added install icons:
+  - `frontend/public/icon-192.png`
+  - `frontend/public/icon-512.png`
+  - `frontend/public/apple-touch-icon.png`
+- Added `frontend/public/sw.js` for lightweight caching and installability support.
+- Registered the service worker in production from `frontend/src/index.js`.
+- This enables supported browsers/devices to show add-to-home-screen or install UI when deployed over HTTPS.
+
+#### Validation
+- `npm run build` passed in `frontend/`.
+- Existing frontend `react-hooks/exhaustive-deps` warnings remain, but build output succeeded.
 
 ### V7.14-10: App Title, Email Fallback, and Configurable Cron Timings
 
@@ -67,6 +91,7 @@
 - Documentation alignment prepared on `V7.14-8`
 - Created and pushed `V7.14-9` for the VPS cron fix
 - Created and pushed `V7.14-10` for title, email fallback, and configurable cron timings
+- Created and pushed `V7.14-11` for SEO metadata and installable web app support
 
 ### V7.14-7: Single Session, Recovery, and Invoice Control
 

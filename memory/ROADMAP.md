@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-10`
+Latest shipped functional branch: `V7.14-11`
 
 What is now live in code:
 - single active session per user
@@ -29,13 +29,14 @@ What is now live in code:
 - app title update to `E-Bill | Invoice Automation Software`
 - Resend plus SMTP fallback email delivery
 - admin-configurable cron timings with live scheduler reschedule
+- richer SEO metadata and social preview tags
+- installable web app support via manifest and service worker
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
 - broader messaging improvements
 - import/export polishing
 - advanced reporting and reconciliation work
-- public metadata / SEO / web app installability polish
 
 ---
 
@@ -152,6 +153,8 @@ These are implemented in code but still need more manual/live verification in so
 - provider-backed OTP delivery using valid email credentials
 - Resend-to-SMTP fallback email delivery with valid credentials
 - admin cron-setting persistence and live scheduler reschedule behavior
+- link previews across social/messaging platforms
+- install prompt/add-to-home-screen behavior on supported browsers
 - public payment and branded PDF/print receipt consistency
 
 Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
@@ -160,7 +163,7 @@ Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PE
 
 ## Recommended Next Execution Order
 
-1. Verify `V7.14-10` flows in browser and with real/test providers.
+1. Verify `V7.14-11` flows in browser and with real/test providers.
 2. Build payment receipt generation on top of the new stored payment metadata.
 3. Expand confirmation delivery through WhatsApp/email.
 4. Finish messaging/reporting polish.

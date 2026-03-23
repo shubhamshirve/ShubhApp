@@ -2,6 +2,13 @@
 
 ## High Priority
 
+### V7.14-11 Metadata / PWA Validation
+- Verify homepage source contains canonical, Open Graph, Twitter card, and JSON-LD metadata.
+- Test link preview output using WhatsApp, Facebook Sharing Debugger, LinkedIn Post Inspector, and X Card Validator.
+- Verify `manifest.json` loads correctly and install icons render properly.
+- Verify service worker registers in production and app can be installed on supported Chrome/Edge/Android browsers.
+- Verify add-to-home-screen behavior on mobile and install button visibility on desktop Chromium browsers over HTTPS.
+
 ### V7.14-10 Delivery Validation
 - Verify the browser tab title shows `E-Bill | Invoice Automation Software`.
 - In admin settings, save new cron times and confirm they persist after page reload.
@@ -100,9 +107,6 @@
 
 ## Next Requested Batch
 
-- Verify homepage/link preview metadata on WhatsApp, LinkedIn, Facebook, and X preview tools.
-- Verify JSON-LD/schema markup is present in the built page source.
-- Verify manifest and service worker allow install prompt or add-to-home-screen behavior on supported browsers/devices.
 - Payment receipt generation and delivery flow
 - Messaging/reporting polish
 - Import/export refinement

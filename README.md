@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-10`
-- Latest feature and fix delivery implemented through `V7.14-10`
+- Documentation updated for branch line `V7.14-11`
+- Latest feature and fix delivery implemented through `V7.14-11`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP
@@ -15,12 +15,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - app title updated to `E-Bill | Invoice Automation Software`
   - Resend email fallback via SMTP/local transport support
   - admin-configurable cron timings in settings
-
-## Next Requested Work
-
-- improve `frontend/public/index.html` with richer SEO metadata and schema
-- improve social/link preview metadata for shared URLs
-- add installable web app support so the site can prompt for add-to-home-screen / install
+  - richer SEO metadata, Open Graph, Twitter cards, and schema markup
+  - installable web app support with manifest, icons, and service worker
 
 ## Architecture
 
@@ -80,6 +76,8 @@ d:\eBill
 - WhatsApp notifications and reminders
 - support tickets, audit logs, backups, discount codes, referral wallet flows
 - Resend email delivery with SMTP fallback support
+- richer homepage metadata for search and link previews
+- installable web app support for supported browsers/devices
 
 ## Recent Functional Changes
 
@@ -112,6 +110,13 @@ d:\eBill
   - wallet checks
   - reminder processing
 - Saving cron settings reschedules APScheduler jobs immediately, and invoice generation now respects the configured `auto_invoice_days_before` value during cron/manual runs.
+
+### SEO and Installable Web App
+- The app shell now includes stronger SEO metadata in `frontend/public/index.html`.
+- Added Open Graph and Twitter metadata so shared links have better preview titles, descriptions, and images.
+- Added schema markup for `Organization` and `SoftwareApplication`.
+- Added a web app manifest, install icons, Apple touch icon, and a lightweight service worker.
+- Supported browsers can now show add-to-home-screen or install UI when served over HTTPS.
 
 ## Scheduled Jobs
 

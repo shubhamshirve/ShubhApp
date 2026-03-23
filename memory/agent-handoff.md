@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-10`
-**Latest Feature Branch:** `V7.14-10`
+**Active Branch:** `V7.14-11`
+**Latest Feature Branch:** `V7.14-11`
 
 ---
 
@@ -25,6 +25,8 @@ The codebase now includes:
 - app title update to `E-Bill | Invoice Automation Software`
 - Resend email delivery with SMTP fallback
 - admin-configurable cron timings with live scheduler reschedule
+- richer SEO/Open Graph/Twitter/schema metadata
+- installable web app support with manifest, icons, and service worker
 
 ---
 
@@ -36,30 +38,30 @@ The codebase now includes:
 - `V7.14-8` is the documentation update branch based on `V7.14-7`
 - `V7.14-9` is the scheduler reliability fix branch based on `V7.14-8`
 - `V7.14-10` is the title, email fallback, and cron-settings branch based on `V7.14-9`
+- `V7.14-11` is the metadata and installable web app branch based on `V7.14-10`
 
-### V7.14-10 Changes
+### V7.14-11 Changes
 
 Primary files:
 - [frontend/public/index.html](/d:/eBill/frontend/public/index.html)
-- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
-- [backend/services/email_service.py](/d:/eBill/backend/services/email_service.py)
-- [backend/services/scheduler_settings.py](/d:/eBill/backend/services/scheduler_settings.py)
-- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
-- [backend/server.py](/d:/eBill/backend/server.py)
-- [backend/server.py](/d:/eBill/backend/server.py)
+- [frontend/public/manifest.json](/d:/eBill/frontend/public/manifest.json)
+- [frontend/public/sw.js](/d:/eBill/frontend/public/sw.js)
+- [frontend/public/icon-192.png](/d:/eBill/frontend/public/icon-192.png)
+- [frontend/public/icon-512.png](/d:/eBill/frontend/public/icon-512.png)
+- [frontend/public/apple-touch-icon.png](/d:/eBill/frontend/public/apple-touch-icon.png)
+- [frontend/src/index.js](/d:/eBill/frontend/src/index.js)
 
 Implemented behavior:
-- Updated the browser title to the requested product name.
-- Added Resend-first email delivery with SMTP fallback support.
-- Added SMTP credentials to admin settings and env templates.
-- Added admin-configurable cron timing fields and live job rescheduling on save.
-- Updated invoice-generation cron/manual triggers to use the configured advance-day value.
+- Added richer SEO metadata, canonical tags, Open Graph tags, and Twitter card tags.
+- Added JSON-LD schema markup for organization and software application identity.
+- Added web app manifest and install icons.
+- Added lightweight service worker registration for installability support.
+- Enabled supported browsers to surface install/add-to-home-screen UI on deployed HTTPS builds.
 
 ---
 
 ## Validation Completed Locally
 
-- `python -m py_compile backend\models.py backend\routers\admin.py backend\services\cron_service.py backend\services\email_service.py backend\services\scheduler_settings.py backend\server.py`
 - `npm run build` in `frontend/`
 
 Build result:
@@ -72,16 +74,16 @@ Build result:
 See [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md) for the live list.
 
 Highest-value remaining checks:
-- deploy `V7.14-10` to VPS and verify scheduler registration logs on startup
-- verify cron-setting changes update next-run times cleanly on the running VPS
-- verify Resend failure falls back to SMTP with real credentials
-- verify cron jobs actually fire on VPS
+- validate social previews against live `https://e-bill.in/`
+- verify manifest/service worker behavior on production HTTPS
+- verify install/add-to-home-screen UI appears on supported browsers/devices
+- continue VPS scheduler and email fallback verification from `V7.14-10`
 
 ---
 
 ## Current Documentation State
 
-The following files were refreshed on `V7.14-10`:
+The following files were refreshed on `V7.14-11`:
 - [README.md](/d:/eBill/README.md)
 - [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
 - [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
@@ -96,12 +98,12 @@ The following files were refreshed on `V7.14-10`:
 
 1. Add richer SEO/social preview metadata to `frontend/public/index.html`.
 2. Add installable web app support with manifest/service worker wiring.
-3. Deploy and verify `V7.14-10` on VPS.
+3. Deploy and verify `V7.14-11` on VPS.
 4. Continue payment receipt and messaging improvements.
 
 ---
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-10`
-- Feature baseline under docs branch: `V7.14-10`
+- Current branch: `V7.14-11`
+- Feature baseline under docs branch: `V7.14-11`

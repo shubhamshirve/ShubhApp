@@ -1,0 +1,34 @@
+{
+  "name": "E-Bill | Invoice Automation Software",
+  "short_name": "E-Bill",
+  "description": "Invoice automation software for recurring billing, GST and non-GST invoicing, payment reminders, and operator billing workflows.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#0e6098",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/ebill-logo.png",
+      "sizes": "2120x1984",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "E-Bill platform branding"
+    }
+  ]
+}

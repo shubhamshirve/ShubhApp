@@ -77,6 +77,13 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - backup and restore
 - support tickets
 - Resend email delivery with SMTP fallback transport support
+- installable web app support through manifest and service worker
+
+### Discovery and Distribution
+- SEO-ready homepage metadata
+- Open Graph and Twitter preview metadata for shared links
+- JSON-LD schema for organization and software application identity
+- install icons and mobile web app metadata for add-to-home-screen behavior
 
 ## Scheduled Jobs
 
@@ -148,3 +155,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-8` documentation alignment
 - `V7.14-9` scheduler reliability fix
 - `V7.14-10` app title, email fallback, and cron settings delivery
+- `V7.14-11` metadata, previews, and web app installability delivery
