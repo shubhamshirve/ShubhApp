@@ -51,6 +51,18 @@ const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [features, setFeatures] = useState({});
 
+  const applyAccessToken = async (accessToken) => {
+    localStorage.setItem("token", accessToken);
+    setToken(accessToken);
+
+    const response = await axios.get(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    setUser(response.data);
+    await loadFeatures(accessToken, response.data.role);
+    return response.data;
+  };
+
   const loadFeatures = async (tkn, role) => {
     if (role === "operator" || role === "staff") {
       try {
@@ -116,20 +128,14 @@ const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });
     const { access_token, user: userData } = response.data;
-    localStorage.setItem("token", access_token);
-    setToken(access_token);
-    setUser(userData);
-    await loadFeatures(access_token, userData.role);
+    await applyAccessToken(access_token);
     return userData;
   };
 
   const register = async (data) => {
     const response = await axios.post(`${API}/auth/register`, data);
     const { access_token, user: userData } = response.data;
-    localStorage.setItem("token", access_token);
-    setToken(access_token);
-    setUser(userData);
-    await loadFeatures(access_token, userData.role);
+    await applyAccessToken(access_token);
     return userData;
   };
 
@@ -157,7 +163,7 @@ const AuthProvider = ({ children }) => {
   );
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features, applyAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

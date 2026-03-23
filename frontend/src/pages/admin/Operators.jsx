@@ -80,7 +80,7 @@ const BUSINESS_TYPES = [
 ];
 
 const AdminOperators = () => {
-  const { authAxios, login } = useAuth();
+  const { authAxios, applyAccessToken } = useAuth();
   const navigate = useNavigate();
   const [operators, setOperators] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -353,7 +353,7 @@ const AdminOperators = () => {
     try {
       const response = await authAxios.post(`/admin/operators/${operator.id}/impersonate`);
       const { access_token } = response.data;
-      localStorage.setItem("token", access_token);
+      await applyAccessToken(access_token);
       localStorage.setItem("impersonating", "true");
       window.location.href = "/operator";
     } catch (error) {
