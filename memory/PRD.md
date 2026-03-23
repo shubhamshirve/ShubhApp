@@ -81,6 +81,7 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - installable web app support through manifest and service worker
 - admin settings and email settings refresh persisted values after save
 - auto-backup runs surface in the backup list after completion
+- admin profile/name management
 
 ### Discovery and Distribution
 - SEO-ready homepage metadata

@@ -3,6 +3,13 @@
 ## 2026-03-24
 
 ### Pre-Task Documentation Sync
+- Refreshed docs on `V7.14-11` before starting the next cache/admin-profile/email task batch.
+- Captured the next requested scope:
+  - clear browser/app cache from the UI to address stale dashboard data after login
+  - allow changing the admin name
+  - add test mail actions for Resend and fallback email settings
+
+### Pre-Task Documentation Sync
 - Refreshed docs on `V7.14-11` before starting the next gateway-management feature batch.
 - Captured the next requested scope:
   - admin can assign payment gateway keys directly to an operator from the admin dialog

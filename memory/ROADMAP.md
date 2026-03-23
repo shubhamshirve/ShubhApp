@@ -80,6 +80,16 @@ What is still mostly pending:
 - allow admins to assign payment gateway keys directly to an operator from the admin dialog
 - remove operator-side payment gateway settings from the operator UI
 
+### 2C. Cache Refresh and Admin Email Tooling
+- Status: `requested`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `S-M`
+- Scope:
+  - add a UI path to clear cached browser/app data
+  - allow admin name updates
+  - add test email actions for Resend and fallback SMTP
+
 ### 2A. Delivery Reliability and Scheduler Configuration
 - Status: `completed`
 - Priority: `P1`

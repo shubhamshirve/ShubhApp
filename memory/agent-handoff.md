@@ -32,6 +32,7 @@ The codebase now includes:
 - email settings now reload the latest saved values after save/refresh
 - admin can assign payment gateway keys directly to operators
 - operator settings no longer expose payment gateway configuration
+- next requested scope is cache clearing, admin-name updates, and email test tooling
 
 ---
 
@@ -107,10 +108,10 @@ The following files were refreshed on `V7.14-11`:
 
 ## Recommended Next Work
 
-1. Deploy and verify `V7.14-11` on VPS.
-2. Validate admin-assigned operator gateway flows end-to-end.
-3. Continue payment receipt and messaging improvements.
-4. Revisit deeper reporting/import-export work.
+1. Add UI/browser cache clearing for stale dashboard data.
+2. Allow admin name updates.
+3. Add Resend and fallback SMTP test mail actions and smooth non-AUTH SMTP behavior.
+4. Continue payment receipt and messaging improvements.
 
 ---
 

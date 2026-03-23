@@ -25,8 +25,9 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Next Requested Work
 
-- allow admins to assign payment gateway keys directly to an operator from the admin dialog
-- remove operator-side payment gateway settings from the operator UI
+- add a UI/browser cache clear method so users can clear stale dashboard data
+- allow changing the admin user's display name
+- improve email delivery fallback/testing, including test mail actions for Resend and SMTP fallback
 
 ## Architecture
 
