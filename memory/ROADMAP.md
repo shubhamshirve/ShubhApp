@@ -32,6 +32,7 @@ What is still mostly pending:
 - broader messaging improvements
 - import/export polishing
 - advanced reporting and reconciliation work
+- configurable scheduler settings and delivery fallback hardening
 
 ---
 
@@ -60,6 +61,16 @@ What is still mostly pending:
   - send announcements by email in addition to WhatsApp where configured
   - review message template consistency across reminders, invoices, and confirmations
   - hide GST-specific reporting UX where operator GST is not enabled
+
+### 2A. Delivery Reliability and Scheduler Configuration
+- Status: `requested`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `M`
+- Scope:
+  - change app/browser title to the requested product wording
+  - add fallback mail delivery when Resend API fails
+  - expose cron timing configuration in admin settings
 
 ### 3. Import/Export Enhancements
 - Status: `planned`

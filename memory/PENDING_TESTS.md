@@ -14,7 +14,7 @@
 - Trigger or wait for at least one scheduled run and verify success/error logging appears in backend logs.
 - Confirm jobs execute on VPS time according to configured `Asia/Kolkata` schedule handling.
 
-### Single Session Enforcement
+### Single Session Enforcement - CHECKED & WORKING
 - Log in with the same operator account in browser A and browser B.
 - Confirm browser A is forced out after browser B logs in.
 - Confirm the old browser/session is rejected by API on next request.
@@ -30,14 +30,14 @@
 - Confirm API rejects non-email recovery method requests.
 - Live test email OTP send, verify, resend, and reset with valid Resend credentials.
 
-## Invoice Workflow Validation
+## Invoice Workflow Validation - CHECKED & WORKING
 
-### Pending Invoice Editing
+### Pending Invoice Editing - CHECKED & WORKING
 - Edit a pending invoice with one line item and confirm totals remain correct.
 - Edit a pending multi-line invoice and confirm item updates persist.
 - Edit subscriber, due date, and service periods, then reload invoice list and public invoice.
 
-### Mark Paid Confirmation
+### Mark Paid Confirmation - CHECKED & WORKING
 - Mark a pending invoice as paid using each payment mode:
   - Cash
   - Own UPI
@@ -51,7 +51,7 @@
 - Cancel a paid invoice as admin and confirm it succeeds.
 - Confirm cancelled invoice state is reflected consistently after admin action.
 
-### Public Payment Regression
+### Public Payment Regression - CHECKED & WORKING
 - Pay an invoice through the public online route and confirm `payment_mode` is stored as `online`.
 - Verify public payment route still works with invoice-number URLs and legacy fallback URLs.
 
@@ -68,17 +68,17 @@
 - Manual banner visibility verification
 - Manual cron skip verification while maintenance mode is enabled
 
-### Invoice Branding and Public Invoice Consistency
+### Invoice Branding and Public Invoice Consistency - CHECKED & WORKING
 - Manual logo upload and visibility-toggle verification
 - Public invoice branding/address/payment-state verification
 - PDF/print verification for branding parity and invoice metadata
 
-### Multi-Plan Subscribers and Multi-Line Invoices
+### Multi-Plan Subscribers and Multi-Line Invoices - CHECKED & WORKING
 - Manual creation of subscriber with multiple plans on different billing dates
 - Manual creation of a multi-line invoice
 - Automated billing cron verification for grouped multi-line invoice generation
 
-### Admin Wallet Operations
+### Admin Wallet Operations - CHECKED & WORKING
 - Manual admin credit, debit, and suspend verification
 - Validate audit trail and transaction list after each wallet action
 
@@ -89,3 +89,9 @@
 - Add backend tests for `PUT /operator/invoices/{invoice_id}` pending-only edit rule.
 - Add backend tests for `PUT /operator/invoices/{invoice_id}/status` requiring payment mode/date for manual paid status.
 - Add forgot-password tests to confirm WhatsApp recovery is no longer accepted.
+
+## Next Requested Batch
+
+- Verify browser tab title updates to `E-Bill | Invoice Automation Software`.
+- Verify Resend failure path falls back to alternate email delivery successfully.
+- Verify admin can save cron timings and scheduler uses updated values after restart/startup.

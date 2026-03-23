@@ -136,6 +136,7 @@ The scheduler now uses `Asia/Kolkata`.
 - broader email + WhatsApp confirmation workflows
 - richer import/export coverage
 - deeper reporting and GST reconciliation
+- configurable scheduler timing controls and stronger email delivery fallback behavior
 
 ## Version Notes
 

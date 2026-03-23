@@ -13,6 +13,12 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - payment confirmation dialog with mode/date capture
   - VPS cron scheduler reliability fix
 
+## Next Requested Work
+
+- change app title to `E-Bill | Invoice Automation Software`
+- add fallback email delivery when Resend API fails
+- add admin-configurable cron timings in settings
+
 ## Architecture
 
 ```text

@@ -32,6 +32,7 @@ React frontend for the E-Bill platform.
 - pending invoices can be edited
 - marking invoice paid requires payment mode and payment date
 - backend cron scheduler was hardened in `V7.14-9` for VPS reliability; check backend logs for scheduled job registration lines after deploy
+- next requested frontend-visible change is the app title update to `E-Bill | Invoice Automation Software`
 
 ## Scripts
 
