@@ -2,10 +2,27 @@
 
 ## 2026-03-23
 
+### V7.14-9: VPS Cron Scheduler Reliability Fix
+
+#### Scheduler / VPS Fix
+- Fixed backend APScheduler registration in `backend/server.py`.
+- Replaced lambda-based manual `asyncio.create_task(...)` wrappers with direct async job registration.
+- Added scheduler event listeners for job success/failure logging.
+- Added startup logging for each registered job and next run time.
+- Added `coalesce=True` and `misfire_grace_time=3600` to the scheduled jobs to make delayed VPS/container starts more resilient.
+
+#### Why this matters
+- The old scheduler setup could fail silently on VPS/container environments because the lambda wrapper might run outside the expected event-loop context.
+- The new setup is safer for `AsyncIOScheduler` and gives clearer backend logs when jobs are registered or fail.
+
+#### Validation
+- `python -m py_compile backend/server.py backend/services/cron_service.py` passed.
+
 ### Branches
 - Created and pushed `V7.14-6` from `V7.14-5`
 - Created, implemented, and pushed `V7.14-7`
 - Documentation alignment prepared on `V7.14-8`
+- Created and pushed `V7.14-9` for the VPS cron fix
 
 ### V7.14-7: Single Session, Recovery, and Invoice Control
 

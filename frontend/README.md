@@ -31,6 +31,7 @@ React frontend for the E-Bill platform.
 - old session is logged out when the same account logs in elsewhere
 - pending invoices can be edited
 - marking invoice paid requires payment mode and payment date
+- backend cron scheduler was hardened in `V7.14-9` for VPS reliability; check backend logs for scheduled job registration lines after deploy
 
 ## Scripts
 

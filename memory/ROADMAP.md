@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-7`
+Latest shipped functional branch: `V7.14-9`
 
 What is now live in code:
 - single active session per user
@@ -25,6 +25,7 @@ What is now live in code:
 - pending invoice editing
 - paid invoice protection against operator cancellation
 - payment mode and payment date confirmation when operators mark invoices as paid
+- hardened APScheduler startup for VPS cron reliability with explicit job registration logging
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows

@@ -289,6 +289,7 @@ async def seed_data():
 async def startup_event():
     """Start scheduled jobs: daily backup, invoice generation, reminders, expiry check."""
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
     from services.cron_service import (
         run_daily_invoice_generation,
         run_daily_reminder_processing,
@@ -296,40 +297,81 @@ async def startup_event():
         run_daily_wallet_check,
     )
 
+    async def run_daily_backup_job():
+        await _do_backup("auto")
+
+    def scheduler_listener(event):
+        if event.exception:
+            logger.exception("Scheduled job '%s' failed", event.job_id, exc_info=event.exception)
+        else:
+            logger.info("Scheduled job '%s' completed successfully", event.job_id)
+
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+    scheduler.add_listener(scheduler_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
     # Daily auto-backup at 03:00 IST
     scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(_do_backup("auto")),
-        "cron", hour=3, minute=0, id="daily_backup"
+        run_daily_backup_job,
+        "cron",
+        hour=3,
+        minute=0,
+        id="daily_backup",
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Daily auto-invoice generation at 08:00 IST
     scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_invoice_generation(db)),
-        "cron", hour=8, minute=0, id="daily_invoices"
+        run_daily_invoice_generation,
+        "cron",
+        hour=8,
+        minute=0,
+        id="daily_invoices",
+        args=[db],
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Daily scheduled reminder processing at 10:00 IST
     scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_reminder_processing(db)),
-        "cron", hour=10, minute=0, id="daily_reminders"
+        run_daily_reminder_processing,
+        "cron",
+        hour=10,
+        minute=0,
+        id="daily_reminders",
+        args=[db],
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Daily subscription expiry check at 00:05 IST
     scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_expiry_check(db)),
-        "cron", hour=0, minute=5, id="daily_expiry"
+        run_daily_expiry_check,
+        "cron",
+        hour=0,
+        minute=5,
+        id="daily_expiry",
+        args=[db],
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Daily wallet balance check at 09:00 IST
     scheduler.add_job(
-        lambda: __import__("asyncio").get_event_loop().create_task(run_daily_wallet_check(db)),
-        "cron", hour=9, minute=0, id="daily_wallet_check"
+        run_daily_wallet_check,
+        "cron",
+        hour=9,
+        minute=0,
+        id="daily_wallet_check",
+        args=[db],
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     scheduler.start()
     app.state.scheduler = scheduler
+    for job in scheduler.get_jobs():
+        logger.info("Scheduled job registered: id=%s next_run=%s", job.id, job.next_run_time)
     logger.info("Scheduled jobs started (Asia/Kolkata IST): backup(03:00), expiry(00:05), invoices(08:00), reminders(10:00), wallet_check(09:00)")
 
 

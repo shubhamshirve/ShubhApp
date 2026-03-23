@@ -71,6 +71,7 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - maintenance mode with banner/read-only behavior
 - global reminder settings
 - IST-based cron scheduling
+- scheduler startup logging and async APScheduler registration for better VPS reliability
 - audit logs
 - backup and restore
 - support tickets
@@ -142,3 +143,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-6` branch creation
 - `V7.14-7` feature delivery
 - `V7.14-8` documentation alignment
+- `V7.14-9` scheduler reliability fix

@@ -4,13 +4,14 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-8`
-- Latest feature delivery implemented on `V7.14-7`
+- Documentation updated for branch line `V7.14-9`
+- Latest feature and fix delivery implemented through `V7.14-9`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP
   - pending invoice edit support
   - payment confirmation dialog with mode/date capture
+  - VPS cron scheduler reliability fix
 
 ## Architecture
 
@@ -84,6 +85,10 @@ d:\eBill
 - When an operator marks an invoice as paid, the UI now requires:
   - payment mode: `Cash`, `Own UPI`, `Bank Transfer`, or `Cheque`
   - payment date
+
+### Scheduler and VPS Reliability
+- Backend cron jobs now register async APScheduler jobs directly instead of wrapping them in manual `lambda` task creation.
+- Scheduler startup now logs registered jobs and job execution failures/successes more clearly for VPS troubleshooting.
 
 ## Scheduled Jobs
 

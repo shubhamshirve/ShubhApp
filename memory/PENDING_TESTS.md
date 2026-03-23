@@ -2,6 +2,18 @@
 
 ## High Priority
 
+### VPS Cron / Scheduler Verification
+- Deploy `V7.14-9` to the VPS and restart the backend container/service.
+- Check backend logs for `Scheduled job registered: id=... next_run=...` lines on startup.
+- Verify each expected job is registered:
+  - `daily_backup`
+  - `daily_expiry`
+  - `daily_invoices`
+  - `daily_wallet_check`
+  - `daily_reminders`
+- Trigger or wait for at least one scheduled run and verify success/error logging appears in backend logs.
+- Confirm jobs execute on VPS time according to configured `Asia/Kolkata` schedule handling.
+
 ### Single Session Enforcement
 - Log in with the same operator account in browser A and browser B.
 - Confirm browser A is forced out after browser B logs in.
