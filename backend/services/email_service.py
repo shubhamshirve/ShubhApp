@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import socket
 import smtplib
 from email.message import EmailMessage
 
@@ -73,6 +74,7 @@ class SMTPEmailService:
         self.password = password or ""
         self.from_email = (from_email or "").strip()
         self.use_tls = bool(use_tls)
+        self.use_ssl = self.port == 465
         if not self.host:
             raise EmailServiceError("SMTP host is not configured")
         if not self.port:
@@ -97,23 +99,33 @@ class SMTPEmailService:
         message.set_content(text or "Please view this email in an HTML-compatible client.")
         message.add_alternative(html, subtype="html")
 
-        with smtplib.SMTP(self.host, self.port, timeout=20) as smtp:
-            smtp.ehlo()
-            if self.use_tls:
-                if not smtp.has_extn("starttls"):
-                    raise EmailServiceError("SMTP server does not support STARTTLS. Disable TLS or use a TLS-capable SMTP server.")
-                smtp.starttls()
-                smtp.ehlo()
-            if self.username:
-                if smtp.has_extn("auth"):
-                    smtp.login(self.username, self.password)
-                else:
-                    logger.warning(
-                        "SMTP server %s:%s does not advertise AUTH; continuing without SMTP login.",
-                        self.host,
-                        self.port,
-                    )
-            smtp.send_message(message)
+        try:
+            smtp_factory = smtplib.SMTP_SSL if self.use_ssl else smtplib.SMTP
+            with smtp_factory(self.host, self.port, timeout=30) as smtp:
+                smtp.ehlo_or_helo_if_needed()
+                if self.use_tls and not self.use_ssl:
+                    if not smtp.has_extn("starttls"):
+                        raise EmailServiceError("SMTP server does not support STARTTLS. Disable TLS or use a TLS-capable SMTP server.")
+                    smtp.starttls()
+                    smtp.ehlo_or_helo_if_needed()
+                if self.username:
+                    if smtp.has_extn("auth"):
+                        smtp.login(self.username, self.password)
+                    else:
+                        logger.warning(
+                            "SMTP server %s:%s does not advertise AUTH; continuing without SMTP login.",
+                            self.host,
+                            self.port,
+                        )
+                smtp.send_message(message)
+        except (socket.timeout, TimeoutError) as exc:
+            raise EmailServiceError(
+                "SMTP connection timed out. Check host, port, TLS mode, and firewall settings."
+            ) from exc
+        except smtplib.SMTPServerDisconnected as exc:
+            raise EmailServiceError(
+                "SMTP server closed the connection unexpectedly. Verify the selected port and whether the server expects SSL/TLS."
+            ) from exc
 
         return {"provider": "smtp"}
 

@@ -461,10 +461,16 @@ async def create_checkout_order(
     if base_amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
-    # Apply referral discount (10% up to Rs.500, only first transaction)
+    from routers.wallet import get_referral_settings
+    referral_settings = await get_referral_settings()
+
+    # Apply referral discount on the first eligible transaction using platform settings.
     referral_discount_amount = 0.0
     if operator.get("referral_discount_eligible") and not operator.get("referral_discount_used"):
-        referral_discount_amount = min(round(base_amount * 0.10, 2), 500.0)
+        referral_discount_amount = min(
+            round(base_amount * referral_settings["referral_discount_percent"] / 100, 2),
+            referral_settings["referral_discount_max_amount"],
+        )
 
     # Apply coupon discount (before GST)
     discount_amount = 0.0
@@ -857,11 +863,54 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
             max_staff = operator.get("max_staff") or sp.get("max_staff")
     current_staff = await db.users.count_documents({"operator_id": operator_id, "role": "staff", "deleted_at": None})
     slots_remaining = max(0, max_subscribers - total_subscribers) if max_subscribers is not None else None
+
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if month_start.month == 12:
+        next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month_start = month_start.replace(month=month_start.month + 1)
+
+    month_invoice_docs = await db.invoices.find(
+        {
+            "operator_id": operator_id,
+            "deleted_at": None,
+            "created_at": {"$gte": month_start.isoformat(), "$lt": next_month_start.isoformat()},
+        },
+        {"_id": 0, "final_amount": 1, "status": 1}
+    ).to_list(5000)
+    month_received_docs = await db.invoices.find(
+        {
+            "operator_id": operator_id,
+            "deleted_at": None,
+            "status": "paid",
+            "paid_at": {"$gte": month_start.isoformat(), "$lt": next_month_start.isoformat()},
+        },
+        {"_id": 0, "final_amount": 1}
+    ).to_list(5000)
+
+    total_invoice_value_this_month = round(sum(inv.get("final_amount", 0) for inv in month_invoice_docs), 2)
+    total_value_pending_this_month = round(
+        sum(inv.get("final_amount", 0) for inv in month_invoice_docs if inv.get("status") in {"pending", "overdue"}),
+        2,
+    )
+    total_value_received_this_month = round(sum(inv.get("final_amount", 0) for inv in month_received_docs), 2)
+    total_pending_value = round(
+        sum(inv.get("final_amount", 0) for inv in await db.invoices.find(
+            {"operator_id": operator_id, "deleted_at": None, "status": {"$in": ["pending", "overdue"]}},
+            {"_id": 0, "final_amount": 1}
+        ).to_list(5000)),
+        2,
+    )
     return {
         "total_subscribers": total_subscribers, "active_subscribers": active_subscribers,
         "total_invoices": total_invoices, "pending_invoices": pending_invoices,
         "overdue_invoices": overdue_invoices, "paid_invoices": paid_invoices,
         "total_revenue": total_revenue,
+        "total_invoice_value_this_month": total_invoice_value_this_month,
+        "total_value_received_this_month": total_value_received_this_month,
+        "total_value_pending_this_month": total_value_pending_this_month,
+        "total_pending_value": total_pending_value,
         "is_read_only": access_state["is_read_only"],
         "maintenance_mode": access_state["maintenance_mode"],
         "maintenance_message": access_state["maintenance_message"],

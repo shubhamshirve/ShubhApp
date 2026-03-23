@@ -520,6 +520,10 @@ class GlobalSettingsUpdate(SanitizedModel):
     auto_invoice_days_before: int = 3
     late_fee_percentage: float = 0
     gst_rate: float = 18
+    referral_discount_percent: float = 10
+    referral_discount_max_amount: float = 500
+    referral_reward_percent: float = 5
+    referral_reward_valid_days: int = 90
     maintenance_mode: bool = False
     maintenance_message: Optional[str] = "The app is under maintenance. Updates and automation are temporarily paused."
     session_timeout_hours: float = 24.0

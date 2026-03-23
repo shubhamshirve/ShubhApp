@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-13`
-- Latest feature and fix delivery implemented through `V7.14-13`
+- Documentation updated for branch line `V7.14-14`
+- Latest feature and fix delivery implemented through `V7.14-14`
 - Current release focus:
   - single active session per user
   - email-only password recovery OTP

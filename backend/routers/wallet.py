@@ -14,6 +14,13 @@ from models import WalletAdjustmentRequest, WalletSuspendRequest
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Wallet"])
 
+DEFAULT_REFERRAL_SETTINGS = {
+    "referral_discount_percent": 10.0,
+    "referral_discount_max_amount": 500.0,
+    "referral_reward_percent": 5.0,
+    "referral_reward_valid_days": 90,
+}
+
 
 # ─── Wallet Helpers (also used by operator.py, cron) ─────────────────────────
 
@@ -119,8 +126,19 @@ async def deduct_wallet_for_invoice(operator_id: str, invoice_id: str) -> float:
     return new_balance
 
 
-def is_referral_reward_active(operator: dict) -> bool:
-    """Check if referral reward period is still active (3 months from registration)."""
+async def get_referral_settings() -> dict:
+    settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
+    merged = {**DEFAULT_REFERRAL_SETTINGS, **(settings or {})}
+    return {
+        "referral_discount_percent": float(merged.get("referral_discount_percent", 10) or 10),
+        "referral_discount_max_amount": float(merged.get("referral_discount_max_amount", 500) or 500),
+        "referral_reward_percent": float(merged.get("referral_reward_percent", 5) or 5),
+        "referral_reward_valid_days": int(merged.get("referral_reward_valid_days", 90) or 90),
+    }
+
+
+async def is_referral_reward_active(operator: dict) -> bool:
+    """Check if the referral reward period is still active based on platform settings."""
     if not operator.get("referred_by_code"):
         return False
     created_at = operator.get("created_at")
@@ -129,22 +147,24 @@ def is_referral_reward_active(operator: dict) -> bool:
     reg_date = datetime.fromisoformat(created_at) if isinstance(created_at, str) else created_at
     if reg_date.tzinfo is None:
         reg_date = reg_date.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) < (reg_date + timedelta(days=90))
+    referral_settings = await get_referral_settings()
+    return datetime.now(timezone.utc) < (reg_date + timedelta(days=referral_settings["referral_reward_valid_days"]))
 
 
 async def apply_referral_reward(operator_id: str, payment_amount: float, payment_ref: str):
-    """Give 5% referral reward to referrer if within 3-month window."""
+    """Give a referral reward to the referrer using the configured platform settings."""
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
-    if not operator or not is_referral_reward_active(operator):
+    if not operator or not await is_referral_reward_active(operator):
         return
     referrer = await db.operators.find_one(
         {"referral_code": operator["referred_by_code"], "deleted_at": None}, {"_id": 0}
     )
     if referrer:
-        reward = round(payment_amount * 0.05, 2)
+        referral_settings = await get_referral_settings()
+        reward = round(payment_amount * referral_settings["referral_reward_percent"] / 100, 2)
         await credit_wallet(
             referrer["id"], reward,
-            f"Referral reward 5% from {operator.get('company_name', 'operator')}",
+            f"Referral reward {referral_settings['referral_reward_percent']}% from {operator.get('company_name', 'operator')}",
             reference_id=payment_ref,
             tx_type="referral_reward",
         )
@@ -175,7 +195,7 @@ async def get_wallet(current_user: dict = Depends(require_operator)):
         "referral_code": operator.get("referral_code", ""),
         "referred_by_code": operator.get("referred_by_code", ""),
         "referral_discount_used": operator.get("referral_discount_used", False),
-        "referral_reward_active": is_referral_reward_active(operator) if operator else False,
+        "referral_reward_active": await is_referral_reward_active(operator) if operator else False,
         "wallet_suspended": operator.get("wallet_suspended", False) if operator else False,
         "is_read_only": access_state["is_read_only"],
         "maintenance_mode": access_state["maintenance_mode"],

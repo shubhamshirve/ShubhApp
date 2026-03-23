@@ -42,6 +42,10 @@ const DEFAULT_SETTINGS = {
   auto_invoice_days_before: 3,
   gst_rate: 18,
   late_fee_percentage: 0,
+  referral_discount_percent: 10,
+  referral_discount_max_amount: 500,
+  referral_reward_percent: 5,
+  referral_reward_valid_days: 90,
   maintenance_mode: false,
   maintenance_message: "The app is under maintenance. Updates and automation are temporarily paused.",
   session_timeout_hours: 24,
@@ -642,6 +646,52 @@ const AdminSettings = () => {
                         <p className="text-xs text-slate-500">{field.help}</p>
                       </div>
                     ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">
+                  <div>
+                    <p className="font-medium text-slate-900">Referral Benefits</p>
+                    <p className="text-sm text-slate-600">
+                      Control the referral discount for new operators and the wallet reward given to referrers.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Referral Discount (%)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={settings?.referral_discount_percent ?? 10}
+                        onChange={(e) => setSettings(s => ({ ...s, referral_discount_percent: parseFloat(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Referral Discount Max (INR)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={settings?.referral_discount_max_amount ?? 500}
+                        onChange={(e) => setSettings(s => ({ ...s, referral_discount_max_amount: parseFloat(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Referral Reward (%)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={settings?.referral_reward_percent ?? 5}
+                        onChange={(e) => setSettings(s => ({ ...s, referral_reward_percent: parseFloat(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Referral Reward Validity (Days)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={settings?.referral_reward_valid_days ?? 90}
+                        onChange={(e) => setSettings(s => ({ ...s, referral_reward_valid_days: parseInt(e.target.value) || 90 }))}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
@@ -1337,6 +1387,7 @@ const AdminSettings = () => {
                           onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_port: e.target.value }))}
                           placeholder="587"
                         />
+                        <p className="text-xs text-slate-400">Use `587` for STARTTLS or `465` for SSL. Port `465` now uses SSL automatically during test/send.</p>
                       </div>
                       <div className="space-y-2">
                         <Label>SMTP Username</Label>

@@ -304,20 +304,20 @@ export default function WalletPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-start gap-2">
                   <TrendingDown className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                  <span className="text-slate-600">New operator using your code: <strong>You earn 5%</strong> of their payments for 3 months</span>
+                  <span className="text-slate-600">New operators using your code trigger the current admin-configured referral reward benefits.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <TrendingUp className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                  <span className="text-slate-600">If you registered with a code: <strong>10% off</strong> your first payment (up to Rs.500)</span>
+                  <span className="text-slate-600">If you registered with a referral code, the active platform discount is applied to your first eligible payment.</span>
                 </div>
                 {wallet?.referral_discount_used && (
                   <Badge variant="secondary" className="text-xs mt-1">Referral discount used</Badge>
                 )}
                 {wallet?.referred_by_code && !wallet?.referral_discount_used && (
-                  <Badge variant="default" className="text-xs mt-1 bg-green-600">10% discount active on first payment!</Badge>
+                  <Badge variant="default" className="text-xs mt-1 bg-green-600">Referral discount active on first payment</Badge>
                 )}
                 {wallet?.referral_reward_active && (
-                  <Badge variant="outline" className="text-xs mt-1 border-purple-300 text-purple-700">Referral rewards active (3-month window)</Badge>
+                  <Badge variant="outline" className="text-xs mt-1 border-purple-300 text-purple-700">Referral rewards active</Badge>
                 )}
               </div>
             </div>

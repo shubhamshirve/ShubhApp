@@ -519,7 +519,7 @@ const Register = () => {
                     className="uppercase"
                     data-testid="register-referral-code"
                   />
-                  <p className="text-xs text-slate-400 mt-1">Enter a referral code to get 10% off your first payment (up to Rs.500)</p>
+                  <p className="text-xs text-slate-400 mt-1">Enter a referral code to receive the current platform referral discount on your first eligible payment.</p>
                 </div>
 
                 <Button

@@ -18,7 +18,7 @@ from models import (
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
     ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
 )
-from utils import generate_id, hash_password, create_token
+from utils import generate_id, hash_password, create_token, generate_unique_referral_code
 from dependencies import require_admin, get_current_user
 from audit import log_audit
 from sanitization import SanitizedModel, sanitize_filename, sanitize_text
@@ -218,6 +218,7 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
     operator_id = generate_id()
     user_id = generate_id()
     subscription_ends_at = (now + timedelta(days=30 * data.subscription_months)).isoformat()
+    referral_code = await generate_unique_referral_code(db)
 
     operator = {
         "id": operator_id, "company_name": data.company_name, "owner_name": data.owner_name,
@@ -228,6 +229,10 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
         "bank_name": data.bank_name, "status": data.status, "saas_plan_id": data.saas_plan_id,
         "saas_plan_name": plan["name"], "trial_ends_at": None,
         "subscription_ends_at": subscription_ends_at if data.status == "active" else None,
+        "referral_code": referral_code,
+        "referred_by_code": None,
+        "referral_discount_eligible": False,
+        "referral_discount_used": False,
         "is_read_only": False, "created_at": now.isoformat(),
         "updated_at": now.isoformat(), "deleted_at": None
     }
@@ -536,6 +541,10 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
         return {
             "active_payment_gateway": "razorpay", "notification_enabled": True,
             "auto_invoice_days_before": 3, "late_fee_percentage": 0, "gst_rate": 18,
+            "referral_discount_percent": 10,
+            "referral_discount_max_amount": 500,
+            "referral_reward_percent": 5,
+            "referral_reward_valid_days": 90,
             "maintenance_mode": False,
             "maintenance_message": "The app is under maintenance. Updates and automation are temporarily paused.",
             "session_timeout_hours": 24.0,

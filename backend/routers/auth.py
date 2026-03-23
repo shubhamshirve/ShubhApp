@@ -2,13 +2,11 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone, timedelta
 import random
-import secrets
-import string
 import logging
 
 from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
-from utils import generate_id, hash_password, verify_password, create_token
+from utils import generate_id, hash_password, verify_password, create_token, generate_unique_referral_code
 from dependencies import get_current_user, get_platform_maintenance_state, get_operator_access_state
 from sanitization import SanitizedModel, sanitize_text
 from services.email_service import get_email_service_async, EmailServiceError
@@ -22,20 +20,6 @@ OTP_RESEND_COOLDOWN_SECONDS = 30
 OTP_MAX_RESENDS = 5
 OTP_EXPIRY_MINUTES = 10
 RECOVERY_OTP_EXPIRY_MINUTES = 15
-
-
-async def _generate_unique_referral_code(company_name: str) -> str:
-    """Generate a unique referral code like REF-ABC123."""
-    prefix = "REF"
-    alphabet = string.ascii_uppercase + string.digits
-    for _ in range(20):
-        suffix = ''.join(secrets.choice(alphabet) for _ in range(6))
-        code = f"{prefix}-{suffix}"
-        existing = await db.operators.find_one({"referral_code": code, "deleted_at": None})
-        if not existing:
-            return code
-    # Fallback with timestamp
-    return f"REF-{''.join(secrets.choice(alphabet) for _ in range(8))}"
 
 
 class OTPVerifyRequest(SanitizedModel):
@@ -264,7 +248,7 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
             referred_by_code = None  # Invalid code, ignore
 
     # Generate unique referral code for the new operator
-    new_referral_code = await _generate_unique_referral_code(pending["company_name"])
+    new_referral_code = await generate_unique_referral_code(db)
 
     operator = {
         "id": operator_id,
@@ -423,7 +407,7 @@ async def register_operator(data: OperatorCreate):
         else:
             referred_by_code = None
 
-    new_referral_code = await _generate_unique_referral_code(data.company_name)
+    new_referral_code = await generate_unique_referral_code(db)
 
     operator = {
         "id": operator_id,

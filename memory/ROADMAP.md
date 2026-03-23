@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-13`
+Latest shipped functional branch: `V7.14-14`
 
 What is now live in code:
 - single active session per user
@@ -45,6 +45,10 @@ What is now live in code:
 - invoice settings address fallback from registration/profile data
 - invoice logo preview/persistence/render fixes
 - backend-served `/api/uploads` asset URLs
+- operator dashboard monthly invoice/value stats
+- SMTP test/send stability improvements including implicit SSL on port 465
+- admin-created operator referral-code generation
+- admin-managed referral benefits/settings
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
@@ -110,6 +114,17 @@ What is still mostly pending:
   - added invoice address fallback from registration/profile data
   - fixed invoice logo preview, persistence, and public rendering
   - served uploaded assets through backend `/api/uploads` URLs
+
+### 2E. Operator Dashboard and Referral Management
+- Status: `completed`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `S-M`
+- Scope:
+  - added monthly invoice value, received value this month, pending value this month, and total pending value to the operator dashboard
+  - hardened SMTP sending/testing and added implicit SSL support on port 465
+  - generated referral codes automatically for admin-created operators
+  - moved referral benefits/settings into admin general settings and wired referral logic to those values
 
 ### 2A. Delivery Reliability and Scheduler Configuration
 - Status: `completed`
@@ -209,6 +224,10 @@ These are implemented in code but still need more manual/live verification in so
 - invoice address fallback when company address is empty
 - invoice logo preview/render behavior on operator/public pages
 - backend `/api/uploads` asset serving
+- operator dashboard monthly value stats
+- SMTP stability and implicit SSL test coverage
+- admin-created operator referral-code generation
+- referral benefits/settings calculations
 - public payment and branded PDF/print receipt consistency
 
 Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).

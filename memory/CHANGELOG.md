@@ -2,6 +2,30 @@
 
 ## 2026-03-24
 
+### V7.14-14: Operator Dashboard Stats, SMTP Stability, and Referral Automation
+
+#### Dashboard Stats
+- Operator dashboard now shows monthly invoice value, received value this month, pending value this month, and total pending value.
+
+#### SMTP Hardening
+- SMTP sending/testing is now more tolerant.
+- SMTP now supports port `465` implicit SSL.
+- Timeout and disconnect errors now surface more clearly.
+
+#### Referral Automation
+- Admin-created operators now receive referral codes automatically.
+- Admin general settings now manage referral benefits:
+  - discount percent/max
+  - reward percent
+  - reward validity days
+- Referral discount/reward logic now uses those settings.
+
+#### Validation
+- Operator dashboard totals and month-to-date values should be verified against live invoices/payments.
+- SMTP test mail and implicit SSL behavior should be verified against supported mail servers.
+- Admin-created operator referral-code generation should be verified during operator creation.
+- Referral benefits/settings should be verified in admin settings and downstream calculations.
+
 ### V7.14-13: Invoice Bulk Upload, Address Fallback, and Logo Rendering
 
 #### Invoice Import

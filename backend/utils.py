@@ -14,6 +14,21 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 
+async def generate_unique_referral_code(db_ref, prefix: str = "REF") -> str:
+    """Generate a unique referral code like REF-ABC123."""
+    import secrets
+    import string
+
+    alphabet = string.ascii_uppercase + string.digits
+    for _ in range(20):
+        suffix = ''.join(secrets.choice(alphabet) for _ in range(6))
+        code = f"{prefix}-{suffix}"
+        existing = await db_ref.operators.find_one({"referral_code": code, "deleted_at": None})
+        if not existing:
+            return code
+    return f"{prefix}-{''.join(secrets.choice(alphabet) for _ in range(8))}"
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 

@@ -2,6 +2,13 @@
 
 ## High Priority
 
+### V7.14-14 Dashboard / SMTP / Referral Validation
+- Verify operator dashboard shows monthly invoice value, received value this month, pending value this month, and total pending value.
+- Verify SMTP test/send works on supported servers including implicit SSL port 465.
+- Verify timeout and disconnect errors surface clearly during SMTP test/send failures.
+- Verify admin-created operators receive referral codes automatically.
+- Verify referral benefits/settings persist in admin general settings and affect discount/reward calculations.
+
 ### V7.14-13 Invoice Bulk Upload / Branding Validation
 - Verify operator invoice bulk upload accepts sample CSV and XLSX files.
 - Verify bulk-uploaded invoices create the expected invoice records.

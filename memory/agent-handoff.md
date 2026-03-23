@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-13`
-**Latest Feature Branch:** `V7.14-13`
+**Active Branch:** `V7.14-14`
+**Latest Feature Branch:** `V7.14-14`
 
 ---
 
@@ -40,6 +40,10 @@ The codebase now includes:
 - operator invoice bulk upload with sample CSV/XLSX flow is now available
 - invoice settings fall back to the registration/profile address when the company address is empty
 - invoice logos persist immediately and render correctly via `/api/uploads`
+- operator dashboard monthly value stats are now shown
+- SMTP sending/testing is more tolerant, including implicit SSL on port 465
+- admin-created operators now receive referral codes automatically
+- referral benefits/settings now live in admin general settings
 
 ---
 
@@ -114,6 +118,23 @@ Implemented behavior:
 - Persisted uploaded invoice logos immediately and served them through backend `/api/uploads` URLs.
 - Fixed invoice logo preview in operator settings and logo rendering on the public invoice page.
 
+### V7.14-14 Changes
+
+Primary files:
+- [frontend/src/pages/operator/Dashboard.jsx](/d:/eBill/frontend/src/pages/operator/Dashboard.jsx)
+- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/routers/operator.py](/d:/eBill/backend/routers/operator.py)
+- [backend/routers/auth.py](/d:/eBill/backend/routers/auth.py)
+- [backend/services/email_service.py](/d:/eBill/backend/services/email_service.py)
+- [backend/utils.py](/d:/eBill/backend/utils.py)
+
+Implemented behavior:
+- Added richer operator dashboard monthly value statistics.
+- Hardened SMTP sending/testing, including implicit SSL support on port 465 and clearer timeout/disconnect errors.
+- Automatically generated referral codes for admin-created operators.
+- Moved referral benefits/settings into admin general settings and wired referral calculations to those values.
+
 ---
 
 ## Validation Completed Locally
@@ -144,7 +165,7 @@ Highest-value remaining checks:
 
 ## Current Documentation State
 
-The following files were refreshed on `V7.14-13`:
+The following files were refreshed on `V7.14-14`:
 - [README.md](/d:/eBill/README.md)
 - [memory/CHANGELOG.md](/d:/eBill/memory/CHANGELOG.md)
 - [memory/ROADMAP.md](/d:/eBill/memory/ROADMAP.md)
@@ -157,13 +178,13 @@ The following files were refreshed on `V7.14-13`:
 
 ## Recommended Next Work
 
-1. Verify invoice bulk upload, address fallback, and logo rendering in a live environment.
-2. Continue payment receipt and messaging improvements.
-3. Keep refining operator/admin gateway workflows where needed.
+1. Verify dashboard stats, SMTP stability, and referral settings in a live environment.
+2. Verify invoice bulk upload, address fallback, and logo rendering in a live environment.
+3. Continue payment receipt and messaging improvements.
 
 ---
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-13`
-- Feature baseline under docs branch: `V7.14-13`
+- Current branch: `V7.14-14`
+- Feature baseline under docs branch: `V7.14-14`

@@ -13,6 +13,8 @@ import {
   TrendingUp
 } from "lucide-react";
 
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+
 const OperatorDashboard = () => {
   const { authAxios } = useAuth();
   const [stats, setStats] = useState(null);
@@ -85,6 +87,33 @@ const OperatorDashboard = () => {
     }
   ];
 
+  const monthlyValueCards = [
+    {
+      title: "Invoice Value This Month",
+      value: formatCurrency(stats?.total_invoice_value_this_month),
+      icon: FileText,
+      color: "bg-indigo-100 text-indigo-700"
+    },
+    {
+      title: "Received This Month",
+      value: formatCurrency(stats?.total_value_received_this_month),
+      icon: IndianRupee,
+      color: "bg-emerald-100 text-emerald-700"
+    },
+    {
+      title: "Pending This Month",
+      value: formatCurrency(stats?.total_value_pending_this_month),
+      icon: Clock,
+      color: "bg-amber-100 text-amber-700"
+    },
+    {
+      title: "Total Pending Value",
+      value: formatCurrency(stats?.total_pending_value),
+      icon: AlertTriangle,
+      color: "bg-rose-100 text-rose-700"
+    }
+  ];
+
   return (
     <OperatorLayout title="Dashboard" isReadOnly={stats?.is_read_only}>
       <div className="space-y-8 animate-fade-in">
@@ -124,6 +153,24 @@ const OperatorDashboard = () => {
             </div>
           </CardContent>
         </Card>
+
+        <section>
+          <h2 className="text-lg font-heading font-semibold text-slate-900 mb-4">Monthly Value Snapshot</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {monthlyValueCards.map((card, index) => {
+              const Icon = card.icon;
+              return (
+                <Card key={index} className="kpi-card card-hover">
+                  <div className={`w-10 h-10 rounded-lg ${card.color} flex items-center justify-center mb-3`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <p className="kpi-value text-2xl">{card.value}</p>
+                  <p className="kpi-label">{card.title}</p>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Subscribers Section */}
         <section>
