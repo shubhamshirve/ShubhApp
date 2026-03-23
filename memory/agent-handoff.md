@@ -30,6 +30,7 @@ The codebase now includes:
 - cron settings persistence now refreshes correctly in the UI
 - auto-backup entries now appear in the backup list after cron completion
 - email settings now reload the latest saved values after save/refresh
+- next requested scope is admin-assigned payment gateway keys and removal of operator gateway settings
 
 ---
 
@@ -102,9 +103,9 @@ The following files were refreshed on `V7.14-11`:
 
 ## Recommended Next Work
 
-1. Add richer SEO/social preview metadata to `frontend/public/index.html`.
-2. Add installable web app support with manifest/service worker wiring.
-3. Deploy and verify `V7.14-11` on VPS.
+1. Prepare the admin-assigned payment gateway flow and remove operator-side gateway settings.
+2. Add richer SEO/social preview metadata to `frontend/public/index.html`.
+3. Add installable web app support with manifest/service worker wiring.
 4. Continue payment receipt and messaging improvements.
 
 ---

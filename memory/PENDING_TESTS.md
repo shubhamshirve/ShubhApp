@@ -109,6 +109,8 @@
 
 ## Next Requested Batch
 
+- Verify admin can assign payment gateway keys to an operator from the admin dialog.
+- Verify operator-side payment gateway settings are no longer visible.
 - Payment receipt generation and delivery flow
 - Messaging/reporting polish
 - Import/export refinement

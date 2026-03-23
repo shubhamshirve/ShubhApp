@@ -39,6 +39,7 @@ React frontend for the E-Bill platform.
 - installable web app support is enabled via `manifest.json`, generated icons, and `sw.js` registration in production
 - cron timing and email settings pages now reload saved values correctly after refresh
 - automatic backups now appear in the backup list after the job completes
+- next frontend scope is admin-assigned payment gateway keys and removal of operator-side gateway settings
 
 ## Scripts
 

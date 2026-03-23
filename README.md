@@ -21,6 +21,11 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - auto-backup entries refresh correctly in the backup list
   - email settings refresh correctly after save/reload
 
+## Next Requested Work
+
+- allow admins to assign payment gateway keys directly to an operator from the admin dialog
+- remove operator-side payment gateway settings from the operator UI
+
 ## Architecture
 
 ```text

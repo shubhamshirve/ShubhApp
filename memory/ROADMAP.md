@@ -69,6 +69,15 @@ What is still mostly pending:
   - review message template consistency across reminders, invoices, and confirmations
   - hide GST-specific reporting UX where operator GST is not enabled
 
+### 2B. Payment Gateway Delegation Cleanup
+- Status: `requested`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `S-M`
+- Scope:
+  - allow admins to assign payment gateway keys directly to an operator from the admin dialog
+  - remove operator-side payment gateway settings from the operator UI
+
 ### 2A. Delivery Reliability and Scheduler Configuration
 - Status: `completed`
 - Priority: `P1`

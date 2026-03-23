@@ -143,6 +143,7 @@ The scheduler now uses `Asia/Kolkata`, with admin-editable default times.
 
 ## Current Gaps / Next Product Work
 
+- admin-managed payment gateway assignment and operator gateway-setting removal
 - dedicated payment receipt generation and delivery
 - broader email + WhatsApp confirmation workflows
 - richer import/export coverage
