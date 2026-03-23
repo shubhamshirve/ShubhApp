@@ -79,10 +79,11 @@ const AdminSettings = () => {
   const navigate = useNavigate();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [gateways, setGateways] = useState([]);
+  const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGatewayDialog, setShowGatewayDialog] = useState(false);
   const [gatewayForm, setGatewayForm] = useState({
-    gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true
+    gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true, for_operator_id: "platform"
   });
 
   // Backup state
@@ -138,7 +139,7 @@ const AdminSettings = () => {
   const [showEmailKey, setShowEmailKey] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings(), fetchEmailConfig()])
+    Promise.all([fetchSettings(), fetchGateways(), fetchOperators(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings(), fetchEmailConfig()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -223,6 +224,13 @@ const AdminSettings = () => {
     try {
       const res = await authAxios.get("/admin/payment-gateways");
       setGateways(res.data);
+    } catch { /* ignore */ }
+  };
+
+  const fetchOperators = async () => {
+    try {
+      const res = await authAxios.get("/admin/operators");
+      setOperators(res.data || []);
     } catch { /* ignore */ }
   };
 
@@ -362,10 +370,13 @@ const AdminSettings = () => {
       toast.error("Please enter a valid API Key"); return;
     }
     try {
-      await authAxios.post("/admin/payment-gateways", gatewayForm);
+      await authAxios.post("/admin/payment-gateways", {
+        ...gatewayForm,
+        for_operator_id: gatewayForm.for_operator_id === "platform" ? null : gatewayForm.for_operator_id,
+      });
       toast.success("Gateway configured");
       setShowGatewayDialog(false);
-      setGatewayForm({ gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true });
+      setGatewayForm({ gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true, for_operator_id: "platform" });
       fetchGateways();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to add gateway");
@@ -723,7 +734,7 @@ const AdminSettings = () => {
                     <TableRow>
                       <TableHead>Type</TableHead>
                       <TableHead>API Key</TableHead>
-                      <TableHead>Purpose</TableHead>
+                      <TableHead>Assigned To</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -745,7 +756,7 @@ const AdminSettings = () => {
                         </TableCell>
                         <TableCell>
                           <span className="text-xs bg-slate-100 px-2 py-1 rounded">
-                            {gw.is_platform_gateway ? "SaaS Payments" : `Operator: ${gw.operator_id?.slice(0, 8)}`}
+                            {gw.is_platform_gateway ? "Platform / SaaS Payments" : gw.operator_name || "Assigned Operator"}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -1275,9 +1286,26 @@ const AdminSettings = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Payment Gateway</DialogTitle>
-              <DialogDescription>Configure a payment gateway for SaaS subscription collections.</DialogDescription>
+              <DialogDescription>Configure platform keys or assign gateway credentials directly to an operator.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddGateway} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Assign To</Label>
+                <Select value={gatewayForm.for_operator_id} onValueChange={(v) => setGatewayForm(f => ({ ...f, for_operator_id: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="platform">Platform / SaaS Payments</SelectItem>
+                    {operators.map((operator) => (
+                      <SelectItem key={operator.id} value={operator.id}>
+                        {operator.company_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Choose platform keys for SaaS collections or assign operator-specific keys for subscriber payment links.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label>Gateway Type</Label>
                 <Select value={gatewayForm.gateway_type} onValueChange={(v) => setGatewayForm(f => ({ ...f, gateway_type: v }))}>
@@ -1302,7 +1330,10 @@ const AdminSettings = () => {
                 <Input value={gatewayForm.webhook_secret} onChange={(e) => setGatewayForm(f => ({ ...f, webhook_secret: e.target.value }))} />
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" type="button" onClick={() => setShowGatewayDialog(false)}>Cancel</Button>
+                <Button variant="outline" type="button" onClick={() => {
+                  setShowGatewayDialog(false);
+                  setGatewayForm({ gateway_type: "razorpay", api_key: "", api_secret: "", webhook_secret: "", is_active: true, for_operator_id: "platform" });
+                }}>Cancel</Button>
                 <Button type="submit">Save Gateway</Button>
               </div>
             </form>

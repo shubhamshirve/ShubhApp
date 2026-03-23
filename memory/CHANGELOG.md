@@ -8,6 +8,26 @@
   - admin can assign payment gateway keys directly to an operator from the admin dialog
   - operator-side payment gateway settings should be removed
 
+### V7.14-11 Follow-Up: Admin Payment Gateway Assignment
+
+#### Admin Gateway Management
+- Extended the admin payment gateway dialog so the same form can save:
+  - platform / SaaS payment keys
+  - operator-specific payment gateway keys
+- Added operator selection in the admin dialog.
+- Enriched the admin gateway list so assigned operator names are visible.
+- Tightened admin upsert behavior so operator-targeted keys update by operator id.
+
+#### Operator Experience
+- Removed payment gateway configuration from the operator settings panel.
+- Updated custom-gateway messaging so operators are directed to contact admin for key assignment.
+- Blocked the old operator payment-gateway write endpoint so gateway keys are admin-managed.
+
+#### Validation
+- `python -m py_compile backend\\routers\\admin.py backend\\routers\\operator.py` passed.
+- `npm run build` passed in `frontend/`.
+- Existing frontend `react-hooks/exhaustive-deps` warnings remain, but build output succeeded.
+
 ### V7.14-11 Follow-Up: Settings Refresh and Backup List Sync
 
 #### Fixes

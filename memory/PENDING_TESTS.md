@@ -19,6 +19,14 @@
 - Configure Resend and SMTP together, force a Resend failure, and confirm SMTP fallback sends successfully.
 - Verify SMTP-only configuration works when Resend is left blank.
 
+### Admin Payment Gateway Assignment
+- Add a platform gateway from admin settings and confirm it appears as `Platform / SaaS Payments`.
+- Add operator-specific gateway keys from the admin dialog and confirm the correct operator name appears in the list.
+- Verify updating an operator's assigned keys replaces the existing operator gateway instead of creating duplicates.
+- Confirm the operator settings panel no longer shows payment gateway configuration.
+- Confirm custom-payment-gateway operators can still generate subscriber payment links when admin-assigned keys exist.
+- Confirm operators can no longer configure gateway keys through the old operator endpoint/UI flow.
+
 ### VPS Cron / Scheduler Verification
 - Deploy `V7.14-9` to the VPS and restart the backend container/service.
 - Check backend logs for `Scheduled job registered: id=... next_run=...` lines on startup.

@@ -64,6 +64,7 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - operator wallet management
 - wallet top-up with GST-exclusive credit logic
 - admin wallet credit/debit/suspend controls
+- admin-assigned operator payment gateway credentials
 - payment links for invoices
 - public online payment verification
 

@@ -1626,7 +1626,7 @@ async def create_payment_link(invoice_id: str, current_user: dict = Depends(requ
         # Use operator's own gateway keys
         gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
         if not gateway or not gateway.get("is_active"):
-            raise HTTPException(status_code=400, detail="Custom payment gateway not configured. Please set up your gateway keys in Settings.")
+            raise HTTPException(status_code=400, detail="Custom payment gateway not configured. Please contact admin to assign your gateway keys.")
     elif has_platform_pg:
         # Use platform gateway keys
         gateway = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
@@ -1774,6 +1774,7 @@ async def delete_staff(staff_id: str, current_user: dict = Depends(require_opera
 async def configure_payment_gateway(data: PaymentGatewayConfig, current_user: dict = Depends(require_operator)):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot configure operator payment gateway")
+    raise HTTPException(status_code=403, detail="Payment gateway keys are managed by admin. Please contact admin for updates.")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     if not await _has_addon(current_user["operator_id"], "custom_payment_gateway"):

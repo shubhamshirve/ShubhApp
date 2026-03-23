@@ -726,17 +726,23 @@ async def create_admin_payment_gateway(
     data: AdminPaymentGatewayConfig, current_user: dict = Depends(require_admin)
 ):
     now = datetime.now(timezone.utc)
+    operator_id = data.for_operator_id or None
+    if operator_id:
+        operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0, "id": 1})
+        if not operator:
+            raise HTTPException(status_code=404, detail="Operator not found")
     gateway = {
         "id": generate_id(), "gateway_type": data.gateway_type,
         "api_key": data.api_key, "api_secret": data.api_secret,
         "webhook_secret": data.webhook_secret, "is_active": data.is_active,
-        "operator_id": data.for_operator_id,
-        "is_platform_gateway": data.for_operator_id is None,
+        "operator_id": operator_id,
+        "is_platform_gateway": operator_id is None,
         "created_by": current_user["id"],
         "created_at": now.isoformat(), "updated_at": now.isoformat()
     }
+    query = {"operator_id": operator_id} if operator_id else {"operator_id": None, "gateway_type": data.gateway_type}
     await db.payment_gateways.update_one(
-        {"operator_id": data.for_operator_id, "gateway_type": data.gateway_type},
+        query,
         {"$set": gateway}, upsert=True
     )
     return {"message": "Payment gateway configured successfully", "id": gateway["id"]}
@@ -745,9 +751,19 @@ async def create_admin_payment_gateway(
 @router.get("/payment-gateways")
 async def get_admin_payment_gateways(current_user: dict = Depends(require_admin)):
     gateways = await db.payment_gateways.find({}, {"_id": 0, "api_secret": 0}).to_list(100)
+    operator_ids = [g["operator_id"] for g in gateways if g.get("operator_id")]
+    operator_map = {}
+    if operator_ids:
+        operators = await db.operators.find(
+            {"id": {"$in": operator_ids}, "deleted_at": None},
+            {"_id": 0, "id": 1, "company_name": 1}
+        ).to_list(200)
+        operator_map = {op["id"]: op.get("company_name", op["id"]) for op in operators}
     for g in gateways:
         if g.get("api_key"):
             g["api_key"] = g["api_key"][:8] + "****"
+        if g.get("operator_id"):
+            g["operator_name"] = operator_map.get(g["operator_id"], g["operator_id"])
     return gateways
 
 

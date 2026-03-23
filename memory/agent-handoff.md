@@ -30,7 +30,8 @@ The codebase now includes:
 - cron settings persistence now refreshes correctly in the UI
 - auto-backup entries now appear in the backup list after cron completion
 - email settings now reload the latest saved values after save/refresh
-- next requested scope is admin-assigned payment gateway keys and removal of operator gateway settings
+- admin can assign payment gateway keys directly to operators
+- operator settings no longer expose payment gateway configuration
 
 ---
 
@@ -63,6 +64,8 @@ Implemented behavior:
 - Enabled supported browsers to surface install/add-to-home-screen UI on deployed HTTPS builds.
 - Settings saves now rehydrate the persisted cron/email values in the UI.
 - Backup list refresh now shows scheduled auto-backups after completion.
+- Admin can assign payment gateway credentials to specific operators from the admin settings dialog.
+- Operator payment gateway configuration is now admin-managed and removed from the operator panel.
 
 ---
 
@@ -85,6 +88,7 @@ Highest-value remaining checks:
 - verify install/add-to-home-screen UI appears on supported browsers/devices
 - continue VPS scheduler and email fallback verification from `V7.14-10`
 - verify settings save/reload and backup list refresh behavior in a deployed environment
+- verify admin-assigned operator gateway keys work for subscriber payment links
 
 ---
 
@@ -103,10 +107,10 @@ The following files were refreshed on `V7.14-11`:
 
 ## Recommended Next Work
 
-1. Prepare the admin-assigned payment gateway flow and remove operator-side gateway settings.
-2. Add richer SEO/social preview metadata to `frontend/public/index.html`.
-3. Add installable web app support with manifest/service worker wiring.
-4. Continue payment receipt and messaging improvements.
+1. Deploy and verify `V7.14-11` on VPS.
+2. Validate admin-assigned operator gateway flows end-to-end.
+3. Continue payment receipt and messaging improvements.
+4. Revisit deeper reporting/import-export work.
 
 ---
 

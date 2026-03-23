@@ -20,6 +20,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - cron timing persistence refresh in settings after save
   - auto-backup entries refresh correctly in the backup list
   - email settings refresh correctly after save/reload
+  - admin can assign payment gateway keys directly to operators
+  - operator-side payment gateway settings removed from the panel
 
 ## Next Requested Work
 
@@ -86,6 +88,7 @@ d:\eBill
 - Resend email delivery with SMTP fallback support
 - richer homepage metadata for search and link previews
 - installable web app support for supported browsers/devices
+- admin-managed operator payment gateway assignment
 
 ## Recent Functional Changes
 
@@ -127,6 +130,12 @@ d:\eBill
 - Added schema markup for `Organization` and `SoftwareApplication`.
 - Added a web app manifest, install icons, Apple touch icon, and a lightweight service worker.
 - Supported browsers can now show add-to-home-screen or install UI when served over HTTPS.
+
+### Payment Gateway Assignment
+- Admin payment gateway settings can now assign keys directly to a specific operator from the same gateway dialog.
+- The admin gateway list now shows whether credentials are for platform SaaS payments or a named operator.
+- Operator-side payment gateway configuration has been removed from the settings panel.
+- Custom gateway operators are now directed to contact admin for key assignment.
 
 ## Scheduled Jobs
 

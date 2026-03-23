@@ -34,6 +34,8 @@ What is now live in code:
 - cron settings persistence refresh in the admin UI
 - auto-backup list refresh after cron completion
 - email settings refresh after save/reload
+- admin payment gateway assignment from the admin dialog
+- operator payment gateway UI removed
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
@@ -70,13 +72,13 @@ What is still mostly pending:
   - hide GST-specific reporting UX where operator GST is not enabled
 
 ### 2B. Payment Gateway Delegation Cleanup
-- Status: `requested`
+- Status: `completed`
 - Priority: `P1`
 - Importance: `High`
 - Effort: `S-M`
 - Scope:
-  - allow admins to assign payment gateway keys directly to an operator from the admin dialog
-  - remove operator-side payment gateway settings from the operator UI
+- allow admins to assign payment gateway keys directly to an operator from the admin dialog
+- remove operator-side payment gateway settings from the operator UI
 
 ### 2A. Delivery Reliability and Scheduler Configuration
 - Status: `completed`
@@ -171,6 +173,7 @@ These are implemented in code but still need more manual/live verification in so
 - email settings refresh behavior after save/reload
 - link previews across social/messaging platforms
 - install prompt/add-to-home-screen behavior on supported browsers
+- admin payment gateway assignment regression and payment-link verification
 - public payment and branded PDF/print receipt consistency
 
 Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
