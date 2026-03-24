@@ -24,13 +24,15 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { toast } from "sonner";
-import { Bell, Send, Plus, Users, Clock } from "lucide-react";
+import { Bell, Send, Plus, Users, Clock, Eye } from "lucide-react";
 
 const OperatorAnnouncements = () => {
   const { authAxios } = useAuth();
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
+  const [showViewDialog, setShowViewDialog] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [sending, setSending] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [weeklyStats, setWeeklyStats] = useState(null);
@@ -86,6 +88,11 @@ const OperatorAnnouncements = () => {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleView = (item) => {
+    setSelectedAnnouncement(item);
+    setShowViewDialog(true);
   };
 
   const isReadOnly = dashboardStats?.is_read_only;
@@ -151,6 +158,7 @@ const OperatorAnnouncements = () => {
                     <TableHead>WhatsApp</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -184,6 +192,17 @@ const OperatorAnnouncements = () => {
                             day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
                           })}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleView(item)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          title="View Announcement"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -256,6 +275,67 @@ const OperatorAnnouncements = () => {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Announcement Dialog */}
+        <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>View Announcement</DialogTitle>
+              <DialogDescription>
+                Details of the announcement
+              </DialogDescription>
+            </DialogHeader>
+            {selectedAnnouncement && (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium text-slate-500">Title</h4>
+                  <p className="mt-1 font-medium">{selectedAnnouncement.title}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-slate-500">Message</h4>
+                  <div className="mt-1 p-3 bg-slate-50 rounded-md text-sm whitespace-pre-wrap">
+                    {selectedAnnouncement.message}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-500">Sent on</h4>
+                    <p className="mt-1 text-sm flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      {new Date(selectedAnnouncement.created_at).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-500">Recipients</h4>
+                    <p className="mt-1 text-sm flex items-center gap-1">
+                      <Users className="w-3 h-3 text-slate-400" />
+                      {selectedAnnouncement.recipient_count}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 border-t pt-4">
+                  {selectedAnnouncement.sent_via_whatsapp && (
+                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-medium">Sent via WhatsApp</span>
+                  )}
+                  {!selectedAnnouncement.sent_via_whatsapp && (
+                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded font-medium">Not sent via WhatsApp</span>
+                  )}
+                  {selectedAnnouncement.sent_via_email && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium">Sent via Email</span>
+                  )}
+                  {!selectedAnnouncement.sent_via_email && (
+                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded font-medium">Not sent via Email</span>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={() => setShowViewDialog(false)}>Close</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
