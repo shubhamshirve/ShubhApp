@@ -207,6 +207,142 @@ export default function PublicInvoice() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
+      <style>{`
+        @media print {
+          * {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          html {
+            margin: 0;
+            padding: 0;
+          }
+          @page {
+            size: A4;
+            margin: 0.25in;
+          }
+          .min-h-screen {
+            min-height: auto !important;
+          }
+          .bg-gradient-to-br {
+            background: white !important;
+          }
+          .rounded-2xl {
+            border-radius: 0 !important;
+          }
+          .shadow-sm {
+            box-shadow: none !important;
+          }
+          .max-w-4xl {
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .px-4, .px-6, .sm\:px-6, .sm\:px-8 {
+            padding-left: 0.125in !important;
+            padding-right: 0.125in !important;
+          }
+          .py-6, .py-8, .sm\:py-8, .sm\:py-10 {
+            padding-top: 0.125in !important;
+            padding-bottom: 0.125in !important;
+          }
+          .py-4 {
+            padding-top: 0.1in !important;
+            padding-bottom: 0.1in !important;
+          }
+          .py-5 {
+            padding-top: 0.08in !important;
+            padding-bottom: 0.08in !important;
+          }
+          .py-3 {
+            padding-top: 0.05in !important;
+            padding-bottom: 0.05in !important;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          td, th {
+            padding: 0.08in !important;
+          }
+          .border {
+            border: none !important;
+          }
+          .border-b {
+            border-bottom: 1px solid #e2e8f0 !important;
+          }
+          .border-t {
+            border-top: 1px solid #e2e8f0 !important;
+          }
+          .border-l, .border-r {
+            border: none !important;
+          }
+          .leading-relaxed {
+            line-height: 1.3;
+          }
+          .text-sm {
+            font-size: 10pt;
+          }
+          .text-xs {
+            font-size: 8pt;
+          }
+          .text-base {
+            font-size: 11pt;
+          }
+          .text-lg {
+            font-size: 12pt;
+          }
+          .text-2xl {
+            font-size: 14pt;
+          }
+          .text-3xl {
+            font-size: 16pt;
+          }
+          .text-xl {
+            font-size: 13pt;
+          }
+          .gap-4 {
+            gap: 0.15in !important;
+          }
+          .gap-6 {
+            gap: 0.2in !important;
+          }
+          .space-y-2 > * + * {
+            margin-top: 0.05in !important;
+          }
+          .space-y-4 > * + * {
+            margin-top: 0.08in !important;
+          }
+          .space-y-6 > * + * {
+            margin-top: 0.12in !important;
+          }
+          .mt-2 {
+            margin-top: 0.05in !important;
+          }
+          .mt-3 {
+            margin-top: 0.08in !important;
+          }
+          .mb-2 {
+            margin-bottom: 0.05in !important;
+          }
+          .mb-3 {
+            margin-bottom: 0.08in !important;
+          }
+          .mb-4 {
+            margin-bottom: 0.1in !important;
+          }
+          .mt-8 {
+            margin-top: 0 !important;
+          }
+          .pb-8 {
+            padding-bottom: 0 !important;
+          }
+        }
+      `}</style>
       <Toaster position="top-right" richColors closeButton />
 
       {/* Top Bar */}

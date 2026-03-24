@@ -67,7 +67,7 @@ const OperatorSettings = () => {
     terms_conditions: "",
     invoice_template: "classic",
     visible_fields: {
-      show_logo: true,
+      show_logo: false,
       show_company_address: true,
       show_company_phone: true,
       show_company_email: true,
@@ -119,7 +119,7 @@ const OperatorSettings = () => {
         terms_conditions: invoiceRes.data.terms_conditions || "",
         invoice_template: invoiceRes.data.invoice_template || "classic",
         visible_fields: {
-          show_logo: invoiceRes.data.visible_fields?.show_logo !== false,
+          show_logo: false,
           show_company_address: invoiceRes.data.visible_fields?.show_company_address !== false,
           show_company_phone: invoiceRes.data.visible_fields?.show_company_phone !== false,
           show_company_email: invoiceRes.data.visible_fields?.show_company_email !== false,
@@ -581,7 +581,7 @@ const OperatorSettings = () => {
                         data-testid="inv-logo-url"
                       />
                       <div className="flex flex-wrap items-center gap-3">
-                        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-500 cursor-not-allowed opacity-50">
                           {logoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                           {logoUploading ? "Uploading..." : "Upload Logo"}
                           <input
@@ -589,7 +589,7 @@ const OperatorSettings = () => {
                             accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
                             className="hidden"
                             onChange={handleInvoiceLogoUpload}
-                            disabled={logoUploading || isReadOnly}
+                            disabled={true}
                           />
                         </label>
                         <p className="text-xs text-slate-500">Use upload for best PDF compatibility, or paste a direct logo URL.</p>
@@ -618,7 +618,7 @@ const OperatorSettings = () => {
                         <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
                           <Label className="font-normal">{label}</Label>
                           <Switch
-                            checked={invoiceForm.visible_fields?.[key] !== false}
+                            checked={key === "show_logo" ? false : invoiceForm.visible_fields?.[key] !== false}
                             onCheckedChange={(checked) => setInvoiceForm(prev => ({
                               ...prev,
                               visible_fields: {
@@ -626,7 +626,7 @@ const OperatorSettings = () => {
                                 [key]: checked,
                               },
                             }))}
-                            disabled={isReadOnly}
+                            disabled={key === "show_logo" || isReadOnly}
                           />
                         </div>
                       ))}

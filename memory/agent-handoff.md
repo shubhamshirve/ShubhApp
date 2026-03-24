@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.14-14`
-**Latest Feature Branch:** `V7.14-14`
+**Active Branch:** `V7.15-2`
+**Latest Feature Branch:** `V7.15-2`
 
 ---
 
@@ -44,6 +44,9 @@ The codebase now includes:
 - SMTP sending/testing is more tolerant, including implicit SSL on port 465
 - admin-created operators now receive referral codes automatically
 - referral benefits/settings now live in admin general settings
+- invoice image upload button is permanently disabled
+- invoice show logo toggle is always OFF and disabled
+- invoice print preview is optimized to fit on a single A4 page with thin margins and proper scaling
 
 ---
 
@@ -56,8 +59,25 @@ The codebase now includes:
 - `V7.14-9` is the scheduler reliability fix branch based on `V7.14-8`
 - `V7.14-10` is the title, email fallback, and cron-settings branch based on `V7.14-9`
 - `V7.14-11` is the metadata and installable web app branch based on `V7.14-10`
+- `V7.14-12` is the cache clearing, admin profile, and email test branch based on `V7.14-11`
+- `V7.14-13` is the invoice bulk upload, address fallback, and logo rendering branch based on `V7.14-12`
+- `V7.14-14` is the dashboard stats, SMTP stability, and referral automation branch based on `V7.14-13`
+- `V7.14-15` is the operator referral codes, logo reorganization, renewal window, and announcements branch based on `V7.14-14`
+- `V7.15-2` is the invoice settings restrictions and print preview optimization branch based on `V7.14-15`
 
-### V7.14-11 Changes
+### V7.15-2 Changes
+
+Primary files:
+- [frontend/src/pages/operator/Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
+- [frontend/src/pages/PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
+
+Implemented behavior:
+- Disabled image upload button in operator invoice settings (appears grayed out and non-functional).
+- Disabled "Show Logo" toggle switch in invoice visible fields section (always OFF, cannot be changed).
+- Added comprehensive CSS print styling with thin 0.25-inch margins and optimized font sizes for single-page A4 layout.
+- Invoice print preview now scales properly and fits on one page with minimal margins.
+
+### V7.14-15 Changes
 
 Primary files:
 - [frontend/public/index.html](/d:/eBill/frontend/public/index.html)
