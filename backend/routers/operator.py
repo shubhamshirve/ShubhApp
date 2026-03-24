@@ -790,16 +790,26 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
         raise HTTPException(status_code=404, detail="Operator not found")
     access_state = await get_operator_access_state(current_user["operator_id"])
     saas_plan = None
-    if operator.get("saas_plan_id"):
-        saas_plan = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
+    current_plan_id = operator.get("saas_plan_id")
+    
+    if current_plan_id:
+        saas_plan = await db.saas_plans.find_one({"id": current_plan_id, "deleted_at": None}, {"_id": 0})
+    
     available_plans = await db.saas_plans.find({"deleted_at": None, "trial_enabled": False}, {"_id": 0}).to_list(50)
     subscriber_count = await db.subscribers.count_documents(
         {"operator_id": operator["id"], "status": "active", "deleted_at": None}
     )
+    
+    # Validate that the current plan ID exists in available plans
+    plan_id_valid = False
+    if current_plan_id and saas_plan:
+        # Check if the current plan ID matches one in available plans
+        plan_id_valid = any(p["id"] == current_plan_id for p in available_plans)
+    
     return {
         "operator_id": operator["id"], "company_name": operator.get("company_name", ""),
         "status": operator.get("status", "unknown"),
-        "saas_plan_id": operator.get("saas_plan_id"),
+        "saas_plan_id": current_plan_id,
         "saas_plan_name": operator.get("saas_plan_name") or (saas_plan["name"] if saas_plan else None),
         "saas_plan_price": saas_plan.get("monthly_price") if saas_plan else None,
         "per_invoice_price": saas_plan.get("per_invoice_price", 10.0) if saas_plan else 10.0,
@@ -809,6 +819,11 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
         "is_read_only": access_state["is_read_only"],
         "maintenance_mode": access_state["maintenance_mode"],
         "maintenance_message": access_state["maintenance_message"],
+        "plan_validation": {
+            "is_valid": plan_id_valid,
+            "current_plan_id": current_plan_id,
+            "plan_exists_in_available": plan_id_valid,
+        },
         "available_plans": [
             {
                 "id": p["id"], "name": p["name"],

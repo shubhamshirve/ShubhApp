@@ -52,6 +52,7 @@ const OperatorSubscription = () => {
   const [purchasing, setPurchasing] = useState(null);
   const [showAddonConfirm, setShowAddonConfirm] = useState(null);
   const [selectedAddonCodes, setSelectedAddonCodes] = useState([]);
+  const [planValidationWarning, setPlanValidationWarning] = useState(null);
   // Coupon state for Renew Dialog
   const [renewCoupon, setRenewCoupon] = useState("");
   const [renewCouponResult, setRenewCouponResult] = useState(null);
@@ -117,6 +118,30 @@ const OperatorSubscription = () => {
       fetchWallet();
     }
   }, [activeTab, fetchWallet]);
+
+  // Validate that current plan matches one in available plans
+  useEffect(() => {
+    if (subscription && subscription.available_plans && subscription.saas_plan_id) {
+      const currentPlanExists = subscription.available_plans.some(p => p.id === subscription.saas_plan_id);
+      
+      if (!currentPlanExists) {
+        const warning = `Your current plan (${subscription.saas_plan_name}) is not found in available plans. This may indicate a data inconsistency.`;
+        setPlanValidationWarning(warning);
+        console.warn("Plan Validation Warning:", warning, {
+          currentPlanId: subscription.saas_plan_id,
+          currentPlanName: subscription.saas_plan_name,
+          availablePlanIds: subscription.available_plans.map(p => p.id),
+        });
+      } else {
+        setPlanValidationWarning(null);
+      }
+      
+      // Also validate that the plan_validation data matches
+      if (subscription.plan_validation && !subscription.plan_validation.is_valid) {
+        console.warn("Backend plan validation failed:", subscription.plan_validation);
+      }
+    }
+  }, [subscription]);
 
   const openRazorpay = (orderData, onSuccess) => {
     if (!window.Razorpay) {
@@ -422,6 +447,20 @@ const OperatorSubscription = () => {
     <OperatorLayout title="Subscription" isReadOnly={subscription?.is_read_only}>
       <div className="max-w-4xl space-y-6 animate-fade-in">
 
+        {/* Plan Validation Warning */}
+        {planValidationWarning && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-red-800">Plan Validation Warning</p>
+              <p className="text-sm text-red-700 mt-1">{planValidationWarning}</p>
+              <p className="text-xs text-red-600 mt-2">
+                Please contact support if this issue persists. Your current plan is: <strong>{subscription?.saas_plan_name}</strong>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
           <button
@@ -641,9 +680,21 @@ const OperatorSubscription = () => {
                     data-testid={`plan-option-${plan.id}`}
                   >
                     {subscription.saas_plan_id === plan.id && (
-                      <span className="text-[10px] font-semibold bg-blue-600 text-white px-2 py-0.5 rounded mb-2 inline-block">
-                        CURRENT
-                      </span>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-[10px] font-semibold bg-blue-600 text-white px-2 py-0.5 rounded">
+                          CURRENT
+                        </span>
+                        {subscription.plan_validation?.is_valid && (
+                          <span className="text-[9px] text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                            ✓ Verified
+                          </span>
+                        )}
+                        {subscription.plan_validation && !subscription.plan_validation.is_valid && (
+                          <span className="text-[9px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded">
+                            ⚠ Mismatch
+                          </span>
+                        )}
+                      </div>
                     )}
                     <p className="font-semibold text-slate-900">{plan.name}</p>
                     <p className="text-2xl font-bold mt-1">
