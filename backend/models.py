@@ -495,6 +495,27 @@ class StaffResponse(SanitizedModel):
     created_at: datetime
 
 
+
+
+class StaffUpdate(SanitizedModel):
+    _unsanitized_fields = {"password"}
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    phone: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    status: Optional[str] = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        return _empty_to_none(v)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_phone(value)
+
 # ============== AUDIT LOG MODELS ==============
 
 class AuditLogResponse(SanitizedModel):

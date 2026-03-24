@@ -15,7 +15,7 @@ from models import (
     AnnouncementCreate, OperatorPlanCreate, OperatorPlanResponse,
     SubscriberCreate, SubscriberResponse,
     InvoiceCreate, InvoiceUpdate, InvoiceStatusUpdate, InvoiceResponse, PaymentLinkResponse,
-    StaffCreate, StaffResponse, AuditLogResponse,
+    StaffCreate, StaffUpdate, StaffResponse, AuditLogResponse,
     PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
     ReminderSettingsUpdate,
 )
@@ -2085,6 +2085,53 @@ async def create_staff(data: StaffCreate, current_user: dict = Depends(require_o
         id=user_id, name=data.name, email=data.email, phone=data.phone,
         role="staff", permissions=data.permissions,
         operator_id=current_user["operator_id"], status="active", created_at=now
+    )
+
+
+@router.put("/staff/{staff_id}", response_model=StaffResponse)
+async def update_staff(staff_id: str, data: StaffUpdate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot update staff")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    existing = await db.users.find_one({
+        "id": staff_id, 
+        "operator_id": current_user["operator_id"], 
+        "role": "staff", 
+        "deleted_at": None
+    })
+    if not existing:
+        raise HTTPException(status_code=404, detail="Staff not found")
+
+    if data.email and data.email != existing.get("email"):
+        email_check = await db.users.find_one({"email": data.email, "deleted_at": None})
+        if email_check:
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+    update_doc = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    dump_data = data.model_dump(exclude_unset=True)
+    
+    for key, value in dump_data.items():
+        if key == "password":
+            if value:
+                update_doc[key] = hash_password(value)
+        else:
+            update_doc[key] = value
+
+    await db.users.update_one({"id": staff_id}, {"$set": update_doc})
+    
+    updated = await db.users.find_one({"id": staff_id})
+    return StaffResponse(
+        id=updated["id"],
+        name=updated["name"],
+        email=updated["email"],
+        phone=updated.get("phone"),
+        role=updated["role"],
+        permissions=updated.get("permissions", []),
+        operator_id=updated["operator_id"],
+        status=updated.get("status", "active"),
+        created_at=datetime.fromisoformat(updated["created_at"])
     )
 
 
