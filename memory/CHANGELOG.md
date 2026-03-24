@@ -2,6 +2,59 @@
 
 ## 2026-03-24
 
+### V7.14-15: Operator Referral Code Auto-Generation, Logo Upload Reorganization, Subscription Renewal Window, and Announcements Enhancements
+
+#### Operator Referral Code Fix
+- Operators created by admin now automatically receive a unique referral code if missing.
+- Referral code is generated on-demand when accessing wallet if not already assigned.
+- Ensures all operators, including legacy ones, have valid referral codes for the referral program.
+
+#### Logo Upload Path Reorganization
+- Operator logo uploads now save to project root `/uploads` folder instead of `backend/uploads`.
+- Updated file path configuration in `operator.py` and `pdf_service.py`.
+- Public URL changed from `/api/uploads/` to `/uploads/` for consistency.
+- Both admin and operator logo uploads now use the same centralized upload directory.
+
+#### Subscription Renewal Window
+- Added 3-day renewal window restriction: operators can renew subscription from 3 days before expiry until the expiry date.
+- Early renewal attempts show clear error message indicating when renewal becomes available.
+- Implemented backend validation in `renew-subscription` endpoint.
+- Frontend now shows disabled renewal button with tooltip when outside the renewal window.
+
+#### Subscription Renewal UI Improvements
+- Added **Wallet Topup button** next to renewal buttons on subscription page.
+- Topup button navigates directly to the wallet page for easy credit management.
+- Available in both urgent renewal (within 3 days/expired) and normal renewal sections.
+- Improves user experience for operators who may need wallet credits before renewal.
+
+#### Wallet Transaction Display
+- Transaction history properly displays meaningful `description` field instead of operator ID.
+- Each transaction shows context-specific details (e.g., "Invoice generation charge", "Wallet Topup", etc.).
+- Admin wallet transaction view provides clear transaction details for audit purposes.
+
+#### Announcements Enhancements
+- Changed announcement frequency limit from **3 per day** to **6 per week**.
+- Weekly limit calculation uses ISO week start (Monday).
+- Added **email notification checkbox** to announcement creation form.
+- Announcements can now be sent via **WhatsApp, Email, or both**.
+- Uses Resend API for email delivery with fallback support.
+- Announcement list now displays **Email status badge** (Sent/No) alongside WhatsApp status.
+- Get announcements endpoint returns **weekly statistics** showing:
+  - Total limit (6)
+  - Announcements sent this week
+  - Remaining announcements available this week
+- Frontend displays weekly limit indicator on announcement page showing progress and remaining quota.
+
+#### Validation
+- Operator referral code generation should be verified during wallet access.
+- Admin-created operators should receive referral codes automatically.
+- Logo uploads should be stored in root `/uploads` folder and served via `/uploads/` URLs.
+- Subscription renewal should be blocked outside the 3-day window with appropriate error messages.
+- Renewal/Topup buttons should display correctly on subscription page.
+- Announcements should enforce 6-per-week limit with clear feedback.
+- Email announcements should send via Resend API when enabled.
+- Weekly statistics should display correctly in announcements UI.
+
 ### V7.14-14: Operator Dashboard Stats, SMTP Stability, and Referral Automation
 
 #### Dashboard Stats

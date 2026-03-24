@@ -282,7 +282,7 @@ class InvoicePDFService:
             return None
         try:
             backend_upload_dir = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "uploads")
+                os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
             )
             if logo_url.startswith(("http://", "https://")):
                 with urlopen(logo_url, timeout=5) as resp:

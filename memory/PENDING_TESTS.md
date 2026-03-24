@@ -2,6 +2,27 @@
 
 ## High Priority
 
+### V7.14-15 Operator Referral / Logo Upload / Subscription Renewal / Announcements Validation
+- Verify operator created by admin receives a unique referral code automatically.
+- Verify legacy operators (with no referral code) get one generated when accessing wallet page.
+- Verify referral code displays correctly on wallet page and can be copied.
+- Verify operator logo uploads save to root `/uploads` folder instead of `backend/uploads`.
+- Verify uploaded logos are served via `/uploads/` URL instead of `/api/uploads/`.
+- Verify subscription renewal is blocked outside the 3-day renewal window with appropriate error message.
+- Verify subscription renewal is enabled within 3 days of expiry date or after expiry.
+- Verify "Renewal available in X days" message displays when trying to renew too early.
+- Verify **Wallet Topup button** appears on subscription page next to renewal buttons.
+- Verify Topup button navigates to wallet page when clicked.
+- Verify announcements enforce 6-per-week limit (instead of 3-per-day).
+- Verify weekly limit counter displays on announcements page showing "X/6 announcements this week".
+- Verify remaining announcements count updates correctly after each announcement.
+- Verify **Email checkbox** appears in announcement creation form.
+- Verify checking email checkbox sends announcement via Resend email API.
+- Verify announcement table shows Email status badge (Sent/No) for each announcement.
+- Verify announcements can be sent via WhatsApp only, Email only, or both.
+- Verify email announcements contain proper subject line and HTML formatting.
+- Verify weekly announcements endpoint returns `weekly_limit`, `this_week_count`, and `remaining_this_week`.
+
 ### V7.14-14 Dashboard / SMTP / Referral Validation
 - Verify operator dashboard shows monthly invoice value, received value this month, pending value this month, and total pending value.
 - Verify SMTP test/send works on supported servers including implicit SSL port 465.

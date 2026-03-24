@@ -6,7 +6,7 @@ import os
 import logging
 
 from database import db
-from utils import generate_id
+from utils import generate_id, generate_unique_referral_code
 from audit import log_audit
 from dependencies import require_operator, require_admin, check_operator_read_only, get_operator_access_state
 from models import WalletAdjustmentRequest, WalletSuspendRequest
@@ -188,13 +188,24 @@ async def get_wallet(current_user: dict = Depends(require_operator)):
     operator_id = current_user["operator_id"]
     wallet = await get_or_create_wallet(operator_id)
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    
+    # Ensure operator has a referral code (for legacy operators)
+    if operator and not operator.get("referral_code"):
+        referral_code = await generate_unique_referral_code(db)
+        now = datetime.now(timezone.utc)
+        await db.operators.update_one(
+            {"id": operator_id},
+            {"$set": {"referral_code": referral_code, "updated_at": now.isoformat()}}
+        )
+        operator["referral_code"] = referral_code
+    
     access_state = await get_operator_access_state(operator_id)
     return {
         "balance": wallet.get("balance", 0),
         "operator_id": operator_id,
-        "referral_code": operator.get("referral_code", ""),
-        "referred_by_code": operator.get("referred_by_code", ""),
-        "referral_discount_used": operator.get("referral_discount_used", False),
+        "referral_code": operator.get("referral_code", "") if operator else "",
+        "referred_by_code": operator.get("referred_by_code", "") if operator else "",
+        "referral_discount_used": operator.get("referral_discount_used", False) if operator else False,
         "referral_reward_active": await is_referral_reward_active(operator) if operator else False,
         "wallet_suspended": operator.get("wallet_suspended", False) if operator else False,
         "is_read_only": access_state["is_read_only"],

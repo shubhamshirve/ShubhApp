@@ -4,9 +4,18 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.14-14`
-- Latest feature and fix delivery implemented through `V7.14-14`
+- Documentation updated for branch line `V7.14-15`
+- Latest feature and fix delivery implemented through `V7.14-15`
 - Current release focus:
+  - operator referral code auto-generation for admin-created operators
+  - logo upload reorganization to root `/uploads` folder
+  - subscription renewal window (3 days before to expiry date)
+  - wallet topup button on subscription page for easy credit management
+  - wallet transaction history showing meaningful description details
+  - announcements enhanced to 6-per-week limit with weekly statistics
+  - announcements now support email delivery via Resend API
+  - email announcement checkbox in creation form
+  - weekly announcements quota display on announcements page
   - single active session per user
   - email-only password recovery OTP
   - pending invoice edit support

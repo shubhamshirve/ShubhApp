@@ -611,6 +611,7 @@ class AnnouncementCreate(SanitizedModel):
     title: str
     message: str
     send_whatsapp: bool = True
+    send_email: bool = False
     send_to_all: bool = True
     subscriber_ids: Optional[List[str]] = None
 

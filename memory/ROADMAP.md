@@ -17,9 +17,17 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-14`
+Latest shipped functional branch: `V7.14-15`
 
 What is now live in code:
+- operator referral code auto-generation for admin-created and legacy operators
+- logo upload reorganization to root `/uploads` folder
+- subscription renewal window restriction (3 days before to expiry date)
+- wallet topup button on subscription page
+- wallet transaction history with meaningful description display
+- announcements enhanced to 6-per-week limit
+- announcements email delivery via Resend API
+- weekly announcements quota display and counter
 - single active session per user
 - email-only password recovery OTP
 - pending invoice editing

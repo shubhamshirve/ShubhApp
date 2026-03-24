@@ -32,7 +32,7 @@ from services.invoice_view_service import normalize_invoice_settings, build_publ
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
-UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -204,7 +204,7 @@ async def upload_invoice_logo(
     with open(filepath, "wb") as f:
         f.write(content)
 
-    public_url = f"/api/uploads/{filename}"
+    public_url = f"/uploads/{filename}"
     await db.invoice_settings.update_one(
         {"operator_id": current_user["operator_id"]},
         {"$set": {
@@ -270,16 +270,16 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
     if not await _has_addon(current_user["operator_id"], "announcement"):
         raise HTTPException(status_code=403, detail="Announcement add-on is not enabled for your plan.")
 
-    # Enforce max 3 announcements per day
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    today_count = await db.announcements.count_documents({
-        "operator_id": current_user["operator_id"],
-        "created_at": {"$gte": today_start}
-    })
-    if today_count >= 3:
-        raise HTTPException(status_code=429, detail="Daily announcement limit reached (max 3 per day).")
-
+    # Enforce max 6 announcements per week
     now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    week_count = await db.announcements.count_documents({
+        "operator_id": current_user["operator_id"],
+        "created_at": {"$gte": week_start}
+    })
+    if week_count >= 6:
+        raise HTTPException(status_code=429, detail="Weekly announcement limit reached (max 6 per week).")
+
     if data.send_to_all:
         subscribers = await db.subscribers.find(
             {"operator_id": current_user["operator_id"], "status": "active", "deleted_at": None}, {"_id": 0}
@@ -294,25 +294,71 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
         "id": generate_id(), "operator_id": current_user["operator_id"],
         "title": data.title, "message": data.message,
         "recipient_count": len(subscribers), "sent_via_whatsapp": data.send_whatsapp,
+        "sent_via_email": data.send_email,
         "created_by": current_user["id"], "created_at": now.isoformat()
     }
     await db.announcements.insert_one(announcement)
     announcement.pop("_id", None)
 
     sent_count = 0
+    whatsapp_count = 0
+    email_count = 0
+    
+    # Send WhatsApp notifications if enabled
     if data.send_whatsapp:
         for sub in subscribers:
-            notification = {
-                "id": generate_id(), "operator_id": current_user["operator_id"],
-                "subscriber_id": sub["id"], "notification_type": "announcement",
-                "whatsapp_number": sub["whatsapp_number"],
-                "message": f"*{data.title}*\n\n{data.message}",
-                "status": "pending", "created_at": now.isoformat()
-            }
-            await db.notification_queue.insert_one(notification)
-            sent_count += 1
+            if sub.get("whatsapp_number"):
+                notification = {
+                    "id": generate_id(), "operator_id": current_user["operator_id"],
+                    "subscriber_id": sub["id"], "notification_type": "announcement",
+                    "whatsapp_number": sub["whatsapp_number"],
+                    "message": f"*{data.title}*\n\n{data.message}",
+                    "status": "pending", "created_at": now.isoformat()
+                }
+                await db.notification_queue.insert_one(notification)
+                whatsapp_count += 1
+    
+    # Send emails if enabled
+    if data.send_email:
+        try:
+            settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
+            resend_api_key = (settings or {}).get("resend_api_key", "")
+            resend_from_email = (settings or {}).get("resend_from_email", "")
+            
+            if resend_api_key and resend_from_email:
+                from services.email_service import ResendEmailService
+                email_service = ResendEmailService(resend_api_key, resend_from_email)
+                
+                for sub in subscribers:
+                    if sub.get("email"):
+                        try:
+                            html_content = f"""
+                            <h2>{data.title}</h2>
+                            <p>{data.message}</p>
+                            <hr>
+                            <p style="font-size: 12px; color: #666;">
+                                This is an announcement from your operator. 
+                                If you no longer wish to receive these emails, please contact your operator.
+                            </p>
+                            """
+                            await email_service.send_email(
+                                to_email=sub["email"],
+                                subject=f"Announcement: {data.title}",
+                                html=html_content,
+                                text=f"{data.title}\n\n{data.message}"
+                            )
+                            email_count += 1
+                        except Exception as e:
+                            logger.warning(f"Failed to send email to {sub['email']}: {e}")
+        except Exception as e:
+            logger.warning(f"Email service unavailable for announcements: {e}")
 
-    return {"message": "Announcement created", "recipients": len(subscribers), "queued_notifications": sent_count}
+    return {
+        "message": "Announcement created", 
+        "recipients": len(subscribers), 
+        "whatsapp_sent": whatsapp_count,
+        "email_sent": email_count,
+    }
 
 
 @router.get("/announcements")
@@ -320,7 +366,21 @@ async def get_announcements(current_user: dict = Depends(require_operator)):
     announcements = await db.announcements.find(
         {"operator_id": current_user["operator_id"]}, {"_id": 0}
     ).sort("created_at", -1).to_list(100)
-    return announcements
+    
+    # Calculate weekly limit status
+    now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    week_count = await db.announcements.count_documents({
+        "operator_id": current_user["operator_id"],
+        "created_at": {"$gte": week_start}
+    })
+    
+    return {
+        "announcements": announcements,
+        "weekly_limit": 6,
+        "this_week_count": week_count,
+        "remaining_this_week": max(0, 6 - week_count)
+    }
 
 
 # ─── Addon Store & Subscription & Checkout ──────────────────────────────────────
@@ -783,6 +843,30 @@ async def renew_operator_subscription(
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
+    
+    # Check renewal window: allow renewal from 3 days before expiry until the expiry date
+    now = datetime.now(timezone.utc)
+    subscription_ends = operator.get("subscription_ends_at") or operator.get("trial_ends_at")
+    if subscription_ends:
+        if isinstance(subscription_ends, str):
+            subscription_ends = datetime.fromisoformat(subscription_ends)
+        if subscription_ends.tzinfo is None:
+            subscription_ends = subscription_ends.replace(tzinfo=timezone.utc)
+        
+        # Calculate the renewal window start (3 days before expiry)
+        renewal_window_start = subscription_ends - timedelta(days=3)
+        
+        # Check if current time is within the renewal window
+        if now < renewal_window_start:
+            days_until_window = (renewal_window_start - now).days
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Renewal is available 3 days before expiry. You can renew in {days_until_window} days."
+            )
+        if now > subscription_ends:
+            # Allow renewal even after expiry
+            pass
+    
     target_plan_id = plan_id or operator.get("saas_plan_id")
     if not target_plan_id:
         raise HTTPException(status_code=400, detail="No plan selected.")
@@ -819,14 +903,14 @@ async def renew_operator_subscription(
                 payment_link = result.get("short_url")
         except Exception as e:
             logger.warning(f"Razorpay link creation failed: {e}")
-    now = datetime.now(timezone.utc)
+    renewal_now = datetime.now(timezone.utc)
     renewal = {
         "id": renewal_id, "operator_id": operator["id"],
         "plan_id": target_plan_id, "plan_name": saas_plan["name"],
         "months": months, "base_amount": amount, "gst_amount": gst_amount,
         "exact_total": exact_total, "rounding_diff": rounding_diff,
         "total_amount": total_amount, "payment_link": payment_link,
-        "status": "pending", "created_at": now.isoformat(), "deleted_at": None
+        "status": "pending", "created_at": renewal_now.isoformat(), "deleted_at": None
     }
     await db.saas_payments.insert_one(renewal)
     renewal.pop("_id", None)

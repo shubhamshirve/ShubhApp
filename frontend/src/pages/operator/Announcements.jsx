@@ -33,10 +33,12 @@ const OperatorAnnouncements = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [sending, setSending] = useState(false);
   const [dashboardStats, setDashboardStats] = useState(null);
+  const [weeklyStats, setWeeklyStats] = useState(null);
   const [form, setForm] = useState({
     title: "",
     message: "",
     send_whatsapp: false,
+    send_email: false,
     send_to_all: true,
   });
 
@@ -48,7 +50,12 @@ const OperatorAnnouncements = () => {
   const fetchAnnouncements = async () => {
     try {
       const res = await authAxios.get("/operator/announcements");
-      setAnnouncements(res.data);
+      setAnnouncements(res.data.announcements || res.data);
+      setWeeklyStats({
+        limit: res.data.weekly_limit || 6,
+        count: res.data.this_week_count || 0,
+        remaining: res.data.remaining_this_week || 0
+      });
     } catch { /* ignore */ }
   };
 
@@ -72,7 +79,7 @@ const OperatorAnnouncements = () => {
       const res = await authAxios.post("/operator/announcements", form);
       toast.success(`Announcement sent to ${res.data.recipients} subscriber(s)`);
       setShowDialog(false);
-      setForm({ title: "", message: "", send_whatsapp: false, send_to_all: true });
+      setForm({ title: "", message: "", send_whatsapp: false, send_email: false, send_to_all: true });
       fetchAnnouncements();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send announcement");
@@ -112,10 +119,20 @@ const OperatorAnnouncements = () => {
         {/* Announcements History */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5" />
-              Announcement History
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5" />
+                Announcement History
+              </CardTitle>
+              {weeklyStats && (
+                <div className="text-sm text-slate-600 bg-blue-50 px-3 py-1.5 rounded-lg">
+                  <span>{weeklyStats.count}/6 announcements this week</span>
+                  {weeklyStats.remaining > 0 && (
+                    <span className="text-emerald-600 ml-2">({weeklyStats.remaining} remaining)</span>
+                  )}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {announcements.length === 0 ? (
@@ -132,6 +149,7 @@ const OperatorAnnouncements = () => {
                     <TableHead>Message</TableHead>
                     <TableHead>Recipients</TableHead>
                     <TableHead>WhatsApp</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead>Date</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -150,6 +168,12 @@ const OperatorAnnouncements = () => {
                       <TableCell>
                         {item.sent_via_whatsapp
                           ? <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-medium">Sent</span>
+                          : <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">No</span>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {item.sent_via_email
+                          ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium">Sent</span>
                           : <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">No</span>
                         }
                       </TableCell>
@@ -209,6 +233,17 @@ const OperatorAnnouncements = () => {
                   checked={form.send_whatsapp}
                   onCheckedChange={(checked) => setForm(f => ({ ...f, send_whatsapp: checked }))}
                   data-testid="announcement-whatsapp-toggle"
+                />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                <div>
+                  <Label className="font-normal">Send via Email</Label>
+                  <p className="text-xs text-slate-500">Also send this message via email to all subscribers</p>
+                </div>
+                <Switch
+                  checked={form.send_email}
+                  onCheckedChange={(checked) => setForm(f => ({ ...f, send_email: checked }))}
+                  data-testid="announcement-email-toggle"
                 />
               </div>
               <DialogFooter>

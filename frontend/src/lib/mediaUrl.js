@@ -9,11 +9,7 @@ export function resolveMediaUrl(path) {
     return path;
   }
 
-  if (path.startsWith("/uploads/")) {
-    return `${BACKEND_URL}/api/uploads/${path.split("/").pop()}`;
-  }
-
-  if (path.startsWith("/api/uploads/") && BACKEND_URL) {
+  if ((path.startsWith("/uploads/") || path.startsWith("/api/uploads/")) && BACKEND_URL) {
     return `${BACKEND_URL}${path}`;
   }
 

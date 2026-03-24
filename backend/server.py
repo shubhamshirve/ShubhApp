@@ -105,6 +105,7 @@ app.include_router(support_router,   prefix="/api")
 def _upload_search_dirs() -> list[Path]:
     backend_dir = Path(__file__).resolve().parent
     return [
+        backend_dir.parent / "uploads",
         backend_dir / "uploads",
         backend_dir.parent / "frontend" / "public" / "uploads",
         Path("/app/frontend/public/uploads"),
@@ -112,14 +113,23 @@ def _upload_search_dirs() -> list[Path]:
     ]
 
 
-@app.get("/api/uploads/{filename:path}")
-async def get_uploaded_file(filename: str):
+async def _get_uploaded_file(filename: str):
     safe_name = Path(filename).name
     for base_dir in _upload_search_dirs():
         candidate = (base_dir / safe_name).resolve()
         if candidate.exists() and candidate.is_file():
             return FileResponse(candidate)
     raise HTTPException(status_code=404, detail="Upload not found")
+
+
+@app.get("/uploads/{filename:path}")
+async def get_uploaded_file(filename: str):
+    return await _get_uploaded_file(filename)
+
+
+@app.get("/api/uploads/{filename:path}")
+async def get_uploaded_file_legacy(filename: str):
+    return await _get_uploaded_file(filename)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(

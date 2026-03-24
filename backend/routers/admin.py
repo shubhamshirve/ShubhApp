@@ -29,7 +29,7 @@ from services.email_service import EmailServiceError, get_email_providers_async
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 # Upload directory for logos
-UPLOAD_DIR = "/app/frontend/public/uploads"
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

@@ -334,6 +334,21 @@ const OperatorSubscription = () => {
     return Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
   };
 
+  const isRenewalAllowed = () => {
+    const days = daysRemaining();
+    // Allow renewal if expired OR within 3 days of expiry
+    return isExpired() || (days !== null && days <= 3);
+  };
+
+  const getRenewalDisabledMessage = () => {
+    const days = daysRemaining();
+    if (isExpired()) return "Your subscription has expired";
+    if (days !== null && days > 3) {
+      return `Renewal available in ${days - 3} days`;
+    }
+    return "Not eligible for renewal";
+  };
+
   const getAddonStatusBadge = (status) => {
     if (status === "purchased")
       return (
@@ -547,17 +562,32 @@ const OperatorSubscription = () => {
                     </p>
                   </div>
                 </div>
-                <Button
-                  onClick={() => setShowRenewDialog(true)}
-                  className={
-                    isExpired()
-                      ? "bg-red-600 hover:bg-red-700"
-                      : "bg-amber-600 hover:bg-amber-700"
-                  }
-                  data-testid="renew-now-btn"
-                >
-                  Renew Now
-                </Button>
+                <div className="flex gap-2">
+                  {isRenewalAllowed() && (
+                    <Button
+                      onClick={() => setShowRenewDialog(true)}
+                      className={
+                        isExpired()
+                          ? "bg-red-600 hover:bg-red-700"
+                          : "bg-amber-600 hover:bg-amber-700"
+                      }
+                      data-testid="renew-now-btn"
+                    >
+                      Renew Now
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="border-amber-300"
+                    data-testid="wallet-topup-btn"
+                    onClick={() => {
+                      window.location.href = "/operator/wallet";
+                    }}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Topup Wallet
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -566,13 +596,28 @@ const OperatorSubscription = () => {
               !subscription?.is_read_only &&
               subscription?.status !== "trial" &&
               (days === null || days >= 15) && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowRenewDialog(true)}
-                  data-testid="renew-early-btn"
-                >
-                  <Calendar className="w-4 h-4 mr-2" /> Renew / Extend Subscription
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowRenewDialog(true)}
+                    disabled={!isRenewalAllowed()}
+                    title={!isRenewalAllowed() ? getRenewalDisabledMessage() : ""}
+                    data-testid="renew-early-btn"
+                  >
+                    <Calendar className="w-4 h-4 mr-2" /> Renew / Extend Subscription
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-blue-200"
+                    data-testid="wallet-topup-btn"
+                    onClick={() => {
+                      window.location.href = "/operator/wallet";
+                    }}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Topup Wallet
+                  </Button>
+                </div>
               )}
           </CardContent>
         </Card>
