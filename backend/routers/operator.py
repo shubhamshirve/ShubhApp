@@ -199,10 +199,18 @@ async def upload_invoice_logo(
     safe_original = sanitize_filename(file.filename or "invoice-logo.png", default="invoice-logo")
     ext = safe_original.split(".")[-1].lower() if "." in safe_original else "png"
     filename = f"invoice_logo_{current_user['operator_id']}_{uuid.uuid4().hex[:8]}.{ext}"
+    
+    # Ensure upload directory exists
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     filepath = os.path.join(UPLOAD_DIR, filename)
 
-    with open(filepath, "wb") as f:
-        f.write(content)
+    try:
+        with open(filepath, "wb") as f:
+            f.write(content)
+        logger.info(f"Logo uploaded successfully to {filepath}")
+    except IOError as e:
+        logger.error(f"Failed to save logo to {filepath}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save logo: {str(e)}")
 
     public_url = f"/uploads/{filename}"
     await db.invoice_settings.update_one(
@@ -221,7 +229,7 @@ async def upload_invoice_logo(
         "upload",
         "invoice_logo",
         None,
-        {"filename": filename, "url": public_url},
+        {"filename": filename, "url": public_url, "filepath": filepath},
         ip_address=current_user.get("_ip_address"),
         operator_id=current_user["operator_id"],
     )

@@ -103,13 +103,16 @@ app.include_router(support_router,   prefix="/api")
 
 
 def _upload_search_dirs() -> list[Path]:
+    """Search for uploaded files in multiple locations for backward compatibility."""
     backend_dir = Path(__file__).resolve().parent
+    root_dir = backend_dir.parent
     return [
-        backend_dir.parent / "uploads",
-        backend_dir / "uploads",
-        backend_dir.parent / "frontend" / "public" / "uploads",
-        Path("/app/frontend/public/uploads"),
-        Path("/frontend/public/uploads"),
+        root_dir / "uploads",  # Primary: root-level uploads directory
+        backend_dir / "uploads",  # Secondary: backend uploads directory
+        root_dir / "frontend" / "public" / "uploads",  # Tertiary: legacy frontend public uploads
+        Path("/app/uploads"),  # Docker: primary
+        Path("/app/frontend/public/uploads"),  # Docker: legacy
+        Path("/frontend/public/uploads"),  # Docker: alternate
     ]
 
 

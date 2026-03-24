@@ -5,13 +5,21 @@ export function resolveMediaUrl(path) {
     return "";
   }
 
+  // If it's already a full URL (http/https) or data URL, return as-is
   if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
     return path;
   }
 
-  if ((path.startsWith("/uploads/") || path.startsWith("/api/uploads/")) && BACKEND_URL) {
-    return `${BACKEND_URL}${path}`;
+  // For relative paths (starting with /)
+  if (path.startsWith("/")) {
+    // If BACKEND_URL is set, prepend it for API paths
+    if (BACKEND_URL && (path.startsWith("/uploads/") || path.startsWith("/api/uploads/"))) {
+      return `${BACKEND_URL}${path}`;
+    }
+    // Otherwise return the path as-is (will be relative to current domain)
+    return path;
   }
 
+  // For non-prefixed paths, return as-is
   return path;
 }
