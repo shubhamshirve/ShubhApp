@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-03-24  
 **Active Branch:** `V7.15-2`
-**Latest Feature Branch:** `V7.15-2`
+**Latest Feature Branch:** `V7.15-2` (print preview optimization reverted)
 
 ---
 
@@ -46,7 +46,6 @@ The codebase now includes:
 - referral benefits/settings now live in admin general settings
 - invoice image upload button is permanently disabled
 - invoice show logo toggle is always OFF and disabled
-- invoice print preview is optimized to fit on a single A4 page with thin margins and proper scaling
 
 ---
 
@@ -69,13 +68,10 @@ The codebase now includes:
 
 Primary files:
 - [frontend/src/pages/operator/Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
-- [frontend/src/pages/PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
 
 Implemented behavior:
 - Disabled image upload button in operator invoice settings (appears grayed out and non-functional).
 - Disabled "Show Logo" toggle switch in invoice visible fields section (always OFF, cannot be changed).
-- Added comprehensive CSS print styling with thin 0.25-inch margins and optimized font sizes for single-page A4 layout.
-- Invoice print preview now scales properly and fits on one page with minimal margins.
 
 ### V7.14-15 Changes
 

@@ -9,8 +9,6 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 - Current release focus:
   - invoice image upload button permanently disabled
   - invoice show logo toggle always OFF and disabled
-  - invoice print preview optimized for single A4 page with thin margins (0.25in)
-  - invoice print preview properly scaled with optimized font sizes
   - operator referral code auto-generation for admin-created operators
   - logo upload reorganization to root `/uploads` folder
   - subscription renewal window (3 days before to expiry date)

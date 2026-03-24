@@ -2,7 +2,7 @@
 
 ## 2026-03-24
 
-### V7.15-2: Invoice Settings Restrictions and Print Preview Optimization
+### V7.15-2: Invoice Settings Restrictions
 
 #### Invoice Settings - Image Upload Disabled
 - Image upload button in invoice settings is now permanently disabled.
@@ -14,24 +14,12 @@
 - Users cannot change this setting; it remains disabled permanently.
 - Logo visibility is fully controlled by the system, not operator choices.
 
-#### Invoice Print Preview Optimization
-- Added comprehensive CSS print styling to make invoice preview fit on a single A4 page.
-- Optimized margins to 0.25 inches (very thin) for maximum content density.
-- Scaled all font sizes appropriately for print (8pt to 16pt range).
-- Reduced padding and margins throughout the invoice layout.
-- Removed unnecessary shadows, gradients, and borders during print.
-- Optimized table spacing and layout for single-page printing.
-- Invoice now prints perfectly on one page with minimal margins and proper scaling.
-
 #### Files Modified
 - [frontend/src/pages/operator/Settings.jsx](/d:/eBill/frontend/src/pages/operator/Settings.jsx)
-- [frontend/src/pages/PublicInvoice.jsx](/d:/eBill/frontend/src/pages/PublicInvoice.jsx)
 
 #### Validation
 - Image upload button should appear disabled and non-functional in operator invoice settings.
 - Show Logo switch should always be OFF and disabled.
-- Invoice print preview should fit on a single A4 page with thin margins and proper scaling.
-- Browser print dialog should render the optimized layout correctly.
 
 ### V7.14-15: Operator Referral Code Auto-Generation, Logo Upload Reorganization, Subscription Renewal Window, and Announcements Enhancements
 
