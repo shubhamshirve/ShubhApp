@@ -2,6 +2,16 @@
 
 ## 2026-03-24
 
+### V7.15-6: Operator Plans List View Redesign
+
+#### Plans Layout Improvements
+- Migrated the Operator Plans page from a heavy card-based grid layout to a clean and efficient data table list format.
+- Added explicit columns for `Plan Name`, `Price`, `Validity`, `Tax`, `Status`, and `Description`.
+- Reorganized plan action buttons (Edit, Delete) into a dedicated `Actions` column with streamlined icon-only ghost buttons.
+
+#### Files Modified
+- [frontend/src/pages/operator/Plans.jsx](/d:/eBill/frontend/src/pages/operator/Plans.jsx)
+
 ### V7.15-5: Staff Edit Endpoints, Status Toggle, and Announcement History View
 
 #### Staff Management Enhancements

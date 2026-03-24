@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.15-5`
-- Latest feature and fix delivery implemented through `V7.15-5`
+- Documentation updated for branch line `V7.15-6`
+- Latest feature and fix delivery implemented through `V7.15-6`
 - Current release focus:
   - invoice image upload button permanently disabled
   - invoice show logo toggle always OFF and disabled
@@ -115,6 +115,7 @@ d:\eBill
 - backend endpoint API matching frontend Staff editing UI functionality
 - staff user account status (Active/Suspended) toggle on operator portal
 - announcement details dialog available from announcement history table
+- operator plans structure migrated from grid format to organized data table list format
 
 ## Recent Functional Changes
 

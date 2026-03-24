@@ -20,6 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Package, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
@@ -222,61 +230,75 @@ const OperatorPlans = () => {
             </div>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {plans.map((plan) => (
-              <Card key={plan.id} className="card-hover" data-testid={`plan-card-${plan.id}`}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Package className="w-5 h-5 text-blue-600" />
-                    {plan.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-slate-900">
-                      ₹{plan.price.toLocaleString('en-IN')}
-                    </span>
-                    <span className="text-slate-500">/{getValidityLabel(plan.validity).toLowerCase()}</span>
-                  </div>
-                  {plan.description && (
-                    <p className="text-sm text-slate-500">{plan.description}</p>
-                  )}
-                  <div className="space-y-2 text-sm border-t pt-3">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Validity</span>
-                      <span className="font-medium">{getValidityLabel(plan.validity)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Tax</span>
-                      <span className="font-medium">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plan Name</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Validity</TableHead>
+                    <TableHead>Tax</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plans.map((plan) => (
+                    <TableRow key={plan.id} data-testid={`plan-row-${plan.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-2 font-medium">
+                          <Package className="w-4 h-4 text-blue-600" />
+                          {plan.name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        ₹{plan.price.toLocaleString('en-IN')}
+                      </TableCell>
+                      <TableCell>{getValidityLabel(plan.validity)}</TableCell>
+                      <TableCell>
                         {plan.tax_type === "none" ? "No Tax" : `${plan.tax_percentage}% (${plan.tax_type})`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Status</span>
-                      <span className="badge-active">{plan.status}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(plan)} disabled={isReadOnly}>
-                      <Pencil className="w-3 h-3 mr-1" /> Edit
-                    </Button>
-                    {!isStaff && (
-                      <Button
-                        variant="outline" size="sm"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => handleDelete(plan.id)}
-                        disabled={isReadOnly}
-                        data-testid={`delete-plan-${plan.id}`}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="badge-active">{plan.status}</span>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate text-slate-500" title={plan.description}>
+                        {plan.description || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={() => openEditDialog(plan)}
+                            disabled={isReadOnly}
+                            title="Edit plan"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          {!isStaff && (
+                            <Button
+                              variant="ghost" 
+                              size="icon"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDelete(plan.id)}
+                              disabled={isReadOnly}
+                              data-testid={`delete-plan-${plan.id}`}
+                              title="Delete plan"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
 
         {/* Create/Edit Dialog */}
