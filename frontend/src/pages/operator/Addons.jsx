@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import { toast } from "sonner";
+import { loadRazorpayScript } from "../../lib/razorpay";
 import { Puzzle, Check, ExternalLink, ShoppingCart, Zap, Loader2 } from "lucide-react";
 
 const OperatorAddons = () => {
@@ -78,6 +79,12 @@ const OperatorAddons = () => {
       }
       const rzKey = res.data.razorpay_key;
       if (!rzKey) { toast.error("Payment gateway not configured"); return; }
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error("Payment gateway failed to load. Please try again.");
+        return;
+      }
       const options = {
         key: rzKey,
         amount: res.data.amount,

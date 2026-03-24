@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 import { toast, Toaster } from "sonner";
 import { resolveMediaUrl } from "../lib/mediaUrl";
+import { loadRazorpayScript } from "../lib/razorpay";
 import {
   FileText, Download, CreditCard, CheckCircle2, Clock, XCircle,
   Building2, User, MapPin, Phone, Mail, Calendar, IndianRupee,
@@ -88,21 +89,6 @@ export default function PublicInvoice() {
   // Download PDF
   const handleDownloadPdf = () => {
     window.print();
-  };
-
-  // Load Razorpay checkout script
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
   };
 
   // Handle Pay Now

@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
+import { loadRazorpayScript } from "../../lib/razorpay";
 import {
   Wallet, TrendingUp, TrendingDown, Plus, Copy, Gift, AlertTriangle,
   ArrowUpRight, ArrowDownLeft, RefreshCw, History
@@ -77,8 +78,9 @@ export default function WalletPage() {
       const res = await authAxios.post(`/operator/wallet/topup/create-order?amount=${amt}`);
       const orderData = res.data;
 
-      if (!window.Razorpay) {
-        toast.error("Payment gateway not loaded. Please refresh the page.");
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error("Payment gateway not loaded. Please check your connection.");
         setTopupLoading(false);
         return;
       }

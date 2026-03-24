@@ -12,6 +12,10 @@
 #### Files Modified
 - [frontend/src/pages/operator/Plans.jsx](/d:/eBill/frontend/src/pages/operator/Plans.jsx)
 
+#### Bug Fixes & Optimizations
+- **Razorpay Script Loading**: Removed the global Razorpay checkout script from `index.html` to eliminate aggressive browser preload warnings.
+- Created a shared dynamic loader utility `lib/razorpay.js` and integrated it across `PublicInvoice.jsx`, `operator/Wallet.jsx`, `operator/Subscription.jsx`, and `operator/Addons.jsx` so the script is only fetched precisely when needed.
+
 ### V7.15-5: Staff Edit Endpoints, Status Toggle, and Announcement History View
 
 #### Staff Management Enhancements

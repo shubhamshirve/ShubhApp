@@ -21,6 +21,7 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import { toast } from "sonner";
+import { loadRazorpayScript } from "../../lib/razorpay";
 import {
   CreditCard,
   Calendar,
@@ -143,9 +144,10 @@ const OperatorSubscription = () => {
     }
   }, [subscription]);
 
-  const openRazorpay = (orderData, onSuccess) => {
-    if (!window.Razorpay) {
-      toast.error("Payment gateway not loaded. Please refresh the page.");
+  const openRazorpay = async (orderData, onSuccess) => {
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded) {
+      toast.error("Payment gateway failed to load. Please try again.");
       return;
     }
     const options = {
@@ -284,8 +286,10 @@ const OperatorSubscription = () => {
     try {
       const res = await authAxios.post(`/operator/wallet/topup/create-order?amount=${amt}`);
       const orderData = res.data;
-      if (!window.Razorpay) {
-        toast.error("Payment gateway not loaded. Please refresh the page.");
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error("Payment gateway failed to load. Please try again.");
         setTopupLoading(false);
         return;
       }

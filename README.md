@@ -116,6 +116,7 @@ d:\eBill
 - staff user account status (Active/Suspended) toggle on operator portal
 - announcement details dialog available from announcement history table
 - operator plans structure migrated from grid format to organized data table list format
+- extracted Razorpay global `<script>` into a dynamic JS utility for on-demand checkout loading
 
 ## Recent Functional Changes
 

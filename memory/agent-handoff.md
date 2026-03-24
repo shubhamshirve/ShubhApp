@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-03-24  
 **Active Branch:** `V7.15-6`
-**Latest Feature Branch:** `V7.15-6` (Plans list layout UI overhaul)
+**Latest Feature Branch:** `V7.15-6` (Plans list layout UI overhaul & Razorpay dynamic script loading)
 
 ---
 
@@ -50,6 +50,7 @@ The codebase now includes:
 - operator UI "Account Status" toggle added to Staff Edit dialogue
 - detailed view dialog added to the announcement history page via "Eye" icon
 - operator plans layout upgraded to an organized data table list view
+- optimized Razorpay by converting to a dynamic script loader (`lib/razorpay.js`) to eliminate global preload console warnings
 
 ---
 
