@@ -2,6 +2,23 @@
 
 ## 2026-03-24
 
+### V7.15-5: Staff Edit Endpoints, Status Toggle, and Announcement History View
+
+#### Staff Management Enhancements
+- Added backend `PUT /operator/staff/{staff_id}` endpoint to support full staff editing capabilities.
+- Added `StaffUpdate` Pydantic model for secured validation.
+- Added "Account Status" dropdown to the operator frontend Staff Edit form, enabling operators to seamlessly toggle staff members between `Active` and `Suspended` states.
+
+#### Announcement Enhancements
+- Added a "View Announcement" feature (Eye icon) to the Announcement History table.
+- Added a detailed dialog displaying announcement title, message, date of issuance, total recipients, and delivery channels (WhatsApp / Email).
+
+#### Files Modified
+- [backend/models.py](/d:/eBill/backend/models.py)
+- [backend/routers/operator.py](/d:/eBill/backend/routers/operator.py)
+- [frontend/src/pages/operator/Staff.jsx](/d:/eBill/frontend/src/pages/operator/Staff.jsx)
+- [frontend/src/pages/operator/Announcements.jsx](/d:/eBill/frontend/src/pages/operator/Announcements.jsx)
+
 ### V7.15-2: Invoice Settings Restrictions
 
 #### Invoice Settings - Image Upload Disabled

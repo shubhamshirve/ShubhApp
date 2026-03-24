@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-24  
-**Active Branch:** `V7.15-2`
-**Latest Feature Branch:** `V7.15-2` (print preview optimization reverted)
+**Active Branch:** `V7.15-5`
+**Latest Feature Branch:** `V7.15-5` (Staff management and Announcement History upgrades)
 
 ---
 
@@ -46,6 +46,9 @@ The codebase now includes:
 - referral benefits/settings now live in admin general settings
 - invoice image upload button is permanently disabled
 - invoice show logo toggle is always OFF and disabled
+- backend `PUT /operator/staff/{staff_id}` endpoint implemented alongside `StaffUpdate` model
+- operator UI "Account Status" toggle added to Staff Edit dialogue
+- detailed view dialog added to the announcement history page via "Eye" icon
 
 ---
 
@@ -63,6 +66,9 @@ The codebase now includes:
 - `V7.14-14` is the dashboard stats, SMTP stability, and referral automation branch based on `V7.14-13`
 - `V7.14-15` is the operator referral codes, logo reorganization, renewal window, and announcements branch based on `V7.14-14`
 - `V7.15-2` is the invoice settings restrictions and print preview optimization branch based on `V7.14-15`
+- `V7.15-3` is the initial backend implementation of the staff edit endpoints branch
+- `V7.15-4` is the announcement history viewing branch
+- `V7.15-5` is the active branch representing combined Staff management and Announcement history additions
 
 ### V7.15-2 Changes
 
@@ -202,5 +208,5 @@ The following files were refreshed on `V7.14-14`:
 
 ## Git State At Handoff
 
-- Current branch: `V7.14-14`
-- Feature baseline under docs branch: `V7.14-14`
+- Current branch: `V7.15-5`
+- Feature baseline under docs branch: `V7.15-5`

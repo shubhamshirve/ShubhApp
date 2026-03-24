@@ -22,7 +22,7 @@ import {
 } from "../../components/ui/table";
 import { Checkbox } from "../../components/ui/checkbox";
 import { toast } from "sonner";
-import { Plus, Trash2, UserCog, Shield } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCog, Shield } from "lucide-react";
 
 const PERMISSIONS = [
   { id: "view_subscribers", label: "View Subscribers" },
@@ -39,13 +39,15 @@ const OperatorStaff = () => {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
+  const [editingStaff, setEditingStaff] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     phone: "",
-    permissions: []
+    permissions: [],
+    status: "active"
   });
 
   useEffect(() => {
@@ -86,17 +88,25 @@ const OperatorStaff = () => {
     if (!phoneDigits || phoneDigits.length !== 10) {
       toast.error("Phone number must be exactly 10 digits"); return;
     }
-    if (!formData.password || formData.password.length < 6) {
+    // Password is required only when creating new staff
+    if (!editingStaff && (!formData.password || formData.password.length < 6)) {
       toast.error("Password must be at least 6 characters"); return;
     }
     try {
-      await authAxios.post("/operator/staff", formData);
-      toast.success("Staff member added successfully");
+      if (editingStaff) {
+        // Update existing staff
+        await authAxios.put(`/operator/staff/${editingStaff.id}`, formData);
+        toast.success("Staff member updated successfully");
+      } else {
+        // Create new staff
+        await authAxios.post("/operator/staff", formData);
+        toast.success("Staff member added successfully");
+      }
       setShowDialog(false);
       resetForm();
       fetchStaff();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to add staff");
+      toast.error(error.response?.data?.detail || (editingStaff ? "Failed to update staff" : "Failed to add staff"));
     }
   };
 
@@ -111,13 +121,28 @@ const OperatorStaff = () => {
     }
   };
 
+  const openEditDialog = (member) => {
+    setEditingStaff(member);
+    setFormData({
+      name: member.name,
+      email: member.email,
+      password: "",
+      phone: member.phone || "",
+      permissions: member.permissions || [],
+      status: member.status || "active"
+    });
+    setShowDialog(true);
+  };
+
   const resetForm = () => {
+    setEditingStaff(null);
     setFormData({
       name: "",
       email: "",
       password: "",
       phone: "",
-      permissions: []
+      permissions: [],
+      status: "active"
     });
   };
 
@@ -154,7 +179,7 @@ const OperatorStaff = () => {
             data-testid="add-staff-btn"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Add Staff
+            Add Staff Member
           </Button>
         </div>
 
@@ -214,15 +239,27 @@ const OperatorStaff = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="badge-active">{member.status}</span>
+                        <span className={`badge-active ${member.status !== 'active' ? 'bg-red-50 text-red-700 border-red-200' : ''}`}>{member.status}</span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="flex gap-1 justify-center">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => openEditDialog(member)}
+                          disabled={isReadOnly}
+                          data-testid={`edit-staff-${member.id}`}
+                          title="Edit staff"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon"
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           onClick={() => handleDelete(member.id)}
                           disabled={isReadOnly}
+                          title="Delete staff"
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -239,8 +276,10 @@ const OperatorStaff = () => {
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Add Staff Member</DialogTitle>
-              <DialogDescription>Add a new team member with specific permissions</DialogDescription>
+              <DialogTitle>{editingStaff ? "Edit Staff Member" : "Add Staff Member"}</DialogTitle>
+              <DialogDescription>
+                {editingStaff ? "Update team member details and permissions" : "Add a new team member with specific permissions"}
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -278,16 +317,32 @@ const OperatorStaff = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Password *</Label>
+                <Label>Password {!editingStaff && "*"}</Label>
                 <Input
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  placeholder="Min. 6 characters"
-                  required
+                  placeholder={editingStaff ? "Leave empty to keep current password" : "Min. 6 characters"}
+                  required={!editingStaff}
                   data-testid="staff-password-input"
                 />
+                {editingStaff && <p className="text-xs text-slate-500">Leave blank to keep current password</p>}
               </div>
+
+              {editingStaff && (
+                <div className="space-y-2">
+                  <Label>Account Status</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={formData.status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                    data-testid="staff-status-select"
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-3 border-t pt-4">
                 <div className="flex items-center gap-2">
@@ -314,11 +369,11 @@ const OperatorStaff = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+                <Button type="button" variant="outline" onClick={() => { setShowDialog(false); resetForm(); }}>
                   Cancel
                 </Button>
                 <Button type="submit" data-testid="save-staff-btn">
-                  Add Staff
+                  {editingStaff ? "Update Staff" : "Add Staff"}
                 </Button>
               </div>
             </form>
