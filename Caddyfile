@@ -1,18 +1,81 @@
+# --- HTTP Configuration (Development/Local) ---
 {$DOMAIN:localhost} {
+    # Compression for all responses
     encode gzip zstd
 
-    @api path /api/*
-    reverse_proxy @api backend:8000
+    # Security headers for all responses
+    header / {
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
 
-    reverse_proxy frontend:3000
+    # Static assets - aggressive caching (1 week)
+    @static path /static/* *.css *.js *.jpg *.jpeg *.png *.gif *.woff *.woff2 *.ttf *.svg
+    header @static Cache-Control "public, max-age=604800, immutable"
+
+    # API requests with header forwarding
+    @api path /api/*
+    reverse_proxy @api backend:8000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto {http.request.proto}
+        header_up X-Forwarded-Host {http.request.host}
+    }
+
+    # File uploads
+    @uploads path /uploads/*
+    reverse_proxy @uploads backend:8000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto {http.request.proto}
+    }
+
+    # Frontend with fallback routing for SPA
+    reverse_proxy / frontend:3000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto {http.request.proto}
+    }
 }
 
-https://{$SERVER_IP} {
-    tls internal
+# --- HTTPS Configuration (Production) ---
+app.e-bill.in {
+    # Compression
     encode gzip zstd
 
-    @api path /api/*
-    reverse_proxy @api backend:8000
+    # Enhanced security headers for HTTPS
+    header / {
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:"
+    }
 
-    reverse_proxy frontend:3000
+    # Static assets - aggressive caching (1 week)
+    @static path /static/* *.css *.js *.jpg *.jpeg *.png *.gif *.woff *.woff2 *.ttf *.svg
+    header @static Cache-Control "public, max-age=604800, immutable"
+
+    # API requests
+    @api path /api/*
+    reverse_proxy @api backend:8000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Host {http.request.host}
+    }
+
+    # File uploads
+    @uploads path /uploads/*
+    reverse_proxy @uploads backend:8000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto https
+    }
+
+    # Frontend
+    reverse_proxy / frontend:3000 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto https
+    }
 }
