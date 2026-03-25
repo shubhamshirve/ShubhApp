@@ -9,7 +9,7 @@ Go to: https://github.com/YOUR_USERNAME/ebill/settings/secrets/actions
 Add **5 secrets ONLY:**
 ```
 DOCKER_USERNAME  = your-docker-username
-DOCKER_PAT       = your-docker-pat-token  
+DOCKER_PASSWORD  = your-docker-pat-token  
 DEPLOY_USER      = ubuntu  (or root)
 DEPLOY_SSH_KEY   = [your-prod-server-ssh-private-key]
 PROD_SERVER_HOST = your-prod-server-ip

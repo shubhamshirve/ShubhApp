@@ -20,7 +20,7 @@ Production deployment (auto-deploy):
 
 ### Secrets You Need (3 minimum)
 1. `DOCKER_USERNAME` - Docker Hub username
-2. `DOCKER_PAT` - Docker Personal Access Token
+2. `DOCKER_PASSWORD` - Docker Hub Personal Access Token (PAT)
 3. `PROD_SERVER_HOST` - Your production server IP/hostname
 4. `DEPLOY_SSH_KEY` - Private SSH key (see Step 1.2 below)
 5. `DEPLOY_USER` - SSH username (usually `ubuntu` or `root`)
@@ -87,7 +87,7 @@ This guide walks you through setting up automated CI/CD for the eBill applicatio
 | Secret Name | Value |
 |------------|-------|
 | `DOCKER_USERNAME` | Your Docker Hub username |
-| `DOCKER_PAT` | Your Docker Hub PAT token |
+| `DOCKER_PASSWORD` | Your Docker Hub PAT token |
 
 ### 1.2 Deployment SSH Credentials (For Production Auto-Deploy)
 
