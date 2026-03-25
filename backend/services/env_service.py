@@ -2,7 +2,7 @@ import os
 import secrets
 from typing import Optional, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from services.global_settings_store import get_global_setting, save_global_setting
+from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
 
 async def get_env_setting(key: str, default: Any = None) -> Any:
     """
@@ -15,7 +15,7 @@ async def get_env_setting(key: str, default: Any = None) -> Any:
     3. os.environ
     """
     # 1. Check database for new env_settings
-    db_settings = await get_global_setting("env_settings")
+    db_settings = await get_global_settings_doc({"type": "env_settings"})
     if db_settings and key in db_settings:
         val = db_settings[key]
         if val: # Only return if not empty string
@@ -24,7 +24,7 @@ async def get_env_setting(key: str, default: Any = None) -> Any:
     # 2. Legacy fallbacks
     if key.startswith("whatsapp_"):
         # Check platform_whatsapp collection
-        wa_config = await get_global_setting("platform_whatsapp")
+        wa_config = await get_global_settings_doc({"type": "platform_whatsapp"})
         if wa_config:
             sub_key = key.replace("whatsapp_", "")
             if sub_key in wa_config:
@@ -36,9 +36,9 @@ async def get_env_setting(key: str, default: Any = None) -> Any:
 
 async def set_env_setting(key: str, value: Any):
     """Updates a setting in the database env_settings document."""
-    db_settings = await get_global_setting("env_settings") or {}
+    db_settings = await get_global_settings_doc({"type": "env_settings"}) or {}
     db_settings[key] = value
-    await save_global_setting("env_settings", db_settings)
+    await save_global_settings_doc({"type": "env_settings"}, db_settings)
 
 async def get_jwt_secret() -> str:
     """Retrieves the JWT secret, generating one if missing from both DB and Env."""

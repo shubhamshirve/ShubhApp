@@ -202,6 +202,13 @@ const AdminSettings = () => {
     } catch { /* ignore */ }
   };
 
+  const fetchEmailConfig = async () => {
+    try {
+      const res = await authAxios.get("/admin/email-settings");
+      setEmailConfig({ ...DEFAULT_EMAIL_CONFIG, ...res.data });
+    } catch { /* ignore */ }
+  };
+
   const fetchEnvSettings = async () => {
     try {
       const res = await authAxios.get("/admin/env-settings");

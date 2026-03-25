@@ -56,6 +56,7 @@ The codebase now includes:
 - implemented centralized `env_service.py` for prioritized setting retrieval with fallbacks
 - refactored WhatsApp and Razorpay services with async factory functions for dynamic configuration
 - updated email and cron services to utilize database-backed environment settings
+- FIXED: Resolved a `ReferenceError: fetchEmailConfig is not defined` in `Settings.jsx` that caused the Admin Settings page to crash
 
 
 ---
@@ -220,6 +221,6 @@ The following files were refreshed on `V7.14-14`:
 
 ## Git State At Handoff
 
-- Current branch: `V7.15-7`
-- Feature baseline under docs branch: `V7.15-7`
+- Current branch: `V7.15-8`
+- Feature baseline under docs branch: `V7.15-8`
 

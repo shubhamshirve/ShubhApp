@@ -1,15 +1,15 @@
-"""
+﻿"""
 Cron Job Services for Auto Invoice Generation and Reminders
 """
-import asyncio
-import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
+import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 from services.global_settings_store import get_global_settings_doc
-from services.env_service import get_env_setting
+
 
 async def get_maintenance_state(db) -> Dict[str, Any]:
     settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
@@ -30,6 +30,12 @@ class CronJobService:
     async def generate_upcoming_invoices(self, days_before: int = 3) -> Dict[str, Any]:
         """
         Auto-generate invoices for subscribers with billing date approaching
+        
+        Args:
+            days_before: Days before billing date to generate invoice (default 3)
+        
+        Returns:
+            Summary of generated invoices
         """
         results = {
             "total_checked": 0,
@@ -43,6 +49,7 @@ class CronJobService:
         now = datetime.now(timezone.utc)
         target_day = (now + timedelta(days=days_before)).day
         
+        # Get all active operators (skip wallet-suspended ones for automation)
         operators = await self.db.operators.find({
             "status": {"$in": ["active", "trial"]},
             "wallet_suspended": {"$ne": True},
@@ -51,6 +58,7 @@ class CronJobService:
         
         for operator in operators:
             try:
+                # Get subscribers with at least one plan matching the target billing date
                 subscribers = await self.db.subscribers.find({
                     "operator_id": operator["id"],
                     "status": "active",
@@ -67,6 +75,7 @@ class CronJobService:
                 
                 for subscriber in subscribers:
                     try:
+                        # Identify which plans are due today
                         plans_to_bill = [
                             p for p in subscriber.get("plans", [])
                             if p.get("billing_date") == target_day and p.get("status") == "active"
@@ -75,16 +84,21 @@ class CronJobService:
                         if not plans_to_bill:
                             continue
 
+                        # Check if invoice already exists for this period (for any of the plans)
+                        # To keep it simple, we check if ANY invoice was generated for this subscriber 
+                        # in the last 25 days (lookback window). 
+                        # In a more advanced version, we'd check per plan_id.
                         existing = await self._check_existing_invoice(
                             operator["id"],
                             subscriber["id"],
                             now,
-                            validity="monthly",
+                            validity="monthly", # Default to monthly for check
                         )
                         
                         if existing:
                             continue
                         
+                        # Generate new invoice with all plans due today
                         invoice = await self._create_auto_invoice(
                             operator,
                             subscriber,
@@ -108,6 +122,12 @@ class CronJobService:
     async def send_overdue_reminders(self, days_overdue: int = 1) -> Dict[str, Any]:
         """
         Send reminders for overdue invoices
+        
+        Args:
+            days_overdue: Minimum days overdue to send reminder
+        
+        Returns:
+            Summary of reminders sent
         """
         results = {
             "total_overdue": 0,
@@ -121,6 +141,7 @@ class CronJobService:
         now = datetime.now(timezone.utc)
         cutoff_date = (now - timedelta(days=days_overdue)).isoformat()
         
+        # Find overdue invoices
         overdue_invoices = await self.db.invoices.find({
             "status": "pending",
             "due_date": {"$lt": cutoff_date},
@@ -129,30 +150,32 @@ class CronJobService:
         
         results["total_overdue"] = len(overdue_invoices)
         
-        from services.whatsapp_service import get_whatsapp_service_async
-        wa_service = await get_whatsapp_service_async()
-
+        # Mark as overdue and send reminders
         for invoice in overdue_invoices:
             try:
+                # Update status to overdue
                 await self.db.invoices.update_one(
                     {"id": invoice["id"]},
                     {"$set": {"status": "overdue", "updated_at": now.isoformat()}}
                 )
                 
+                # Get subscriber info
                 subscriber = await self.db.subscribers.find_one(
                     {"id": invoice["subscriber_id"], "deleted_at": None},
                     {"_id": 0}
                 )
                 
-                if subscriber and wa_service:
+                if subscriber and self.whatsapp:
+                    # Calculate days overdue
                     due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
                     days = (now - due_date).days
                     
-                    await wa_service.send_payment_reminder(
+                    # Send reminder
+                    await self.whatsapp.send_payment_reminder(
                         recipient_phone=subscriber["whatsapp_number"],
                         customer_name=subscriber["name"],
                         invoice_number=invoice["invoice_number"],
-                        amount_due=f"INR {invoice['final_amount']:,.2f}",
+                        amount_due=f"Γé╣{invoice['final_amount']:,.2f}",
                         days_overdue=str(days),
                         payment_link=invoice.get("payment_link")
                     )
@@ -181,6 +204,7 @@ class CronJobService:
         
         now = datetime.now(timezone.utc)
         
+        # Check trial expiry
         trial_operators = await self.db.operators.find({
             "status": "trial",
             "trial_ends_at": {"$lt": now.isoformat()},
@@ -194,6 +218,7 @@ class CronJobService:
             )
             results["expired"] += 1
         
+        # Check subscription expiry
         active_operators = await self.db.operators.find({
             "status": "active",
             "subscription_ends_at": {"$lt": now.isoformat()},
@@ -218,6 +243,8 @@ class CronJobService:
         current_date: datetime,
         validity: str = "monthly",
     ) -> bool:
+        """Check if invoice already exists for current billing period.
+        Uses the plan validity to set an appropriate lookback window."""
         validity_days = {
             "monthly": 28,
             "quarterly": 85,
@@ -242,7 +269,9 @@ class CronJobService:
         subscriber: Dict,
         plans_to_bill: List[Dict]
     ) -> Dict[str, Any]:
+        """Create an auto-generated invoice with multiple line items"""
         import uuid
+        
         now = datetime.now(timezone.utc)
         can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
         
@@ -252,6 +281,7 @@ class CronJobService:
         total_tax = 0
         total_final = 0
 
+        # Calculate dates based on validity
         validity_days_map = {
             "monthly": 30,
             "quarterly": 90,
@@ -278,6 +308,7 @@ class CronJobService:
             
             service_end = service_start + timedelta(days=service_days)
             
+            # Calculate amounts
             base_amount = plan.get("price", 0)
             discount = p_info.get("discount", 0)
             
@@ -310,12 +341,15 @@ class CronJobService:
         if not line_items:
             return None
 
+        # Due date is 5 days from the (first) service start date
         first_service_start = datetime.fromisoformat(line_items[0]["service_start_date"])
         due_date = first_service_start + timedelta(days=5)
 
+        # Generate globally unique invoice number using atomic counter
         from utils import generate_invoice_number_atomic
         invoice_number = await generate_invoice_number_atomic(self.db)
         
+        # Create invoice
         invoice = {
             "id": str(uuid.uuid4()),
             "invoice_number": invoice_number,
@@ -339,19 +373,22 @@ class CronJobService:
         }
         
         # Create payment link if Razorpay is configured
-        try:
-            gateway = await self.db.payment_gateways.find_one(
-                {"operator_id": operator["id"], "is_active": True},
-                {"_id": 0}
-            )
-            
-            if gateway:
-                from services.razorpay_service import get_razorpay_service_async
-                op_razorpay = await get_razorpay_service_async(operator_id=operator["id"])
+        if self.razorpay:
+            try:
+                gateway = await self.db.payment_gateways.find_one(
+                    {"operator_id": operator["id"]},
+                    {"_id": 0}
+                )
                 
-                if op_razorpay:
+                if gateway and gateway.get("is_active"):
+                    from services.razorpay_service import RazorpayService
+                    op_razorpay = RazorpayService(gateway["api_key"], gateway["api_secret"])
+                    
                     desc = f"Invoice {invoice_number} - {subscriber['name']}"
-                    payment_link = await op_razorpay.create_payment_link_async(
+                    if len(line_items) == 1:
+                        desc = f"Invoice {invoice_number} - {line_items[0]['plan_name']}"
+                    
+                    payment_link = op_razorpay.create_payment_link(
                         amount=invoice["final_amount"],
                         description=desc,
                         customer_name=subscriber["name"],
@@ -362,11 +399,13 @@ class CronJobService:
                     
                     invoice["payment_link"] = payment_link.get("short_url")
                     invoice["payment_link_id"] = payment_link.get("id")
-        except Exception as e:
-            logger.error(f"Failed to create payment link: {str(e)}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to create payment link: {str(e)}")
         
         await self.db.invoices.insert_one(invoice)
         
+        # Deduct Rs.10 from operator wallet for invoice generation
         try:
             from routers.wallet import deduct_wallet_for_invoice
             await deduct_wallet_for_invoice(operator["id"], invoice["id"])
@@ -374,15 +413,13 @@ class CronJobService:
             logger.warning(f"Wallet deduction failed for auto-invoice {invoice['id']}: {e}")
 
         # Send notification if WhatsApp is available
-        from services.whatsapp_service import get_whatsapp_service_async
-        wa_service = await get_whatsapp_service_async()
-        if wa_service:
+        if self.whatsapp:
             try:
-                await wa_service.send_invoice_notification(
+                await self.whatsapp.send_invoice_notification(
                     recipient_phone=subscriber["whatsapp_number"],
                     customer_name=subscriber["name"],
                     invoice_number=invoice_number,
-                    amount=f"INR {invoice['final_amount']:,.2f}",
+                    amount=f"Γé╣{invoice['final_amount']:,.2f}",
                     due_date=due_date.strftime("%d %b %Y"),
                     payment_link=invoice.get("payment_link")
                 )
@@ -395,6 +432,10 @@ class CronJobService:
     async def process_scheduled_reminders(self) -> Dict[str, Any]:
         """
         Process all operator reminder schedules using the platform-wide global reminder settings.
+        For each operator with whatsapp_notifications addon + WhatsApp configured:
+          - Check pending/overdue invoices
+          - Send reminders based on global schedule (before due, on due, after due)
+          - Track reminders sent per invoice
         """
         results = {
             "operators_processed": 0,
@@ -408,6 +449,7 @@ class CronJobService:
         now = datetime.now(timezone.utc)
         today = now.date()
 
+        # ΓöÇΓöÇ Load global reminder settings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         global_reminder = await self.db.global_settings.find_one(
             {"type": "reminder_settings"}, {"_id": 0}
         ) or {}
@@ -419,14 +461,17 @@ class CronJobService:
         remind_after  = global_reminder.get("remind_after_due", list(range(1, 11)))
         max_reminders = global_reminder.get("max_reminders_per_invoice", 20)
 
+        # ΓöÇΓöÇ Get all active operators ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         operators = await self.db.operators.find(
             {"status": {"$in": ["active", "trial"]}, "deleted_at": None},
             {"_id": 0},
         ).to_list(1000)
 
-        from services.whatsapp_service import get_whatsapp_service_async
-        wa_service = await get_whatsapp_service_async()
-        if not wa_service:
+        # Fetch WhatsApp config once
+        wa_config = await self.db.global_settings.find_one(
+            {"type": "platform_whatsapp"}, {"_id": 0}
+        )
+        if not wa_config or not wa_config.get("access_token"):
             return {**results, "skipped": 1, "reason": "WhatsApp not configured"}
 
         template_settings = await self.db.global_settings.find_one(
@@ -436,6 +481,7 @@ class CronJobService:
         for operator in operators:
             operator_id = operator["id"]
             try:
+                # Check addon
                 has_addon = "whatsapp_notifications" in operator.get("active_addons", [])
                 if not has_addon:
                     plan = await self.db.saas_plans.find_one(
@@ -448,6 +494,7 @@ class CronJobService:
 
                 results["operators_processed"] += 1
 
+                # Get pending and overdue invoices
                 invoices = await self.db.invoices.find(
                     {
                         "operator_id": operator_id,
@@ -463,7 +510,7 @@ class CronJobService:
                         if not due_str:
                             continue
                         due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
-                        days_diff = (due_date - today).days
+                        days_diff = (due_date - today).days  # positive = before due, negative = after due
 
                         should_send = False
                         reason = ""
@@ -501,6 +548,9 @@ class CronJobService:
                         if not subscriber:
                             continue
 
+                        from services.whatsapp_service import WhatsAppService
+                        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+
                         if days_diff <= 0:
                             reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
                             days_overdue = max(0, abs(days_diff))
@@ -508,7 +558,7 @@ class CronJobService:
                                 recipient_phone=subscriber["whatsapp_number"],
                                 customer_name=subscriber["name"],
                                 invoice_number=invoice["invoice_number"],
-                                amount_due=f"INR {invoice['final_amount']:,.2f}",
+                                amount_due=f"Γé╣{invoice['final_amount']:,.2f}",
                                 days_overdue=str(days_overdue),
                                 payment_link=invoice.get("payment_link"),
                                 template_name_override=reminder_tpl,
@@ -519,7 +569,7 @@ class CronJobService:
                                 recipient_phone=subscriber["whatsapp_number"],
                                 customer_name=subscriber["name"],
                                 invoice_number=invoice["invoice_number"],
-                                amount=f"INR {invoice['final_amount']:,.2f}",
+                                amount=f"Γé╣{invoice['final_amount']:,.2f}",
                                 due_date=due_date.strftime("%d %b %Y"),
                                 payment_link=invoice.get("payment_link"),
                                 template_name_override=invoice_tpl,
@@ -572,7 +622,7 @@ async def run_daily_reminder_processing(db):
 
 
 async def run_hourly_reminder_check(db):
-    """Hourly cron job for overdue reminders (legacy)"""
+    """Hourly cron job for overdue reminders (legacy ΓÇö marks overdue invoices)"""
     service = CronJobService(db)
     results = await service.send_overdue_reminders(days_overdue=1)
     logger.info(f"Hourly reminder check: {results}")
@@ -587,6 +637,7 @@ async def run_daily_expiry_check(db):
     return results
 
 
+
 async def run_daily_wallet_check(db):
     """Daily cron: check operator wallet balances, send reminders, suspend if < 100."""
     now = datetime.now(timezone.utc)
@@ -599,9 +650,6 @@ async def run_daily_wallet_check(db):
         {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
     ).to_list(5000)
 
-    from services.whatsapp_service import get_whatsapp_service_async
-    wa_service = await get_whatsapp_service_async()
-
     for op in operators:
         try:
             wallet = await db.operator_wallets.find_one({"operator_id": op["id"]}, {"_id": 0})
@@ -609,6 +657,7 @@ async def run_daily_wallet_check(db):
             results["checked"] += 1
 
             if balance < 100 and not op.get("wallet_suspended"):
+                # Suspend operator
                 await db.operators.update_one(
                     {"id": op["id"]},
                     {"$set": {"wallet_suspended": True, "is_read_only": True, "updated_at": now.isoformat()}}
@@ -617,9 +666,13 @@ async def run_daily_wallet_check(db):
                 logger.warning(f"Operator {op['company_name']} suspended due to low wallet balance: Rs.{balance}")
 
             elif balance < 500 and not op.get("wallet_suspended"):
+                # Send reminder via WhatsApp if configured
                 results["reminders_sent"] += 1
-                if wa_service:
-                    try:
+                try:
+                    wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+                    if wa_config and wa_config.get("access_token"):
+                        from services.whatsapp_service import WhatsAppService
+                        wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
                         await wa_service.send_text_message(
                             recipient_phone=op.get("phone", ""),
                             message=(
@@ -629,8 +682,8 @@ async def run_daily_wallet_check(db):
                                 f"Balance below Rs.100 will suspend your account.\n\nLogin to topup: E-Bill Dashboard"
                             )
                         )
-                    except Exception as wa_err:
-                        logger.warning(f"Wallet reminder WhatsApp failed for {op['id']}: {wa_err}")
+                except Exception as wa_err:
+                    logger.warning(f"Wallet reminder WhatsApp failed for {op['id']}: {wa_err}")
 
         except Exception as e:
             results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")

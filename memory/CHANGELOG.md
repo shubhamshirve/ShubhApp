@@ -8,6 +8,7 @@
 - Migrated sensitive environment variables (JWT, Razorpay, Resend, WhatsApp) from `.env` file to a secure, database-backed "Env" tab in the Admin Settings panel.
 - Implemented `backend/services/env_service.py` to centralize setting retrieval with a database-first priority and automatic fallback to environment variables.
 - Sensitive values are masked in the Admin UI with toggleable visibility for secure management.
+- FIXED: Resolved a `ReferenceError: fetchEmailConfig is not defined` on the Admin Settings page that caused the UI to crash.
 
 #### Service Layer Architecture
 - Refactored `WhatsAppService` and `RazorpayService` with async factory functions (`get_whatsapp_service_async`, `get_razorpay_service_async`) to dynamically load credentials from the database.
