@@ -134,14 +134,14 @@ git clone https://github.com/YOUR_USERNAME/ebill.git .
 
 # Create .env file (critical!)
 cat > .env << 'EOF'
-DOMAIN=your-production-domain.com
-SERVER_IP=your-server-ip
+DOMAIN=app.e-bill.in
+SERVER_IP=45.196.196.21
 MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=your-mongo-password
-JWT_SECRET=your-jwt-secret
-BACKUP_PASSWORD=your-backup-password
-CORS_ORIGINS=http://your-production-domain.com,https://your-production-domain.com
-REACT_APP_BACKEND_URL=http://your-production-domain.com:8000
+MONGO_ROOT_PASSWORD=change-this-password
+JWT_SECRET=change-this-password
+BACKUP_PASSWORD=change-this-password
+CORS_ORIGINS=http://app.e-bill.in,https://app.e-bill.in
+REACT_APP_BACKEND_URL=http://app.e-bill.in:8000
 EOF
 
 # Ensure .env is not tracked by git
@@ -158,38 +158,40 @@ mkdir -p uploads logs mongodb_data
 
 ---
 
-## Step 3: How the Pipeline Works
+## Step 3: How the Pipeline Works (Automatic - No Action Needed!)
+
+**This step is informational only! GitHub Actions runs these automatically when you push code.**
 
 ### Build Pipeline (`build.yml`)
-Triggers on: `push` to develop/staging/main or manual trigger
+**Triggers automatically on:** `push` to develop or live branch, or manual trigger
 
-**What it does:**
-1. Builds Backend Docker image
-   - Tags: `your-username/ebill-backend:develop` + `your-username/ebill-backend:abc1234`
-   - Latest tag: `your-username/ebill-backend:latest` (main branch only)
+**What GitHub does automatically:**
+1. Builds Backend Docker image from your code
+   - Tags: `your-username/ebill-backend:develop` (for develop branch) 
+   - Tags: `your-username/ebill-backend:live` + `your-username/ebill-backend:latest` (for live branch)
+   - Also tags with commit hash: `your-username/ebill-backend:abc1234d`
 
-2. Builds Frontend Docker image
-   - Tags: `your-username/ebill-frontend:develop` + `your-username/ebill-frontend:abc1234`
-   - Latest tag: `your-username/ebill-frontend:latest` (main branch only)
+2. Builds Frontend Docker image from your code
+   - Same tagging as backend
 
-3. Pushes both images to Docker Hub
-4. Caches layers for faster builds (saves API calls)
+3. Pushes both images to your Docker Hub account
+4. Smart caching for faster builds (saves API calls to Docker Hub)
+
+**You don't need to do anything** — just push your code!
 
 ### Deploy Pipeline (`deploy.yml`)
-Triggers on: `push` to develop/staging/main or manual trigger
+**Triggers automatically on:** `push` to live branch only, or manual trigger
 
-**What it does:**
-1. Determines which environment to deploy to:
-   - `develop` branch → Dev server
-   - `staging` branch → Staging server
-   - `main` branch → Production server
-
-2. Via SSH, executes deployment:
-   - Pulls latest code from GitHub
+**What GitHub does automatically (only for live branch):**
+1. Detects you pushed to `live` branch
+2. Via SSH to your production server:
+   - Pulls your latest code from GitHub
    - Pulls latest Docker images from Docker Hub
    - Stops old containers
    - Starts new containers
-   - Verifies health
+   - Checks that everything is healthy
+
+**You don't need to do anything** — just push to live and it deploys!
 
 ---
 
@@ -295,12 +297,12 @@ If you want to manually trigger the build/deploy without pushing:
 - Deployment: Manual (you run `docker-compose up -d`)
 
 ### Production (Remote Server)
-- Branch: `main`
+- Branch: `live` (production branch)
 - Uses: `docker-compose.prod.yml` on production server
 - No exposed ports (reverse proxy only via Caddy)
 - Resource limits: Enabled for stability
 - Auto-restart: Enabled on failure
-- Deployment: Automatic via GitHub Actions on push
+- Deployment: Automatic via GitHub Actions on push to live
 
 ---
 
@@ -343,7 +345,7 @@ ssh user@server-ip
 cd /app
 
 # Pull latest code
-git pull origin main
+git pull origin live
 
 # Pull images
 docker pull your-username/ebill-backend:latest
