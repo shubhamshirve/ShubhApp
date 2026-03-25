@@ -1,18 +1,32 @@
 version: '3.8'
 
+# ============================================================================
+# eBill Docker Compose - Production Environment
+# ============================================================================
+# Features:
+#   - Optimized resource limits
+#   - Production-grade logging
+#   - Security-focused configuration
+#   - No debug endpoints
+#   - Automatic restart on failure
+# ============================================================================
+
 services:
+  # Initialize critical environment variables
   init-env:
     image: alpine:3.20
     container_name: ebill_init_env
     restart: "no"
     working_dir: /app
     environment:
-      DOMAIN: ${DOMAIN:-app.e-bill.in}
-      SERVER_IP: ${SERVER_IP:-45.196.196.21}
-      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      DOMAIN: ${DOMAIN}
+      SERVER_IP: ${SERVER_IP}
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       BACKUP_PASSWORD: ${BACKUP_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
     command: ["/bin/sh", "/app/docker/init-env.sh", "/app"]
     volumes:
       - ./:/app
@@ -21,9 +35,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.3"
-          memory: 128M
+          cpus: "0.2"
+          memory: 64M
 
+  # MongoDB - Database (Production)
   mongodb:
     image: mongo:4.4
     container_name: ebill_mongodb
@@ -32,37 +47,54 @@ services:
       init-env:
         condition: service_completed_successfully
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:27017:27017"  # Bind to localhost only, accessed via backend on same network
     volumes:
       - mongo_data:/data/db
     networks:
       - ebill
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "1.5"
+          memory: 2048M
         reservations:
-          memory: 256M
+          cpus: "0.5"
+          memory: 1024M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
 
+  # FastAPI Backend (Production)
   backend:
-    image: ${DOCKER_USERNAME:-teasyservices}/ebill-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        BUILD_ENV: production  # Use requirements.txt (production only)
+    image: ${DOCKER_USERNAME:-teasyservices}/ebill-backend:${VERSION:-latest}
     container_name: ebill_backend
     restart: always
     depends_on:
       init-env:
         condition: service_completed_successfully
       mongodb:
-        condition: service_started
+        condition: service_healthy
     environment:
       DB_NAME: ${DB_NAME:-saas_db}
-      MONGO_HOST: mongodb
-      MONGO_PORT: "27017"
-      MONGO_AUTH_DB: admin
-      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      # Authenticated MongoDB URI for production
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS}
     expose:
@@ -74,18 +106,119 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "com.example.description=FastAPI backend service"
+      - "com.example.version=${VERSION:-latest}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # React Frontend (Production)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+    image: ${DOCKER_USERNAME:-teasyservices}/ebill-frontend:${VERSION:-latest}
+    container_name: ebill_frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    networks:
+      - ebill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
       start_period: 60s
     deploy:
       resources:
         limits:
-          cpus: "0.4"
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    labels:
+      - "com.example.description=React frontend service"
+      - "com.example.version=${VERSION:-latest}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # Caddy Web Server (Production)
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: ebill_caddy
+    restart: always
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ebill
+    environment:
+      DOMAIN: ${DOMAIN}
+      SERVER_IP: ${SERVER_IP}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.8"
           memory: 256M
         reservations:
+          cpus: "0.25"
           memory: 128M
+    labels:
+      - "com.example.description=Caddy reverse proxy (production)"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
 
-  frontend:
-    image: ${DOCKER_USERNAME:-teasyservices}/ebill-frontend:latest
-    container_name: ebill_frontend
+volumes:
+  mongo_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  ebill:
+    driver: bridge
     restart: always
     depends_on:
       init-env:
@@ -99,11 +232,11 @@ services:
     networks:
       - ebill
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 45s
+      start_period: 120s
     deploy:
       resources:
         limits:
@@ -135,11 +268,11 @@ services:
     networks:
       - ebill
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/api/health || wget -q --spider http://localhost/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 60s
     deploy:
       resources:
         limits:

@@ -1,34 +1,36 @@
 #!/bin/sh
 set -eu
 
-ROOT_DIR="/workspace"
+ROOT_DIR="${1:-.}"
+
+# Minimal .env generation for Docker
+# SECURITY NOTE: Only core variables here. Credentials are set via environment variables or admin UI.
+# All settings (Email, WhatsApp, Payment) are now managed in Admin Settings UI.
 
 if [ ! -f "$ROOT_DIR/.env" ]; then
-  cat > "$ROOT_DIR/.env" <<'EOF'
-DOMAIN=app.e-bill.in
-SERVER_IP=45.196.196.21
-MONGO_URI=mongodb://mongodb:27017/saas_db
-CORS_ORIGINS=https://localhost,http://localhost
-REACT_APP_BACKEND_URL=
-MONGO_URL=mongodb://localhost:27017/saas_db
-DB_NAME=saas_db
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=shubhamhirve
-MONGO_BIND_ADDRESS=127.0.0.1
-JWT_SECRET=shubhamhirve
-RAZORPAY_KEY_ID=your_razorpay_key_id
-RAZORPAY_KEY_SECRET=your_razorpay_key_secret
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-SMTP_FROM_EMAIL=
-SMTP_USE_TLS=true
-WHATSAPP_PHONE_NUMBER_ID=
-WHATSAPP_ACCESS_TOKEN=
-WHATSAPP_BUSINESS_ACCOUNT_ID=
-BACKUP_PASSWORD=shubhamhirve
+  cat > "$ROOT_DIR/.env" <<EOF
+# Core Network Configuration
+DOMAIN=${DOMAIN:-localhost}
+SERVER_IP=${SERVER_IP:-}
+
+# MongoDB Configuration (required for all environments)
+MONGO_URI=${MONGO_URI:-mongodb://mongodb:27017/saas_db}
+MONGO_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-admin}
+MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-}
+DB_NAME=${DB_NAME:-saas_db}
+
+# API Configuration (required)
+CORS_ORIGINS=${CORS_ORIGINS:-}
+REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL:-}
+
+# Security Credentials (REQUIRED - Set in production!)
+JWT_SECRET=${JWT_SECRET:-}
+BACKUP_PASSWORD=${BACKUP_PASSWORD:-}
+
+# Optional integrations - now managed in Admin Settings
+# Leave empty if not using:
+# - Payment settings (Razorpay)
+# - Email settings (Resend/SMTP)
+# - WhatsApp configuration
 EOF
 fi

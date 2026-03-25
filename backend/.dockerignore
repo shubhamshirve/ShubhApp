@@ -1,0 +1,46 @@
+# Version control
+.git
+.gitignore
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+
+# Virtual environments
+venv
+env
+.venv
+
+# IDE
+.editorconfig
+
+# Logs
+*.log
+*_log*.txt
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Testing
+test_reports
+coverage
+
+# MongoDB data
+../mongodb_data
+
+# Misc
+.DS_Store
+*.md

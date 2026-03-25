@@ -588,6 +588,18 @@ class AdminPaymentGatewayConfig(SanitizedModel):
     for_operator_id: Optional[str] = None
 
 
+class SecuritySettingsUpdate(SanitizedModel):
+    _unsanitized_fields = {"jwt_secret", "backup_password"}
+    jwt_secret: Optional[str] = None
+    backup_password: Optional[str] = None
+
+
+class SecuritySettingsResponse(SanitizedModel):
+    jwt_secret_preview: str = ""
+    backup_password_preview: str = ""
+    is_configured: bool = False
+
+
 class EnvSettingsUpdate(SanitizedModel):
     _unsanitized_fields = {
         "jwt_secret", "backup_password",

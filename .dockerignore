@@ -2,7 +2,58 @@ node_modules
 __pycache__
 *.pyc
 .env
+.env.local
+.env.development
 .git
 .gitignore
+.gitattributes
 build
 dist
+.DS_Store
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.editorconfig
+
+# Testing
+coverage
+.nyc_output
+test_reports
+*.log
+*_log*.txt
+
+# MongoDB data
+mongodb_data
+
+# Caches
+.cache
+.eslintcache
+.pytest_cache
+.npm
+
+# Documentation
+*.md
+README.md
+CHANGELOG.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Python venv
+venv
+env
+.venv
+
+# Upload artifacts (keep .gitkeep)
+uploads/*
+!uploads/.gitkeep
+
+# Misc
+.prettierrc
+.eslintrc*
+docker

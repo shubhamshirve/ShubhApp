@@ -41,53 +41,27 @@ from services.global_settings_store import get_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 
 # ── Logging ────────────────────────────────────────────────────────────────
+import logging
+from config import LOG_LEVEL, IS_PRODUCTION, API_DOCS_ENABLED
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+if IS_PRODUCTION:
+    logger.info("🚀 Running in PRODUCTION mode")
+else:
+    logger.info("🔧 Running in DEVELOPMENT mode")
+
 
 def _ensure_env_files():
-    """Create the root env file with default keys when missing."""
-    backend_dir = Path(__file__).resolve().parent
-    root_dir = backend_dir.parent
-
-    root_env = root_dir / ".env"
-    if not root_env.exists():
-        root_env.write_text(
-            "\n".join(
-                [
-                    "DOMAIN=localhost",
-                    "SERVER_IP=",
-                    "MONGO_URI=mongodb://mongodb:27017/saas_db",
-                    "CORS_ORIGINS=http://localhost:3000,http://localhost:8001,https://localhost,http://localhost",
-                    "REACT_APP_BACKEND_URL=",
-                    "MONGO_URL=mongodb://localhost:27017/saas_db",
-                    "DB_NAME=saas_db",
-                    "MONGO_ROOT_USERNAME=admin",
-                    "MONGO_ROOT_PASSWORD=change-this-mongo-password",
-                    "MONGO_BIND_ADDRESS=127.0.0.1",
-                    "JWT_SECRET=change-this-to-a-strong-random-secret",
-                    "RAZORPAY_KEY_ID=your_razorpay_key_id",
-                    "RAZORPAY_KEY_SECRET=your_razorpay_key_secret",
-                    "RESEND_API_KEY=",
-                    "RESEND_FROM_EMAIL=",
-                    "SMTP_HOST=",
-                    "SMTP_PORT=587",
-                    "SMTP_USERNAME=",
-                    "SMTP_PASSWORD=",
-                    "SMTP_FROM_EMAIL=",
-                    "SMTP_USE_TLS=true",
-                    "WHATSAPP_PHONE_NUMBER_ID=",
-                    "WHATSAPP_ACCESS_TOKEN=",
-                    "WHATSAPP_BUSINESS_ACCOUNT_ID=",
-                    "BACKUP_PASSWORD=change-this-backup-password",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
+    """
+    .env file creation is now handled by docker/init-env.sh during container initialization.
+    This function remains for backward compatibility but is no longer needed.
+    """
+    pass
 
 # ── App & routers ───────────────────────────────────────────────────────────
 app = FastAPI(title="Multi-Tenant SaaS Billing Platform")
@@ -135,10 +109,12 @@ async def get_uploaded_file_legacy(filename: str):
     return await _get_uploaded_file(filename)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
+from config import CORS_ORIGINS_LIST
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=CORS_ORIGINS_LIST,
     allow_methods=["*"],
     allow_headers=["*"],
 )

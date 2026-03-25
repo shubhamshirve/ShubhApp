@@ -2,6 +2,147 @@
 
 ## 2026-03-25
 
+### V7.15-10: Docker Infrastructure Optimization & Production-Ready Setup
+
+#### Docker & Environment Refactor
+- **Optimized .env Configuration** - Reduced from 40+ variables to only 8-10 core essentials
+  - Only loads: DOMAIN, MONGO_URI, JWT_SECRET, BACKUP_PASSWORD, DB_NAME, CORS_ORIGINS, REACT_APP_BACKEND_URL
+  - All optional settings (Email, WhatsApp, Payment) managed via Admin Settings UI
+  - Significantly reduces deployment complexity and credential exposure
+
+- **Fixed Critical MongoDB Authentication** - Resolved "command find requires authentication" errors
+  - Updated MONGO_URI to use authenticated connection strings: `mongodb://user:pass@mongodb:27017/db?authSource=admin`
+  - Properly handles credentials passed through docker-compose environment variables
+  - Tested and verified both dev and prod authentication flows
+
+- **Dual Environment Docker Compose Files**
+  - `docker-compose.yml` (Development): Exposes ports locally, includes all debugging tools, lower resource limits
+  - `docker-compose.prod.yml` (Production): Internal networking, optimized resources, structured logging, auto-restart policies
+  - Both tested and working with full container health checks
+
+- **Enhanced Backend Dockerfile** - Multi-stage intelligent build system
+  - Added `BUILD_ENV` build argument to conditionally select requirements files
+  - Development mode: Includes `requirements_local.txt` with dev/debug dependencies
+  - Production mode: Uses `requirements.txt` only (minimal image size)
+  - Maintains multi-stage build pattern for optimized final image
+
+- **Environment-Aware Python Configuration** (`backend/config.py`)
+  - New `LOG_LEVEL` configuration based on environment (DEBUG in dev, INFO in prod)
+  - Feature flags disabled/enabled based on integration availability
+  - JWT_SECRET and BACKUP_PASSWORD validation (required in production)
+  - Structured `FEATURES` dictionary for feature availability detection
+  - `IS_PRODUCTION` and `IS_DEVELOPMENT` boolean flags for environment-specific behavior
+
+- **Improved MongoDB Connection Handling** (`backend/database.py`)
+  - Cleaner priority-based MONGO_URI resolution
+  - Better error messages and documentation
+  - Supports both authenticated and fallback connection methods
+  - URL encoding for special characters in credentials
+
+- **Cleaned Up Server Initialization** (`backend/server.py`)
+  - Removed redundant `.env` file generation (now handled by `docker/init-env.sh`)
+  - Updated logging to use config-based LOG_LEVEL
+  - Improved CORS configuration from centralized `config.py`
+  - All environment setup now consolidated in init phase
+
+- **Optimized Container Initialization** (`docker/init-env.sh`)
+  - Reduced from ~45 lines to ~30 lines with focused content
+  - Only generates critical core 7-8 environment variables
+  - Clear documentation about what's managed in Admin Settings vs .env
+  - Better suited for containerized environments
+
+#### Documentation & References
+- Created `DOCKER_QUICK_REFERENCE.md` - Daily development commands and quick troubleshooting
+- Created `DOCKER_OPTIMIZATION_V7_15_10.md` - Comprehensive optimization guide with deployment instructions
+- Updated `.env.example` with detailed inline documentation, dev/prod examples, and environment-specific settings
+
+#### Files Modified
+- [docker-compose.yml](/d:/eBill/docker-compose.yml) - Development environment optimized
+- [docker-compose.prod.yml](/d:/eBill/docker-compose.prod.yml) - Production environment optimized
+- [backend/Dockerfile](/d:/eBill/backend/Dockerfile) - Conditional dev/prod builds
+- [backend/config.py](/d:/eBill/backend/config.py) - Environment-aware configuration
+- [backend/database.py](/d:/eBill/backend/database.py) - Improved MongoDB URI handling
+- [backend/server.py](/d:/eBill/backend/server.py) - Removed redundant env generation
+- [docker/init-env.sh](/d:/eBill/docker/init-env.sh) - Optimized to core variables only
+- [.env.example](/d:/eBill/.env.example) - Comprehensive documentation and examples
+- [DOCKER_QUICK_REFERENCE.md](/d:/eBill/DOCKER_QUICK_REFERENCE.md) [NEW]
+- [DOCKER_OPTIMIZATION_V7_15_10.md](/d:/eBill/DOCKER_OPTIMIZATION_V7_15_10.md) [NEW]
+
+#### Testing & Validation
+✅ Docker build successful (both backend and frontend images)
+✅ docker-compose up -d starts all services successfully
+✅ Backend service health check passes - returns `{"status":"healthy"...}`
+✅ Frontend service healthy - HTTP 200 response
+✅ MongoDB authentication verified - no credential errors
+✅ CORS configuration working properly
+✅ All containers reach healthy state within startup period
+
+#### Benefits
+- ✅ Simplified deployment with minimal environment variables
+- ✅ Production-ready Docker configuration with proper logging and resource limits
+- ✅ Fixed critical MongoDB authentication issues
+- ✅ Clear separation between dev and prod configurations
+- ✅ Better security posture with centralized credential management
+- ✅ Comprehensive documentation for deployment and daily operations
+- ✅ Faster image builds with conditional dependencies
+- ✅ Environment-aware feature flagging
+
+#### Known Issues Resolved
+- ❌ Previous: Backend couldn't connect to MongoDB (auth error) → ✅ Fixed with authenticated MONGO_URI
+- ❌ Previous: Bloated .env with 40+ variables → ✅ Reduced to 8-10 core variables
+- ❌ Previous: No clear dev vs prod configuration → ✅ Separate docker-compose files with clear intent
+
+---
+
+### V7.15-9: Settings Consolidation & Caddy Optimization
+
+#### Admin Settings UI Refactor
+- **Removed Orphaned "Env Tab"** - Consolidated duplicate settings configuration screens
+- **Enhanced Security Tab** - Added new "Cryptography Keys" card with JWT Secret and Backup Encryption Password
+- Settings now have proper segregation:
+  - **General Tab**: Platform configuration, GST, session timeout, cron schedules
+  - **Security Tab**: JWT & Backup credentials, Admin profile, Password change
+  - **Payment Gateways Tab**: Razorpay, Cashfree, PhonePe configuration
+  - **Email API Tab**: Resend API key and SMTP fallback configuration
+  - **WhatsApp Tab**: Phone Number ID, Business Account, Access Token, Templates
+  - **Reminders Tab**: Global reminder scheduling and templates
+  - **Backup & Restore Tab**: Manual backups and restore operations
+
+#### Backend Routes & Models
+- Added dedicated `/admin/security-settings` GET/PUT endpoints for JWT and backup credentials
+- Added `SecuritySettingsUpdate` and `SecuritySettingsResponse` Pydantic models
+- Maintained backward compatibility with existing `/admin/env-settings` routes
+- Both routes share same database (global_settings.type=env_settings)
+
+#### Environment File Generator
+- Created `backend/services/env_generator.py` utility for automated .env file generation
+- Smart configuration source priority: Database → Environment Variables → Defaults
+- Supports async and sync initialization patterns
+- Pulls email, WhatsApp, and payment configurations from database
+- Used during deployment and application startup
+
+#### Caddy Proxy Optimization
+- Added comprehensive security headers (X-Frame-Options, X-XSS-Protection, X-Content-Type-Options, Referrer-Policy)
+- Implemented HTTPS-specific headers (Strict-Transport-Security for production)
+- Added request header propagation (X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host)
+- Added explicit file uploads routing (@uploads path /uploads/*)
+- Separated HTTP (localhost) and HTTPS (SERVER_IP) configurations
+- Foundation for request/response logging support
+
+#### Files Modified
+- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/models.py](/d:/eBill/backend/models.py)
+- [backend/services/env_generator.py](/d:/eBill/backend/services/env_generator.py) [NEW]
+- [Caddyfile](/d:/eBill/Caddyfile)
+
+#### Benefits
+- ✅ Eliminated settings duplication and user confusion
+- ✅ Centralized credential management in database
+- ✅ Reduced administrative burden with dedicated security tab
+- ✅ Production-ready proxy with proper header handling
+- ✅ Simplified deployment with auto-generated .env files
+
 ### V7.15-8: Admin Env Settings & Service Refactor
 
 #### Environment Management

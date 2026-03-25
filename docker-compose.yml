@@ -1,16 +1,38 @@
 
+version: '3.8'
+
+# ============================================================================
+# eBill Docker Compose - Local Development Environment
+# ============================================================================
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs backend    # View backend logs
+#   docker-compose down            # Stop all services
+# ============================================================================
+
 services:
+  # Initialize environment variables from .env
   init-env:
     image: alpine:3.20
     container_name: ebill_init_env
     restart: "no"
     working_dir: /workspace
-    command: ["/bin/sh", "/workspace/docker/init-env.sh"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      SERVER_IP: ${SERVER_IP:-}
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret}
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD:-change-this-password}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost:8000}
+    command: ["/bin/sh", "/workspace/docker/init-env.sh", "/workspace"]
     volumes:
       - ./:/workspace
     networks:
       - ebill
 
+  # MongoDB - Database Service
   mongodb:
     image: mongo:4.4
     container_name: ebill_mongodb
@@ -22,15 +44,23 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
     ports:
-      - "${MONGO_BIND_ADDRESS:-127.0.0.1}:27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
     networks:
       - ebill
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # FastAPI Backend Service
   backend:
     build:
       context: ./backend
+      args:
+        BUILD_ENV: development
     container_name: ebill_backend
     restart: unless-stopped
     depends_on:
@@ -40,88 +70,62 @@ services:
         condition: service_started
     environment:
       DB_NAME: ${DB_NAME:-saas_db}
-      MONGO_HOST: mongodb
-      MONGO_PORT: "27017"
-      MONGO_AUTH_DB: admin
+      # Use authenticated MongoDB URI: mongodb://user:pass@host:port/db?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-change-this-mongo-password}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
       MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN:-localhost},http://${DOMAIN:-localhost}}
-    expose:
-      - "8000"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+    ports:
+      - "127.0.0.1:8000:8000"
     networks:
       - ebill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
-  seed:
-    build:
-      context: ./backend
-    container_name: ebill_seed
-    restart: "no"
-    depends_on:
-      init-env:
-        condition: service_completed_successfully
-      mongodb:
-        condition: service_started
-    environment:
-      DB_NAME: ${DB_NAME:-saas_db}
-      MONGO_HOST: mongodb
-      MONGO_PORT: "27017"
-      MONGO_AUTH_DB: admin
-      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
-      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
-    command:
-      - python
-      - -c
-      - |
-        import asyncio
-        import json
-        from server import seed_data
-
-        result = asyncio.run(seed_data())
-        print(json.dumps(result, indent=2))
-    networks:
-      - ebill
-    profiles:
-      - tools
-
+  # React Frontend Service
   frontend:
     build:
       context: ./frontend
       args:
-        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-}
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost:8000}
     container_name: ebill_frontend
     restart: unless-stopped
     depends_on:
-      init-env:
-        condition: service_completed_successfully
-      backend:
-        condition: service_started
-    expose:
-      - "3000"
+      - backend
+    ports:
+      - "127.0.0.1:3000:3000"
     networks:
       - ebill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/index.html"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
+  # Caddy Web Server
   caddy:
-    image: caddy:2.8-alpine
+    image: caddy:2-alpine
     container_name: ebill_caddy
     restart: unless-stopped
     depends_on:
-      init-env:
-        condition: service_completed_successfully
-      frontend:
-        condition: service_started
-      backend:
-        condition: service_started
+      - frontend
+      - backend
     ports:
       - "80:80"
       - "443:443"
-    command: ["/bin/sh", "/workspace/docker/run-caddy.sh"]
     volumes:
-      - ./:/workspace:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
       - ebill
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
 
 volumes:
   mongo_data:

@@ -4,45 +4,58 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.15-8`
-- Latest feature and fix delivery implemented through `V7.15-8`
+- Documentation updated for branch `V7.15-10`
+- Latest feature and fix delivery implemented through `V7.15-10`
 - Current release focus:
-  - invoice image upload button permanently disabled
-  - invoice show logo toggle always OFF and disabled
-  - operator referral code auto-generation for admin-created operators
-  - logo upload reorganization to root `/uploads` folder
-  - subscription renewal window (3 days before to expiry date)
-  - wallet topup button on subscription page for easy credit management
-  - wallet transaction history showing meaningful description details
-  - announcements enhanced to 6-per-week limit with weekly statistics
-  - announcements now support email delivery via Resend API
-  - email announcement checkbox in creation form
-  - weekly announcements quota display on announcements page
-  - single active session per user
-  - email-only password recovery OTP
-  - pending invoice edit support
-  - payment confirmation dialog with mode/date capture
-  - VPS cron scheduler reliability fix
-  - app title updated to `E-Bill | Invoice Automation Software`
-  - Resend email fallback via SMTP/local transport support
-  - admin-configurable cron timings in settings
-  - richer SEO metadata, Open Graph, Twitter cards, and schema markup
-  - installable web app support with manifest, icons, and service worker
-  - cron timing persistence refresh in settings after save
-  - auto-backup entries refresh correctly in the backup list
-  - email settings refresh correctly after save/reload
-  - admin can assign payment gateway keys directly to operators
-  - operator-side payment gateway settings removed from the panel
-  - browser and app cache clear tools in admin/operator settings
-  - automatic cache clear on login/session switch
-  - admin display-name edits from settings
-  - Resend and SMTP test mail actions
-  - SMTP fallback compatibility when AUTH is unavailable
-  - operator invoice bulk upload with sample CSV/XLSX flow
-  - invoice address fallback from registration/profile data
-  - invoice logo preview/persistence/render fixes
-  - backend-served `/api/uploads` asset URLs
-- removal of unnecessary legacy scripts (PostHog, error handler) from `index.html`
+  - **Docker Infrastructure Optimization** - Dual environment compose files (dev/prod) with proper security
+  - **Minimal .env Configuration** - Reduced from 40+ to 8-10 core variables
+  - **Fixed MongoDB Authentication** - Resolved critical "requires authentication" errors
+  - **Conditional Dockerfile Builds** - BUILD_ENV argument for dev vs production dependencies
+  - **Environment-Aware Configuration** - Feature flags, validation, and log level management
+  - **Comprehensive Docker Documentation** - Quick reference and optimization guides
+  - previous features from V7.15-9:
+    - admin settings consolidation with cleanup of orphaned UI elements
+    - dedicated security tab for JWT secret and backup password management
+    - automated .env file generation from database settings
+    - optimized Caddy proxy with security headers and proper header propagation
+    - separation of HTTP (development) and HTTPS (production) proxy configurations
+  - previous features from V7.15-8 and earlier:
+    - invoice image upload button permanently disabled
+    - invoice show logo toggle always OFF and disabled
+    - operator referral code auto-generation for admin-created operators
+    - logo upload reorganization to root `/uploads` folder
+    - subscription renewal window (3 days before to expiry date)
+    - wallet topup button on subscription page for easy credit management
+    - wallet transaction history showing meaningful description details
+    - announcements enhanced to 6-per-week limit with weekly statistics
+    - announcements now support email delivery via Resend API
+    - email announcement checkbox in creation form
+    - weekly announcements quota display on announcements page
+    - single active session per user
+    - email-only password recovery OTP
+    - pending invoice edit support
+    - payment confirmation dialog with mode/date capture
+    - VPS cron scheduler reliability fix
+    - app title updated to `E-Bill | Invoice Automation Software`
+    - Resend email fallback via SMTP/local transport support
+    - admin-configurable cron timings in settings
+    - richer SEO metadata, Open Graph, Twitter cards, and schema markup
+    - installable web app support with manifest, icons, and service worker
+    - cron timing persistence refresh in settings after save
+    - auto-backup entries refresh correctly in the backup list
+    - email settings refresh correctly after save/reload
+    - admin can assign payment gateway keys directly to operators
+    - operator-side payment gateway settings removed from the panel
+    - browser and app cache clear tools in admin/operator settings
+    - automatic cache clear on login/session switch
+    - admin display-name edits from settings
+    - Resend and SMTP test mail actions
+    - SMTP fallback compatibility when AUTH is unavailable
+    - operator invoice bulk upload with sample CSV/XLSX flow
+    - invoice address fallback from registration/profile data
+    - invoice logo preview/persistence/render fixes
+    - backend-served `/api/uploads` asset URLs
+    - removal of unnecessary legacy scripts (PostHog, error handler) from `index.html`
 
 
 ## Architecture

@@ -1,9 +1,12 @@
 #!/bin/sh
 set -eu
 
-if [ -f /workspace/.env ]; then
+# The root directory is where the script is run from or /app by default
+ROOT_DIR="/app"
+
+if [ -f "$ROOT_DIR/.env" ]; then
   set -a
-  . /workspace/.env
+  . "$ROOT_DIR/.env"
   set +a
 fi
 

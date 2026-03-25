@@ -17,6 +17,7 @@ from models import (
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
     ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
+    SecuritySettingsUpdate, SecuritySettingsResponse,
     EnvSettingsUpdate, AdminEnvSettingsResponse,
 )
 from utils import generate_id, hash_password, create_token, generate_unique_referral_code
@@ -1613,7 +1614,75 @@ async def send_smtp_test_email(
     )
 
 
-# ─── Env Settings ─────────────────────────────────────────────────────────────
+# ─── Security Settings (JWT & Backup) ───────────────────────────────────────
+
+@router.get("/security-settings", response_model=SecuritySettingsResponse)
+async def get_security_settings(current_user: dict = Depends(require_admin)):
+    """Get current security settings (JWT secret, backup password) - masked."""
+    doc = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0})
+    
+    def mask(val):
+        if not val: return ""
+        return val[:8] + "****" if len(val) > 8 else "****"
+
+    if doc:
+        return SecuritySettingsResponse(
+            jwt_secret_preview=mask(doc.get("jwt_secret")),
+            backup_password_preview=mask(doc.get("backup_password")),
+            is_configured=True
+        )
+    
+    # Fallback to env vars
+    return SecuritySettingsResponse(
+        jwt_secret_preview=mask(os.environ.get("JWT_SECRET")),
+        backup_password_preview=mask(os.environ.get("BACKUP_PASSWORD")),
+        is_configured=False
+    )
+
+
+@router.put("/security-settings")
+async def update_security_settings(
+    data: SecuritySettingsUpdate,
+    current_user: dict = Depends(require_admin)
+):
+    """Update security settings (JWT secret, backup password) in DB."""
+    now = datetime.now(timezone.utc)
+    existing = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0}) or {}
+    
+    # Merge new data with existing DB settings
+    update_doc = {
+        "type": "env_settings",
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"],
+    }
+    
+    # Only update fields that are provided
+    for field in ["jwt_secret", "backup_password"]:
+        val = getattr(data, field)
+        if val is not None:
+            update_doc[field] = val.strip() if isinstance(val, str) else val
+        elif field in existing:
+            update_doc[field] = existing[field]
+    
+    # Preserve other env settings
+    for key in ["razorpay_key_id", "razorpay_key_secret", "resend_api_key", "resend_from_email",
+                "whatsapp_phone_number_id", "whatsapp_access_token", "whatsapp_business_account_id"]:
+        if key in existing:
+            update_doc[key] = existing[key]
+    
+    await save_global_settings_doc({"type": "env_settings"}, update_doc)
+    
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "security_settings", None,
+        {"updated_fields": [k for k in ["jwt_secret", "backup_password"] if getattr(data, k)]},
+        ip_address=current_user.get("_ip_address")
+    )
+    
+    return {"message": "Security settings updated successfully"}
+
+
+# ─── Env Settings (Legacy/Deprecated - kept for backward compatibility) ───────────────────────────────────────
 
 @router.get("/env-settings", response_model=AdminEnvSettingsResponse)
 async def get_env_settings(current_user: dict = Depends(require_admin)):
