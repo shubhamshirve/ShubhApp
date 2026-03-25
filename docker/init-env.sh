@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -e
 
 ROOT_DIR="${1:-.}"
 
