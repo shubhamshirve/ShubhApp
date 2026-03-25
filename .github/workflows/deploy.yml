@@ -1,0 +1,163 @@
+name: Deploy to Environment
+
+on:
+  push:
+    branches:
+      - develop
+      - staging
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+          - develop
+          - staging
+          - production
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  REGISTRY: docker.io
+
+jobs:
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_env: ${{ steps.determine.outputs.deploy_env }}
+      deploy_host: ${{ steps.determine.outputs.deploy_host }}
+      compose_file: ${{ steps.determine.outputs.compose_file }}
+      branch: ${{ steps.determine.outputs.branch }}
+    steps:
+      - name: Determine target environment
+        id: determine
+        run: |
+          BRANCH=${{ github.ref_name || github.event.inputs.environment }}
+          
+          case "$BRANCH" in
+            develop)
+              ENV="develop"
+              HOST="DEV_SERVER_HOST"
+              COMPOSE="docker-compose.yml"
+              ;;
+            staging)
+              ENV="staging"
+              HOST="STAGING_SERVER_HOST"
+              COMPOSE="docker-compose.yml"
+              ;;
+            main)
+              ENV="production"
+              HOST="PROD_SERVER_HOST"
+              COMPOSE="docker-compose.prod.yml"
+              ;;
+            *)
+              ENV="develop"
+              HOST="DEV_SERVER_HOST"
+              COMPOSE="docker-compose.yml"
+              ;;
+          esac
+          
+          echo "deploy_env=${ENV}" >> $GITHUB_OUTPUT
+          echo "deploy_host=${HOST}" >> $GITHUB_OUTPUT
+          echo "compose_file=${COMPOSE}" >> $GITHUB_OUTPUT
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-environment.outputs.deploy_env }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set deployment variables
+        id: vars
+        env:
+          DEPLOY_ENV: ${{ needs.determine-environment.outputs.deploy_env }}
+          BRANCH: ${{ needs.determine-environment.outputs.branch }}
+        run: |
+          SHA_SHORT="${{ github.sha }}" && SHA_SHORT=${SHA_SHORT:0:7}
+          
+          if [ "$DEPLOY_ENV" = "production" ]; then
+            IMAGE_TAG="latest"
+          else
+            IMAGE_TAG="${BRANCH}"
+          fi
+          
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH
+        env:
+          DEPLOY_HOST: ${{ secrets[needs.determine-environment.outputs.deploy_host] }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          COMPOSE_FILE: ${{ needs.determine-environment.outputs.compose_file }}
+          DEPLOY_ENV: ${{ needs.determine-environment.outputs.deploy_env }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          IMAGE_TAG: ${{ steps.vars.outputs.image_tag }}
+        run: |
+          # Create SSH key file
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Add host to known_hosts (disable strict key checking for first time)
+          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Deploy script
+          ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} << 'DEPLOY_SCRIPT'
+          set -e
+          
+          echo "🚀 Starting deployment..."
+          
+          # Navigate to app directory
+          cd /app  # Change this to your app directory
+          
+          # Pull latest code
+          echo "📥 Pulling latest code..."
+          git pull origin ${{ github.ref_name }}
+          
+          # Pull latest Docker images
+          echo "🐳 Pulling Docker images..."
+          docker pull $DOCKER_USERNAME/ebill-backend:$IMAGE_TAG
+          docker pull $DOCKER_USERNAME/ebill-frontend:$IMAGE_TAG
+          
+          # Stop old containers
+          echo "🛑 Stopping old containers..."
+          docker-compose -f $COMPOSE_FILE down || true
+          
+          # Start new containers
+          echo "▶️  Starting new containers..."
+          docker-compose -f $COMPOSE_FILE up -d
+          
+          # Wait for services to be healthy
+          echo "⏳ Waiting for services to be healthy..."
+          sleep 10
+          
+          # Check health
+          echo "✅ Checking container health..."
+          docker-compose -f $COMPOSE_FILE ps
+          
+          echo "✨ Deployment completed successfully!"
+          
+          DEPLOY_SCRIPT
+          
+          # Cleanup
+          rm -f ~/.ssh/deploy_key
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Deployment to ${{ needs.determine-environment.outputs.deploy_env }} completed!"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment to ${{ needs.determine-environment.outputs.deploy_env }} failed!"
+          echo "Check the logs above for details."
+          exit 1

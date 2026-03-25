@@ -4,15 +4,22 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch `V7.15-10`
-- Latest feature and fix delivery implemented through `V7.15-10`
+- Documentation updated for branch `V7.15-11`
+- Latest feature and fix delivery implemented through `V7.15-11`
 - Current release focus:
-  - **Docker Infrastructure Optimization** - Dual environment compose files (dev/prod) with proper security
-  - **Minimal .env Configuration** - Reduced from 40+ to 8-10 core variables
-  - **Fixed MongoDB Authentication** - Resolved critical "requires authentication" errors
-  - **Conditional Dockerfile Builds** - BUILD_ENV argument for dev vs production dependencies
-  - **Environment-Aware Configuration** - Feature flags, validation, and log level management
-  - **Comprehensive Docker Documentation** - Quick reference and optimization guides
+  - **GitHub Actions CI/CD Pipeline** - Automated build, test, and deployment to environments
+  - **Docker Hub Integration** - Auto-push images with branch/commit tags
+  - **Multi-Environment Deployment** - Auto-deploy to dev/staging/production via SSH
+  - **Rate-Limit Optimized** - Efficient caching, minimal API calls
+  - **Production-Ready Workflows** - Manual triggers, branch-based deployments
+  - See: [CI/CD Quick Reference](./CI_CD_QUICK_REFERENCE.md) and [Full Setup Guide](./GITHUB_ACTIONS_SETUP.md)
+  - previous features from V7.15-10:
+    - Docker Infrastructure Optimization - Dual environment compose files (dev/prod) with proper security
+    - Minimal .env Configuration - Reduced from 40+ to 8-10 core variables
+    - Fixed MongoDB Authentication - Resolved critical "requires authentication" errors
+    - Conditional Dockerfile Builds - BUILD_ENV argument for dev vs production dependencies
+    - Environment-Aware Configuration - Feature flags, validation, and log level management
+    - Comprehensive Docker Documentation - Quick reference and optimization guides
   - previous features from V7.15-9:
     - admin settings consolidation with cleanup of orphaned UI elements
     - dedicated security tab for JWT secret and backup password management
