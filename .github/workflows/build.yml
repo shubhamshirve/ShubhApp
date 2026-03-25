@@ -59,10 +59,9 @@ jobs:
           context: ./backend
           push: true
           tags: ${{ steps.meta.outputs.backend_tags }}
-          build-args: |
-            BUILD_ENV=production
-          cache-from: ""
-          cache-to: ""
+          build-args: BUILD_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build and push Frontend image
         uses: docker/build-push-action@v5
@@ -70,10 +69,9 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ steps.meta.outputs.frontend_tags }}
-          build-args: |
-            REACT_APP_BACKEND_URL=http://localhost:8000
-          cache-from: ""
-          cache-to: ""
+          build-args: REACT_APP_BACKEND_URL=http://localhost:8000
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Image digest
         run: |
