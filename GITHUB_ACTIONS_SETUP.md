@@ -1,19 +1,72 @@
 # GitHub Actions CI/CD Setup Guide
 
-## Overview
+## Quick Setup: 2 Environments (Local PC + Production Server)
+
+If you're testing locally on your PC and only have a production server, use this simplified setup:
+
+### Your Workflow
+```
+Feature branch (local testing):
+  git push origin develop
+  → GitHub builds images
+  → You test on local PC: docker-compose up -d
+  → Ready? Merge to main
+
+Production deployment (auto-deploy):
+  git push origin main
+  → GitHub builds images
+  → GitHub auto-deploys to production server ✨
+```
+
+### Secrets You Need (3 minimum)
+1. `DOCKER_USERNAME` - Docker Hub username
+2. `DOCKER_PAT` - Docker Personal Access Token
+3. `PROD_SERVER_HOST` - Your production server IP/hostname
+4. `DEPLOY_SSH_KEY` - Private SSH key (see Step 1.2 below)
+5. `DEPLOY_USER` - SSH username (usually `ubuntu` or `root`)
+
+**That's it!** Skip DEV_SERVER_HOST and STAGING_SERVER_HOST.
+
+### Local Development (No Setup Needed!)
+On your PC, just use docker-compose normally:
+```bash
+# Pull latest images (optional, for testing)
+docker pull your-username/ebill-backend:develop
+docker pull your-username/ebill-frontend:develop
+
+# Or build locally
+docker-compose build
+
+# Start services locally
+docker-compose up -d
+
+# View logs
+docker-compose logs -f backend
+
+# Stop when done
+docker-compose down
+```
+
+**No GitHub Actions needed for local testing!** Just normal docker-compose commands.
+
+---
+
+## Full Setup Guide
+
+### Overview
 This guide walks you through setting up automated CI/CD for the eBill application using GitHub Actions. The pipelines will:
 - **Build** Docker images on every push
 - **Test** basic functionality
 - **Push** images to Docker Hub with branch tags
-- **Auto-Deploy** to dev/staging/production environments
+- **Auto-Deploy** to production environment
 
 ---
 
 ## Prerequisites
 ✅ Docker Hub account with active PAT (Personal Access Token)
 ✅ GitHub repository with Actions enabled
-✅ Server(s) for deployment with Docker and Git installed
-✅ SSH access to your servers
+✅ Production server with Docker and Git installed
+✅ SSH access to your production server
 
 ---
 
@@ -36,9 +89,9 @@ This guide walks you through setting up automated CI/CD for the eBill applicatio
 | `DOCKER_USERNAME` | Your Docker Hub username |
 | `DOCKER_PAT` | Your Docker Hub PAT token |
 
-### 1.2 Deployment SSH Credentials (For Auto-Deploy)
+### 1.2 Deployment SSH Credentials (For Production Auto-Deploy)
 
-#### On your server:
+#### On your production server:
 ```bash
 # Generate SSH key pair (if you don't have one)
 ssh-keygen -t rsa -b 4096 -f ~/.ssh/github-deploy
@@ -59,21 +112,17 @@ Add these secrets:
 |------------|-------|---------|
 | `DEPLOY_USER` | SSH username | `ubuntu` or `root` |
 | `DEPLOY_SSH_KEY` | Private key from above | `-----BEGIN RSA PRIVATE KEY-----\n...` |
-| `DEV_SERVER_HOST` | Dev server IP/hostname | `dev.example.com` or `192.168.1.100` |
-| `STAGING_SERVER_HOST` | Staging server IP/hostname | `staging.example.com` |
-| `PROD_SERVER_HOST` | Production server IP/hostname | `prod.example.com` |
-
-**Note:** Only add the server secrets you're actually using.
+| `PROD_SERVER_HOST` | Production server IP/hostname | `prod.example.com` or `192.168.1.100` |
 
 ---
 
-## Step 2: Server Setup for Deployment
+## Step 2: Production Server Setup
 
-On each deployment server, set up the application:
+On your **production server only**, set up the application:
 
 ```bash
-# Login to server
-ssh user@your-server-ip
+# SSH to production server
+ssh user@your-prod-server-ip
 
 # Create app directory
 sudo mkdir -p /app
@@ -85,14 +134,14 @@ git clone https://github.com/YOUR_USERNAME/ebill.git .
 
 # Create .env file (critical!)
 cat > .env << 'EOF'
-DOMAIN=your-domain.com
+DOMAIN=your-production-domain.com
 SERVER_IP=your-server-ip
 MONGO_ROOT_USERNAME=admin
 MONGO_ROOT_PASSWORD=your-mongo-password
 JWT_SECRET=your-jwt-secret
 BACKUP_PASSWORD=your-backup-password
-CORS_ORIGINS=http://your-domain.com,https://your-domain.com
-REACT_APP_BACKEND_URL=http://your-domain.com:8000
+CORS_ORIGINS=http://your-production-domain.com,https://your-production-domain.com
+REACT_APP_BACKEND_URL=http://your-production-domain.com:8000
 EOF
 
 # Ensure .env is not tracked by git
@@ -104,6 +153,8 @@ chmod +x docker-compose*.yml
 # Create required directories
 mkdir -p uploads logs mongodb_data
 ```
+
+**That's all for server setup!** No need to set up your local PC - it's just for testing.
 
 ---
 
@@ -144,18 +195,52 @@ Triggers on: `push` to develop/staging/main or manual trigger
 
 ## Step 4: Using the Pipeline
 
-### Automatic (Recommended)
+### Your Development Workflow
+
+**On your local PC (testing):**
 ```bash
-# Just push code and it runs automatically
+# Create feature branch
+git checkout -b feature/my-feature
+
+# Make changes, commit
+git add .
+git commit -m "Add feature"
+
+# Push to develop branch
 git push origin develop
-# → Build pipeline runs
-# → Deploy pipeline runs automatically
+
+# GitHub builds images (automated)
+# → Check Actions tab to see build status
+
+# On your local PC, test with:
+docker-compose up -d
+# ... test the feature ...
+docker-compose down
+
+# If good, merge to main
 ```
 
-### Manual Trigger
-Go to GitHub repository → Actions → Select workflow → "Run workflow" button
+**Auto-deploy to production:**
+```bash
+# Merge develop into main
+git checkout main
+git merge develop
 
-Choose environment: develop/staging/production
+# Push to main
+git push origin main
+
+# GitHub builds + deploys automatically ✨
+# → Images pushed to Docker Hub
+# → Production server automatically updated
+# → Check Actions tab to see deploy status
+```
+
+### Manual Trigger (Optional)
+If you want to manually trigger the build/deploy without pushing:
+1. Go to GitHub repository → Actions tab
+2. Select "Build & Push to Docker Hub" workflow
+3. Click "Run workflow"
+4. Choose branch (develop or main)
 
 ---
 
@@ -202,23 +287,20 @@ Choose environment: develop/staging/production
 
 ## Step 6: Environment-Specific Configuration
 
-### Development (develop branch)
-- Uses `docker-compose.yml`
-- Exposes ports: 8000 (backend), 3000 (frontend)
-- For local testing and development
-- Deploys to: Dev server
+### Development (Local PC)
+- Branch: `develop` (or any feature branch)
+- Uses: `docker-compose.yml` locally on your PC
+- Exposes ports: 8000 (backend), 3000 (frontend), 27017 (MongoDB)
+- For: Local feature testing
+- Deployment: Manual (you run `docker-compose up -d`)
 
-### Staging (staging branch)
-- Uses `docker-compose.yml` or `docker-compose.prod.yml`
-- Similar to production but for testing
-- Deploys to: Staging server
-
-### Production (main branch)
-- Uses `docker-compose.prod.yml`
-- No exposed ports (reverse proxy only)
-- Resource limits enabled
-- Auto-restart on failure
-- Deploys to: Production server
+### Production (Remote Server)
+- Branch: `main`
+- Uses: `docker-compose.prod.yml` on production server
+- No exposed ports (reverse proxy only via Caddy)
+- Resource limits: Enabled for stability
+- Auto-restart: Enabled on failure
+- Deployment: Automatic via GitHub Actions on push
 
 ---
 
@@ -296,53 +378,76 @@ docker-compose -f docker-compose.prod.yml ps
 
 ---
 
-## Step 10: Example Workflow
+## Step 10: Your Workflow (2 Environments)
 
-### Your typical workflow:
+### Step-by-Step
 
 ```bash
-# 1. Work on feature locally
+# 1. Start new feature
 git checkout -b feature/my-feature
-# ... make changes and test manually ...
 
-# 2. Commit and push
+# 2. Make changes and test locally
+# ... edit code ...
+docker-compose up -d
+# ... manually test in browser ...
+docker-compose down
+
+# 3. Commit and push to develop
 git add .
-git commit -m "Add new feature"
-git push origin feature/my-feature
-
-# 3. Create Pull Request (optional)
-# ... team reviews ...
-
-# 4. Merge to develop
-git checkout develop
-git merge feature/my-feature
+git commit -m "Add feature"
 git push origin develop
-# → BUILD + DEPLOY to Dev automatically! ✨
 
-# 5. Test on dev server, then merge to main
+# GitHub Actions automatically:
+# ✅ Builds Docker images
+# ✅ Pushes to Docker Hub (tag: develop)
+# ❌ Does NOT deploy (only builds)
+
+# 4. Your local testing (you do this manually)
+docker-compose pull  # Get latest images from Docker Hub (optional)
+docker-compose up -d
+# Test thoroughly on your local PC...
+# If it works, proceed to next step
+
+# 5. Merge to main and auto-deploy to production
 git checkout main
 git merge develop
 git push origin main
-# → BUILD + DEPLOY to Production automatically! ✨
+
+# GitHub Actions automatically:
+# ✅ Builds Docker images
+# ✅ Pushes to Docker Hub (tag: latest, main)
+# ✅ SSH to production server
+# ✅ Pulls latest images
+# ✅ Restarts containers
+# ✨ YOU'RE LIVE on production!
+
+# 6. Verify on production
+ssh user@prod-server "docker-compose ps"
+# See all containers running ✅
 ```
 
 ---
 
 ## Checklist Before Going Live
 
-- [ ] Docker Hub PAT created and stored in `DOCKER_PAT` secret
-- [ ] `DOCKER_USERNAME` secret set
-- [ ] SSH key generated on servers
-- [ ] `DEPLOY_SSH_KEY` secret added
-- [ ] `DEPLOY_USER` secret added (e.g., `ubuntu`)
-- [ ] Server hostnames/IPs added as secrets
-- [ ] `.env` file created on all servers
-- [ ] Git repository exists on deployment servers
-- [ ] Docker installed on deployment servers
-- [ ] SSH from GitHub Actions can reach servers (test with manual trigger)
-- [ ] First deployment succeeded (check logs in Actions tab)
-- [ ] Application is running on deployed server
-- [ ] Monitored logs for any errors
+### Must Have (Critical)
+- [ ] Docker installed on your local PC
+- [ ] Docker Hub account created with PAT token
+- [ ] `DOCKER_USERNAME` secret added to GitHub
+- [ ] `DOCKER_PAT` secret added to GitHub
+- [ ] SSH key generated on production server
+- [ ] `DEPLOY_SSH_KEY` secret added to GitHub
+- [ ] `DEPLOY_USER` secret added to GitHub (ubuntu/root)
+- [ ] `PROD_SERVER_HOST` secret added to GitHub (your server IP)
+- [ ] `.env` file created on production server
+- [ ] Git repository cloned on production server
+- [ ] Docker installed on production server
+
+### Nice to Have (Optional)
+- [ ] Test local docker-compose up/down on your PC
+- [ ] SSH to production server works
+- [ ] Production server has internet access for pulling images
+- [ ] Monitoring logs via Actions tab
 
 ---
 
@@ -393,12 +498,46 @@ docker images your-username/ebill-*
 
 ## Next Steps
 
-1. ✅ Set up GitHub Secrets (Step 1)
-2. ✅ Configure servers (Step 2)
-3. ✅ Push a test commit to develop branch
-4. ✅ Monitor build in Actions tab
-5. ✅ Verify deployment on server
-6. ✅ Celebrate! 🎉
+1. ✅ Copy SSH key from production server
+2. ✅ Set up GitHub Secrets (Step 1)
+3. ✅ Configure production server (Step 2) 
+4. ✅ Push a test commit to develop branch
+5. ✅ Watch GitHub Actions build (should succeed)
+6. ✅ Verify images on Docker Hub
+7. ✅ Merge to main
+8. ✅ Watch GitHub Actions deploy (should auto-deploy)
+9. ✅ Verify app is running on production server
+10. ✅ Celebrate! 🎉
+
+---
+
+## Local Development Tips
+
+**Pull pre-built images from Docker Hub:**
+```bash
+# After pushing develop, wait 2-3 min for build to complete
+# Then pull and test
+docker pull your-username/ebill-backend:develop
+docker pull your-username/ebill-frontend:develop
+
+# Or just build locally (faster for testing)
+docker-compose build
+docker-compose up -d
+```
+
+**Check logs locally:**
+```bash
+docker-compose logs -f backend
+docker-compose logs -f frontend  
+docker-compose logs mongodb
+```
+
+**Rebuild and restart:**
+```bash
+docker-compose down
+docker-compose build
+docker-compose up -d
+```
 
 ---
 

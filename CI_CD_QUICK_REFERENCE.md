@@ -1,56 +1,100 @@
 # CI/CD Quick Start (TL;DR)
 
-## 30-Second Setup
+## Setup for 2 Environments (Local PC + Production Server)
 
-### 1. Add GitHub Secrets (5 min)
+### 30-Second Secret Setup
+
 Go to: https://github.com/YOUR_USERNAME/ebill/settings/secrets/actions
 
-Add these secrets:
+Add **5 secrets ONLY:**
 ```
-DOCKER_USERNAME = your-docker-username
-DOCKER_PAT = your-docker-pat-token
-DEPLOY_USER = ubuntu  (or your ssh user)
-DEPLOY_SSH_KEY = [contents of ~/.ssh/github-deploy]
-DEV_SERVER_HOST = dev-server-ip
-PROD_SERVER_HOST = prod-server-ip
+DOCKER_USERNAME  = your-docker-username
+DOCKER_PAT       = your-docker-pat-token  
+DEPLOY_USER      = ubuntu  (or root)
+DEPLOY_SSH_KEY   = [your-prod-server-ssh-private-key]
+PROD_SERVER_HOST = your-prod-server-ip
 ```
 
-### 2. Setup Server (10 min)
-SSH to each server and run:
+Done! ✨
+
+### Setup Console on Production Server (5 min)
+
 ```bash
+ssh user@prod-server-ip
+
+# Generate SSH key
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/github-deploy
+cat ~/.ssh/github-deploy  # Copy content to DEPLOY_SSH_KEY secret
+
+# Setup app directory
 cd /app
 git clone https://github.com/YOUR_USERNAME/ebill.git .
+
+# Create .env
 cat > .env << 'EOF'
-DOMAIN=your-domain.com
-MONGO_ROOT_PASSWORD=your-mongo-password
-JWT_SECRET=your-jwt-secret
+DOMAIN=prod-domain.com
+MONGO_ROOT_PASSWORD=your-password
+JWT_SECRET=your-secret
 # ... other vars ...
 EOF
 ```
 
-### 3. Done! 
-Now just push code:
+### No Setup Needed on Local PC!
+Just use docker-compose normally:
 ```bash
-git push origin develop  # Auto-deploys to dev!
-git push origin main     # Auto-deploys to production!
+docker-compose up -d
+docker-compose logs -f backend
+docker-compose down
 ```
 
 ---
 
-## What Happens on Push
+## Your Workflow
 
+```
+Feature branch:
+  1. git push origin develop
+  2. GitHub builds images (automated)
+  3. You test locally: docker-compose up -d
+  4. Testing good? Continue...
+
+Production deploy:
+  1. git push origin main
+  2. GitHub builds images (automated)
+  3. GitHub auto-deploys to production (automated)
+  4. Your app is live! ✨
+```
+
+---
+
+## What Happens on Each Push
+
+### Push to develop (branch):
 ```
 You: git push origin develop
     ↓
-GitHub Actions: Build Docker images
+GitHub Actions: Build backend + frontend images
     ↓
-Docker Hub: Store images with tags (develop, abc1234, etc)
+Docker Hub: Store images (tag: develop, abc1234)
     ↓
-GitHub Actions: SSH to dev server
+You: docker-compose up -d (manual testing on local PC)
     ↓
-Dev Server: Pull images, restart containers
+Done! Ready to merge to main when tested
+```
+
+### Push to main (branch):
+```
+You: git push origin main
     ↓
-Done! Your code is live ✨
+GitHub Actions: Build backend + frontend images
+    ↓
+Docker Hub: Store images (tag: latest, main, abc1234)
+    ↓
+GitHub Actions: SSH to production server
+    ↓
+Production: Pull images, restart containers
+    ↓
+Done! App is live in production! 🎉
 ```
 
 ---
@@ -58,9 +102,31 @@ Done! Your code is live ✨
 ## Monitoring
 
 1. Go to: https://github.com/YOUR_USERNAME/ebill/actions
-2. See build/deploy status
-3. Click on run to see detailed logs
-4. ✅ Green = Success, ❌ Red = Failed
+2. See build status (blue=running, green=success, red=failed)
+3. Click workflow run to see detailed logs
+4. Look for: "Build & Push to Docker Hub" and "Deploy" steps
+
+---
+
+## Local Testing Commands
+
+```bash
+# Build from local Dockerfile
+docker-compose build
+
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f backend
+
+# Stop everything
+docker-compose down
+
+# Pull pre-built images from Docker Hub
+docker pull your-username/ebill-backend:develop
+docker pull your-username/ebill-frontend:develop
+```
 
 ---
 
@@ -68,14 +134,16 @@ Done! Your code is live ✨
 
 | Problem | Fix |
 |---------|-----|
-| Build fails | Check Actions logs → Docker permissions/syntax |
-| Deploy fails | Check SSH key, server IP, Docker installed |
+| Build fails | Check Actions logs → Dockerfile syntax |
+| Deploy fails | SSH key wrong? Server IP wrong? Check logs |
 | Images not on Docker Hub | Verify DOCKER_USERNAME and DOCKER_PAT |
-| Container won't start | SSH to server, check `.env` file |
+| Container won't start | SSH to production, check `.env` file |
+| Local containers won't start | Install Docker, check disk space |
 
 ---
 
-## Manual Deploy (if needed)
+## Manual Production Deploy (if needed)
+
 ```bash
 ssh user@prod-server
 cd /app
@@ -84,35 +152,29 @@ docker pull your-username/ebill-backend:latest
 docker pull your-username/ebill-frontend:latest
 docker-compose -f docker-compose.prod.yml down
 docker-compose -f docker-compose.prod.yml up -d
-docker-compose logs backend
+docker-compose ps
 ```
 
 ---
 
-## Rate Limits: Not a Problem
-- Docker Hub: 100 pulls per 6 hours ✅ (we use ~2 per push)
-- GitHub: 3000 free minutes/month ✅ (we use ~5 per build)
-- This setup is designed to stay well under limits
+## Branches & What They Do
 
-**No rate limiting in this implementation!**
-
----
-
-## Branches & Environments
-
-| Branch | →  | Environment | Server | Auto-Deploy? |
-|--------|----|----|--------|--------------|
-| `develop` | → | Dev | `DEV_SERVER_HOST` | ✅ Yes |
-| `staging` | → | Staging | `STAGING_SERVER_HOST` | ✅ Yes |
-| `main` | → | Production | `PROD_SERVER_HOST` | ✅ Yes |
+| Branch | Action | Auto-Deploy? |
+|--------|--------|--------------|
+| `feature/*` | Build only | ❌ No |
+| `develop` | Build only | ❌ No |
+| `main` | Build + Deploy | ✅ Yes (to PROD_SERVER_HOST) |
 
 ---
 
 ## Full Setup Guide
 See: [GITHUB_ACTIONS_SETUP.md](./GITHUB_ACTIONS_SETUP.md)
 
+For more details on environment variables, Docker Hub management, and advanced topics.
+
 ---
 
 ## Support
-For detailed troubleshooting, see the full setup guide above.
-For quick help, check GitHub Actions logs: https://github.com/YOUR_USERNAME/ebill/actions
+- Detailed guide: [GITHUB_ACTIONS_SETUP.md](./GITHUB_ACTIONS_SETUP.md)
+- GitHub Actions logs: https://github.com/YOUR_USERNAME/ebill/actions
+- Production server: `ssh user@prod-server-ip && docker-compose ps`
