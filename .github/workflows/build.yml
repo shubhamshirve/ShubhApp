@@ -60,7 +60,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.backend_tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           build-args: |
             BUILD_ENV=production
 
@@ -71,7 +70,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.frontend_tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           build-args: |
             REACT_APP_BACKEND_URL=http://localhost:8000
 
