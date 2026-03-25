@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2026-03-24  
-**Active Branch:** `V7.15-6`
-**Latest Feature Branch:** `V7.15-6` (Plans list layout UI overhaul & Razorpay dynamic script loading)
+**Last Updated:** 2026-03-25  
+**Active Branch:** `V7.15-7`
+**Latest Feature Branch:** `V7.15-7` (index.html unnecessary script cleanup)
 
 ---
 
@@ -51,6 +51,8 @@ The codebase now includes:
 - detailed view dialog added to the announcement history page via "Eye" icon
 - operator plans layout upgraded to an organized data table list view
 - optimized Razorpay by converting to a dynamic script loader (`lib/razorpay.js`) to eliminate global preload console warnings
+- removed unnecessary legacy scripts (PostHog and error handler) from `index.html` to improve performance and code cleanliness
+
 
 ---
 
@@ -72,6 +74,8 @@ The codebase now includes:
 - `V7.15-4` is the announcement history viewing branch
 - `V7.15-5` is the active branch representing combined Staff management and Announcement history additions
 - `V7.15-6` is the operator plans list view layout redesign branch
+- `V7.15-7` is the index.html unnecessary script cleanup branch
+
 
 ### V7.15-2 Changes
 
@@ -211,5 +215,6 @@ The following files were refreshed on `V7.14-14`:
 
 ## Git State At Handoff
 
-- Current branch: `V7.15-6`
-- Feature baseline under docs branch: `V7.15-6`
+- Current branch: `V7.15-7`
+- Feature baseline under docs branch: `V7.15-7`
+

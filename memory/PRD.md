@@ -100,6 +100,8 @@ E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar
 - backend-served `/api/uploads` URLs for uploaded invoice assets
 - operator dashboard monthly value stats
 - SMTP implicit SSL and clearer error handling
+- removal of legacy and unused scripts (PostHog and error handler) from `index.html` for better performance
+
 
 ### Discovery and Distribution
 - SEO-ready homepage metadata
@@ -181,3 +183,4 @@ This PRD is aligned with the codebase through:
 - `V7.14-12` cache clearing, admin profile, and email test tooling delivery
 - `V7.14-13` invoice bulk upload, address fallback, and logo rendering delivery
 - `V7.14-14` dashboard stats, SMTP stability, and referral automation delivery
+- unnecessary script cleanup (PostHog, error handler) from `index.html` delivery

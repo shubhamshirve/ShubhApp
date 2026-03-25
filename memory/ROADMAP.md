@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.14-15`
+Latest shipped functional branch: `V7.15-7`
 
 What is now live in code:
 - operator referral code auto-generation for admin-created and legacy operators
@@ -57,6 +57,8 @@ What is now live in code:
 - SMTP test/send stability improvements including implicit SSL on port 465
 - admin-created operator referral-code generation
 - admin-managed referral benefits/settings
+- removed unnecessary legacy scripts (PostHog, PerformanceServerTiming handler) from `index.html` for performance
+
 
 What is still mostly pending:
 - deeper payment receipt/confirmation flows
@@ -209,6 +211,8 @@ What is still mostly pending:
 - global reminders
 - IST-based cron scheduling
 - admin wallet controls
+- index.html script cleanup (PostHog, error handler)
+
 
 ---
 

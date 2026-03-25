@@ -4,8 +4,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch line `V7.15-6`
-- Latest feature and fix delivery implemented through `V7.15-6`
+- Documentation updated for branch line `V7.15-7`
+- Latest feature and fix delivery implemented through `V7.15-7`
 - Current release focus:
   - invoice image upload button permanently disabled
   - invoice show logo toggle always OFF and disabled
@@ -42,6 +42,8 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
   - invoice address fallback from registration/profile data
   - invoice logo preview/persistence/render fixes
   - backend-served `/api/uploads` asset URLs
+- removal of unnecessary legacy scripts (PostHog, error handler) from `index.html`
+
 
 ## Architecture
 
@@ -117,6 +119,8 @@ d:\eBill
 - announcement details dialog available from announcement history table
 - operator plans structure migrated from grid format to organized data table list format
 - extracted Razorpay global `<script>` into a dynamic JS utility for on-demand checkout loading
+- removed legacy and unused scripts from `index.html` (PostHog, error handler) for faster loads
+
 
 ## Recent Functional Changes
 

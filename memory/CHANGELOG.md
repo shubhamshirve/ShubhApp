@@ -1,6 +1,17 @@
 # E-Bill Platform - CHANGELOG
 
-## 2026-03-24
+## 2026-03-25
+
+### V7.15-7: index.html Script Cleanup
+
+#### Performance & Maintainability
+- Removed unnecessary and legacy scripts from `index.html` to improve page load speed and reduce aggregate weight.
+- Removed the large inline PostHog initialization script (no longer used in current source).
+- Removed the `PerformanceServerTiming` error handler workaround.
+- Fixed formatting and corrected a broken HTML comment left after script removal.
+
+#### Files Modified
+- [frontend/public/index.html](/d:/eBill/frontend/public/index.html)
 
 ### V7.15-6: Operator Plans List View Redesign
 
