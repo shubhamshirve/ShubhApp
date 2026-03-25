@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
+from services.env_service import get_env_setting
 
 class RazorpayService:
     def __init__(self, api_key: str, api_secret: str):
@@ -195,3 +196,12 @@ def get_razorpay_service(api_key: str, api_secret: str) -> Optional[RazorpayServ
     if not api_key or not api_secret:
         return None
     return RazorpayService(api_key, api_secret)
+
+async def get_razorpay_service_async() -> Optional[RazorpayService]:
+    """Async factory that fetches credentials from DB/Env"""
+    key_id = await get_env_setting("razorpay_key_id")
+    key_secret = await get_env_setting("razorpay_key_secret")
+    
+    if not key_id or not key_secret:
+        return None
+    return RazorpayService(key_id, key_secret)

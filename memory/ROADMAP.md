@@ -17,7 +17,7 @@
 
 ## Current Release State
 
-Latest shipped functional branch: `V7.15-7`
+Latest shipped functional branch: `V7.15-8`
 
 What is now live in code:
 - operator referral code auto-generation for admin-created and legacy operators
@@ -58,6 +58,10 @@ What is now live in code:
 - admin-created operator referral-code generation
 - admin-managed referral benefits/settings
 - removed unnecessary legacy scripts (PostHog, PerformanceServerTiming handler) from `index.html` for performance
+- migrated sensitive environment variables (JWT, Razorpay, Resend, WhatsApp) from `.env` to database-backed Env Tab
+- centralized environment service with database-first priority and automatic fallback
+- refactored WhatsApp and Razorpay services with async factory functions for dynamic configuration
+- updated email and cron services to utilize database-stored platform secrets
 
 
 What is still mostly pending:
@@ -70,7 +74,21 @@ What is still mostly pending:
 
 ## Active Priorities
 
-### 1. Payment Receipts and Confirmation Delivery
+### 1. CI/CD Pipeline Implementation
+- Status: `next`
+- Priority: `P1`
+- Importance: `High`
+- Effort: `M`
+- Scope:
+  - configure GitHub Actions for automated testing and deployment
+  - implement secure secret management during build/deploy
+  - streamline the deployment from dev to production
+- Why next:
+  - environment variables are now centralized in the database
+  - the platform is ready for more automated and frequent deployments
+  - follows the user's explicit request for a faster deployment flow
+
+### 2. Payment Receipts and Confirmation Delivery
 - Status: `planned`
 - Priority: `P1`
 - Importance: `High`

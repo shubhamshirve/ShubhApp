@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+from services.env_service import get_env_setting
 
 class WhatsAppService:
     """Service for WhatsApp Business API Cloud interactions"""
@@ -283,3 +284,12 @@ def get_whatsapp_service(phone_number_id: str, access_token: str) -> Optional[Wh
     if not phone_number_id or not access_token:
         return None
     return WhatsAppService(phone_number_id, access_token)
+
+async def get_whatsapp_service_async() -> Optional[WhatsAppService]:
+    """Async factory that fetches credentials from DB/Env"""
+    phone_id = await get_env_setting("whatsapp_phone_number_id")
+    token = await get_env_setting("whatsapp_access_token")
+    
+    if not phone_id or not token:
+        return None
+    return WhatsAppService(phone_id, token)

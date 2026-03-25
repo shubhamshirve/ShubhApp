@@ -147,14 +147,39 @@ const AdminSettings = () => {
   const [testEmail, setTestEmail] = useState("");
   const [emailTestSending, setEmailTestSending] = useState({ resend: false, smtp: false });
 
+  // Env settings state
+  const [envSettings, setEnvSettings] = useState({
+    jwt_secret: "",
+    backup_password: "",
+    razorpay_key_id: "",
+    razorpay_key_secret: "",
+    resend_api_key: "",
+    resend_from_email: "",
+    whatsapp_phone_number_id: "",
+    whatsapp_access_token: "",
+    whatsapp_business_account_id: "",
+    jwt_secret_preview: "",
+    backup_password_preview: "",
+    razorpay_key_id_preview: "",
+    razorpay_key_secret_preview: "",
+    resend_api_key_preview: "",
+    whatsapp_access_token_preview: "",
+    is_configured: false,
+  });
+  const [envSaving, setEnvSaving] = useState(false);
+  const [showEnvKeys, setShowEnvKeys] = useState({});
+
   useEffect(() => {
     setAdminProfileForm({ name: user?.name || "" });
     setTestEmail((prev) => prev || user?.email || "");
   }, [user]);
 
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchGateways(), fetchOperators(), fetchBackups(), fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(), fetchReminderSettings(), fetchEmailConfig()])
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetchSettings(), fetchGateways(), fetchOperators(), fetchBackups(),
+      fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(),
+      fetchReminderSettings(), fetchEmailConfig(), fetchEnvSettings()
+    ]).finally(() => setLoading(false));
   }, []);
 
   const fetchSettings = async () => {
@@ -177,22 +202,41 @@ const AdminSettings = () => {
     } catch { /* ignore */ }
   };
 
-  const fetchEmailConfig = async () => {
+  const fetchEnvSettings = async () => {
     try {
-      const res = await authAxios.get("/admin/email-settings");
-      setEmailConfig({
-        ...DEFAULT_EMAIL_CONFIG,
-        resend_api_key_preview: res.data.resend_api_key_preview || "",
-        resend_from_email: res.data.resend_from_email || "",
-        smtp_host: res.data.smtp_host || "",
-        smtp_port: res.data.smtp_port || 587,
-        smtp_username: res.data.smtp_username || "",
-        smtp_from_email: res.data.smtp_from_email || "",
-        smtp_use_tls: res.data.smtp_use_tls ?? true,
-        is_configured: res.data.is_configured || false,
-        is_smtp_configured: res.data.is_smtp_configured || false,
-      });
+      const res = await authAxios.get("/admin/env-settings");
+      setEnvSettings(prev => ({ ...prev, ...res.data }));
     } catch { /* ignore */ }
+  };
+
+  const handleSaveEnvSettings = async (e) => {
+    e.preventDefault();
+    setEnvSaving(true);
+    try {
+      // Only send fields that have been typed into
+      const payload = {};
+      ["jwt_secret", "backup_password", "razorpay_key_id", "razorpay_key_secret", "resend_api_key", "resend_from_email", "whatsapp_phone_number_id", "whatsapp_access_token", "whatsapp_business_account_id"].forEach(k => {
+        if (envSettings[k]) payload[k] = envSettings[k];
+      });
+
+      if (Object.keys(payload).length === 0) {
+        toast.info("No changes to save");
+        setEnvSaving(false);
+        return;
+      }
+
+      await authAxios.put("/admin/env-settings", payload);
+      toast.success("Environment settings updated successfully");
+      // Clear sensitive inputs after save
+      const cleared = {};
+      ["jwt_secret", "backup_password", "razorpay_key_id", "razorpay_key_secret", "resend_api_key", "whatsapp_access_token"].forEach(k => cleared[k] = "");
+      setEnvSettings(prev => ({ ...prev, ...cleared }));
+      await fetchEnvSettings();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to save environment settings");
+    } finally {
+      setEnvSaving(false);
+    }
   };
 
   const handleSaveEmailConfig = async (e) => {
@@ -565,6 +609,7 @@ const AdminSettings = () => {
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="email">Email API</TabsTrigger>
+            <TabsTrigger value="env" className="text-blue-600 font-semibold">Env Tab</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -1467,6 +1512,192 @@ const AdminSettings = () => {
                   <Button type="submit" disabled={emailSaving} className="bg-[#0066B2] hover:bg-[#004080] text-white" data-testid="save-email-btn">
                     {emailSaving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Saving...</> : "Save Email Settings"}
                   </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Env Tab */}
+          <TabsContent value="env" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="w-5 h-5" />
+                  Environment Variables (Sensitive)
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Manage sensitive keys previously stored in <code>.env</code> file. Values saved here take priority over <code>.env</code>.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveEnvSettings} className="space-y-6">
+                  {/* Security Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                      <Shield className="w-4 h-4" /> Security & Core
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-6">
+                      <div className="space-y-2">
+                        <Label>JWT Secret</Label>
+                        <div className="relative">
+                          <Input
+                            type={showEnvKeys.jwt ? "text" : "password"}
+                            value={envSettings.jwt_secret}
+                            onChange={(e) => setEnvSettings(s => ({ ...s, jwt_secret: e.target.value }))}
+                            placeholder={envSettings.jwt_secret_preview || "Enter new JWT secret"}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEnvKeys(p => ({ ...p, jwt: !p.jwt }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showEnvKeys.jwt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Backup Encryption Password</Label>
+                        <div className="relative">
+                          <Input
+                            type={showEnvKeys.backup ? "text" : "password"}
+                            value={envSettings.backup_password}
+                            onChange={(e) => setEnvSettings(s => ({ ...s, backup_password: e.target.value }))}
+                            placeholder={envSettings.backup_password_preview || "Enter backup encryption password"}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEnvKeys(p => ({ ...p, backup: !p.backup }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showEnvKeys.backup ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payments Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4" /> Payment Gateway (Razorpay)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-6">
+                      <div className="space-y-2">
+                        <Label>Razorpay Key ID</Label>
+                        <Input
+                          value={envSettings.razorpay_key_id}
+                          onChange={(e) => setEnvSettings(s => ({ ...s, razorpay_key_id: e.target.value }))}
+                          placeholder={envSettings.razorpay_key_id_preview || "rzp_live_..."}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Razorpay Key Secret</Label>
+                        <div className="relative">
+                          <Input
+                            type={showEnvKeys.rzp_secret ? "text" : "password"}
+                            value={envSettings.razorpay_key_secret}
+                            onChange={(e) => setEnvSettings(s => ({ ...s, razorpay_key_secret: e.target.value }))}
+                            placeholder={envSettings.razorpay_key_secret_preview || "****"}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEnvKeys(p => ({ ...p, rzp_secret: !p.rzp_secret }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showEnvKeys.rzp_secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Email Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                      <ExternalLink className="w-4 h-4" /> Email API (Resend)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-6">
+                      <div className="space-y-2">
+                        <Label>Resend API Key</Label>
+                        <div className="relative">
+                          <Input
+                            type={showEnvKeys.resend ? "text" : "password"}
+                            value={envSettings.resend_api_key}
+                            onChange={(e) => setEnvSettings(s => ({ ...s, resend_api_key: e.target.value }))}
+                            placeholder={envSettings.resend_api_key_preview || "re_..."}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEnvKeys(p => ({ ...p, resend: !p.resend }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showEnvKeys.resend ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Resend From Email</Label>
+                        <Input
+                          value={envSettings.resend_from_email}
+                          onChange={(e) => setEnvSettings(s => ({ ...s, resend_from_email: e.target.value }))}
+                          placeholder={envSettings.resend_from_email || "billing@yourdomain.com"}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4" /> WhatsApp API (Meta)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-6">
+                      <div className="space-y-2">
+                        <Label>Phone Number ID</Label>
+                        <Input
+                          value={envSettings.whatsapp_phone_number_id}
+                          onChange={(e) => setEnvSettings(s => ({ ...s, whatsapp_phone_number_id: e.target.value }))}
+                          placeholder={envSettings.whatsapp_phone_number_id || "123456789..."}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Business Account ID</Label>
+                        <Input
+                          value={envSettings.whatsapp_business_account_id}
+                          onChange={(e) => setEnvSettings(s => ({ ...s, whatsapp_business_account_id: e.target.value }))}
+                          placeholder={envSettings.whatsapp_business_account_id || "987654321..."}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Access Token (Permanent)</Label>
+                        <div className="relative">
+                          <Input
+                            type={showEnvKeys.wa_token ? "text" : "password"}
+                            value={envSettings.whatsapp_access_token}
+                            onChange={(e) => setEnvSettings(s => ({ ...s, whatsapp_access_token: e.target.value }))}
+                            placeholder={envSettings.whatsapp_access_token_preview || "EAAB..."}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEnvKeys(p => ({ ...p, wa_token: !p.wa_token }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showEnvKeys.wa_token ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                    <p className="text-xs text-slate-500 italic">
+                      <Info className="w-3 h-3 inline mr-1" />
+                      Changes here might require a process restart for some services (like JWT) to fully propagate.
+                    </p>
+                    <Button type="submit" disabled={envSaving} className="min-w-[150px]">
+                      {envSaving ? "Saving..." : "Save Env Settings"}
+                    </Button>
+                  </div>
                 </form>
               </CardContent>
             </Card>

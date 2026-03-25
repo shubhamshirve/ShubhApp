@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
 **Last Updated:** 2026-03-25  
-**Active Branch:** `V7.15-7`
-**Latest Feature Branch:** `V7.15-7` (index.html unnecessary script cleanup)
+**Active Branch:** `V7.15-8`
+**Latest Feature Branch:** `V7.15-8` (Admin Env Settings and Service Refactor)
 
 ---
 
@@ -52,6 +52,10 @@ The codebase now includes:
 - operator plans layout upgraded to an organized data table list view
 - optimized Razorpay by converting to a dynamic script loader (`lib/razorpay.js`) to eliminate global preload console warnings
 - removed unnecessary legacy scripts (PostHog and error handler) from `index.html` to improve performance and code cleanliness
+- migrated sensitive environment variables (JWT, Razorpay, Resend, WhatsApp) to a secure, database-backed "Env" tab in Admin Settings
+- implemented centralized `env_service.py` for prioritized setting retrieval with fallbacks
+- refactored WhatsApp and Razorpay services with async factory functions for dynamic configuration
+- updated email and cron services to utilize database-backed environment settings
 
 
 ---
@@ -75,6 +79,7 @@ The codebase now includes:
 - `V7.15-5` is the active branch representing combined Staff management and Announcement history additions
 - `V7.15-6` is the operator plans list view layout redesign branch
 - `V7.15-7` is the index.html unnecessary script cleanup branch
+- `V7.15-8` is the Admin Env Settings and Service Refactor branch
 
 
 ### V7.15-2 Changes

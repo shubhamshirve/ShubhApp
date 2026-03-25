@@ -2,16 +2,29 @@
 
 ## 2026-03-25
 
-### V7.15-7: index.html Script Cleanup
+### V7.15-8: Admin Env Settings & Service Refactor
 
-#### Performance & Maintainability
-- Removed unnecessary and legacy scripts from `index.html` to improve page load speed and reduce aggregate weight.
-- Removed the large inline PostHog initialization script (no longer used in current source).
-- Removed the `PerformanceServerTiming` error handler workaround.
-- Fixed formatting and corrected a broken HTML comment left after script removal.
+#### Environment Management
+- Migrated sensitive environment variables (JWT, Razorpay, Resend, WhatsApp) from `.env` file to a secure, database-backed "Env" tab in the Admin Settings panel.
+- Implemented `backend/services/env_service.py` to centralize setting retrieval with a database-first priority and automatic fallback to environment variables.
+- Sensitive values are masked in the Admin UI with toggleable visibility for secure management.
+
+#### Service Layer Architecture
+- Refactored `WhatsAppService` and `RazorpayService` with async factory functions (`get_whatsapp_service_async`, `get_razorpay_service_async`) to dynamically load credentials from the database.
+- Refactored `email_service.py` to prioritize database-stored Resend configuration.
+- Updated `cron_service.py` (WhatsApp reminders) and `cron_backup_job` to use the new async service initialization pattern.
 
 #### Files Modified
-- [frontend/public/index.html](/d:/eBill/frontend/public/index.html)
+- [backend/services/env_service.py](/d:/eBill/backend/services/env_service.py) [NEW]
+- [backend/services/whatsapp_service.py](/d:/eBill/backend/services/whatsapp_service.py)
+- [backend/services/razorpay_service.py](/d:/eBill/backend/services/razorpay_service.py)
+- [backend/services/email_service.py](/d:/eBill/backend/services/email_service.py)
+- [backend/services/cron_service.py](/d:/eBill/backend/services/cron_service.py)
+- [backend/routers/admin.py](/d:/eBill/backend/routers/admin.py)
+- [backend/models.py](/d:/eBill/backend/models.py)
+- [frontend/src/pages/admin/Settings.jsx](/d:/eBill/frontend/src/pages/admin/Settings.jsx)
+
+### V7.15-7: index.html Script Cleanup
 
 ### V7.15-6: Operator Plans List View Redesign
 

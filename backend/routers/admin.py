@@ -17,6 +17,7 @@ from models import (
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
     ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
+    EnvSettingsUpdate, AdminEnvSettingsResponse,
 )
 from utils import generate_id, hash_password, create_token, generate_unique_referral_code
 from dependencies import require_admin, get_current_user
@@ -1610,4 +1611,84 @@ async def send_smtp_test_email(
         to_email=data.email,
         current_user=current_user,
     )
+
+
+# ─── Env Settings ─────────────────────────────────────────────────────────────
+
+@router.get("/env-settings", response_model=AdminEnvSettingsResponse)
+async def get_env_settings(current_user: dict = Depends(require_admin)):
+    """Get current sensitive environment variables stored in DB (masked)."""
+    doc = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0})
+    
+    def mask(val):
+        if not val: return ""
+        return val[:8] + "****" if len(val) > 8 else "****"
+
+    if doc:
+        return AdminEnvSettingsResponse(
+            jwt_secret_preview=mask(doc.get("jwt_secret")),
+            backup_password_preview=mask(doc.get("backup_password")),
+            razorpay_key_id_preview=mask(doc.get("razorpay_key_id")),
+            razorpay_key_secret_preview=mask(doc.get("razorpay_key_secret")),
+            resend_api_key_preview=mask(doc.get("resend_api_key")),
+            resend_from_email=doc.get("resend_from_email") or "",
+            whatsapp_phone_number_id=doc.get("whatsapp_phone_number_id") or "",
+            whatsapp_access_token_preview=mask(doc.get("whatsapp_access_token")),
+            whatsapp_business_account_id=doc.get("whatsapp_business_account_id") or "",
+            is_configured=True
+        )
+    
+    # Fallback to env vars
+    return AdminEnvSettingsResponse(
+        jwt_secret_preview=mask(os.environ.get("JWT_SECRET")),
+        backup_password_preview=mask(os.environ.get("BACKUP_PASSWORD")),
+        razorpay_key_id_preview=mask(os.environ.get("RAZORPAY_KEY_ID")),
+        razorpay_key_secret_preview=mask(os.environ.get("RAZORPAY_KEY_SECRET")),
+        resend_api_key_preview=mask(os.environ.get("RESEND_API_KEY")),
+        resend_from_email=os.environ.get("RESEND_FROM_EMAIL") or "",
+        whatsapp_phone_number_id=os.environ.get("WHATSAPP_PHONE_NUMBER_ID") or "",
+        whatsapp_access_token_preview=mask(os.environ.get("WHATSAPP_ACCESS_TOKEN")),
+        whatsapp_business_account_id=os.environ.get("WHATSAPP_BUSINESS_ACCOUNT_ID") or "",
+        is_configured=False
+    )
+
+
+@router.put("/env-settings")
+async def update_env_settings(
+    data: EnvSettingsUpdate,
+    current_user: dict = Depends(require_admin)
+):
+    """Update sensitive environment variables in DB."""
+    now = datetime.now(timezone.utc)
+    existing = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0}) or {}
+    
+    # Merge new data with existing DB settings
+    update_doc = {
+        "type": "env_settings",
+        "updated_at": now.isoformat(),
+        "updated_by": current_user["id"],
+    }
+    
+    # Only update fields that are provided
+    for field in [
+        "jwt_secret", "backup_password", "razorpay_key_id", "razorpay_key_secret",
+        "resend_api_key", "resend_from_email", "whatsapp_phone_number_id",
+        "whatsapp_access_token", "whatsapp_business_account_id"
+    ]:
+        val = getattr(data, field)
+        if val is not None:
+            update_doc[field] = val.strip() if isinstance(val, str) else val
+        elif field in existing:
+            update_doc[field] = existing[field]
+    
+    await save_global_settings_doc({"type": "env_settings"}, update_doc)
+    
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "update", "env_settings", None,
+        {"updated_fields": [k for k in update_doc.keys() if k not in ["type", "updated_at", "updated_by"]]},
+        ip_address=current_user.get("_ip_address")
+    )
+    
+    return {"message": "Environment settings updated successfully"}
 

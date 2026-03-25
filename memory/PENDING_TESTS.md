@@ -2,6 +2,19 @@
 
 ## High Priority
 
+### V7.15-8 Admin Env Settings & Service Refactor Validation
+
+- [ ] Verify "Env Tab" appears in Admin Settings with blue/semibold styling.
+- [ ] Verify "Env Tab" contains sections for "Security & Core", "Payment Gateway (Razorpay)", "Email API (Resend)", and "WhatsApp API (Meta)".
+- [ ] Verify input fields exist for JWT Secret, Backup Password, Razorpay Key ID/Secret, Resend API Key/Email, and WhatsApp IDs/Token.
+- [ ] Verify sensitive fields (Secrets, Tokens, Passwords) are masked by default and have "eye" toggle icons.
+- [ ] Verify saving values via "Env Tab" correctly updates the `global_settings` collection (`type: "env_settings"`).
+- [ ] Verify `env_service.py` correctly prioritizing DB-stored values over `.env` variables.
+- [ ] Verify `WhatsAppService` and `RazorpayService` correctly load credentials from the database via their async factories.
+- [ ] Verify `email_service.py` successfully sends emails using Resend keys stored in the database.
+- [ ] Verify `cron_service.py` (daily reminders) correctly initializes `WhatsAppService` using the async factory.
+- [ ] Verify fallback behavior: if a key is missing in DB, it should correctly fall back to `.env` or legacy collections.
+
 ### V7.14-15 Operator Referral / Logo Upload / Subscription Renewal / Announcements Validation
 - Verify operator created by admin receives a unique referral code automatically.
 - Verify legacy operators (with no referral code) get one generated when accessing wallet page.

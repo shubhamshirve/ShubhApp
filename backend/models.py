@@ -588,6 +588,37 @@ class AdminPaymentGatewayConfig(SanitizedModel):
     for_operator_id: Optional[str] = None
 
 
+class EnvSettingsUpdate(SanitizedModel):
+    _unsanitized_fields = {
+        "jwt_secret", "backup_password",
+        "razorpay_key_id", "razorpay_key_secret",
+        "resend_api_key", "resend_from_email",
+        "whatsapp_phone_number_id", "whatsapp_access_token", "whatsapp_business_account_id"
+    }
+    jwt_secret: Optional[str] = None
+    backup_password: Optional[str] = None
+    razorpay_key_id: Optional[str] = None
+    razorpay_key_secret: Optional[str] = None
+    resend_api_key: Optional[str] = None
+    resend_from_email: Optional[str] = None
+    whatsapp_phone_number_id: Optional[str] = None
+    whatsapp_access_token: Optional[str] = None
+    whatsapp_business_account_id: Optional[str] = None
+
+
+class AdminEnvSettingsResponse(SanitizedModel):
+    jwt_secret_preview: str = ""
+    backup_password_preview: str = ""
+    razorpay_key_id_preview: str = ""
+    razorpay_key_secret_preview: str = ""
+    resend_api_key_preview: str = ""
+    resend_from_email: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token_preview: str = ""
+    whatsapp_business_account_id: str = ""
+    is_configured: bool = False
+
+
 # ============== INVOICE CUSTOMIZATION MODELS ==============
 
 class InvoiceCustomization(SanitizedModel):

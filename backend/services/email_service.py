@@ -8,6 +8,7 @@ from email.message import EmailMessage
 
 import httpx
 from services.global_settings_store import get_global_settings_doc
+from services.env_service import get_env_setting
 
 
 logger = logging.getLogger(__name__)
@@ -191,8 +192,19 @@ def _build_smtp_service_from_settings(settings: dict):
 
 
 def _build_resend_service_from_settings(settings: dict):
-    api_key = (settings.get("resend_api_key") or os.environ.get("RESEND_API_KEY", "")).strip()
-    from_email = (settings.get("resend_from_email") or os.environ.get("RESEND_FROM_EMAIL", "")).strip()
+    # Try settings dict (from email_settings doc), then env_settings in DB via helper, then os.environ
+    api_key = settings.get("resend_api_key")
+    from_email = settings.get("resend_from_email")
+    
+    # The helper 'get_env_setting' is async, but these builders are sync for legacy reasons.
+    # However, get_email_service_async/get_email_providers_async ARE async and pass the dict.
+    # We will rely on the caller to have populated the settings dict from BOTH docs if possible.
+    
+    if not api_key:
+        api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not from_email:
+        from_email = os.environ.get("RESEND_FROM_EMAIL", "").strip()
+
     if not api_key:
         return None
     try:
@@ -221,14 +233,26 @@ def get_email_service():
 
 async def get_email_service_async():
     """
-    Build the email service, checking DB first (`global_settings.key = email_settings`)
+    Build the email service, checking DB first:
+    1. `global_settings.key = email_settings` (Old style)
+    2. `global_settings.type = env_settings` (New 'Env Tab' style)
     and then falling back to environment variables.
     """
     settings = {}
     try:
-        doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
-        if doc:
-            settings.update(doc)
+        # Load env_settings (new consolidated style)
+        env_doc = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0})
+        if env_doc:
+            settings.update({
+                "resend_api_key": env_doc.get("resend_api_key"),
+                "resend_from_email": env_doc.get("resend_from_email"),
+            })
+        
+        # Load email_settings (legacy but still used for SMTP)
+        email_doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
+        if email_doc:
+            settings.update(email_doc)
+            
     except Exception as exc:
         logger.warning("Failed to load email settings from DB, falling back to env: %s", exc)
 
@@ -254,6 +278,15 @@ async def get_email_providers_async():
         "smtp_use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() != "false",
     }
     try:
+        # Load env_settings (new consolidated style)
+        env_doc = await get_global_settings_doc({"type": "env_settings"}, {"_id": 0})
+        if env_doc:
+            settings.update({
+                "resend_api_key": env_doc.get("resend_api_key"),
+                "resend_from_email": env_doc.get("resend_from_email"),
+            })
+
+        # Load legacy email_settings
         doc = await get_global_settings_doc({"key": "email_settings"}, {"_id": 0})
         if doc:
             settings.update(doc)
