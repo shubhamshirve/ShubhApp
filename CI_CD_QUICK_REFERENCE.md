@@ -82,13 +82,13 @@ You: docker-compose up -d (manual testing on local PC)
 Done! Ready to merge to main when tested
 ```
 
-### Push to main (branch):
+### Push to live (branch):
 ```
-You: git push origin main
+You: git push origin live
     ↓
 GitHub Actions: Build backend + frontend images
     ↓
-Docker Hub: Store images (tag: latest, main, abc1234)
+Docker Hub: Store images (tag: latest, live, abc1234)
     ↓
 GitHub Actions: SSH to production server
     ↓
@@ -163,7 +163,7 @@ docker-compose ps
 |--------|--------|--------------|
 | `feature/*` | Build only | ❌ No |
 | `develop` | Build only | ❌ No |
-| `main` | Build + Deploy | ✅ Yes (to PROD_SERVER_HOST) |
+| `live` | Build + Deploy | ✅ Yes (to PROD_SERVER_HOST) |
 
 ---
 

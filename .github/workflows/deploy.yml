@@ -4,19 +4,17 @@ on:
   push:
     branches:
       - develop
-      - staging
-      - main
+      - live
   workflow_dispatch:
     inputs:
       environment:
         description: 'Environment to deploy to'
         required: true
-        default: 'develop'
+        default: 'live'
         type: choice
         options:
           - develop
-          - staging
-          - production
+          - live
 
 env:
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -42,12 +40,7 @@ jobs:
               HOST="DEV_SERVER_HOST"
               COMPOSE="docker-compose.yml"
               ;;
-            staging)
-              ENV="staging"
-              HOST="STAGING_SERVER_HOST"
-              COMPOSE="docker-compose.yml"
-              ;;
-            main)
+            live)
               ENV="production"
               HOST="PROD_SERVER_HOST"
               COMPOSE="docker-compose.prod.yml"

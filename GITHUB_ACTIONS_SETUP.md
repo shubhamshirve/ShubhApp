@@ -10,10 +10,10 @@ Feature branch (local testing):
   git push origin develop
   → GitHub builds images
   → You test on local PC: docker-compose up -d
-  → Ready? Merge to main
+  → Ready? Merge to live branch
 
 Production deployment (auto-deploy):
-  git push origin main
+  git push origin live
   → GitHub builds images
   → GitHub auto-deploys to production server ✨
 ```
@@ -217,17 +217,17 @@ docker-compose up -d
 # ... test the feature ...
 docker-compose down
 
-# If good, merge to main
+# If good, merge to live (production branch)
 ```
 
 **Auto-deploy to production:**
 ```bash
-# Merge develop into main
-git checkout main
+# Merge develop into live
+git checkout live
 git merge develop
 
-# Push to main
-git push origin main
+# Push to live (auto-deploys to production)
+git push origin live
 
 # GitHub builds + deploys automatically ✨
 # → Images pushed to Docker Hub
@@ -240,7 +240,7 @@ If you want to manually trigger the build/deploy without pushing:
 1. Go to GitHub repository → Actions tab
 2. Select "Build & Push to Docker Hub" workflow
 3. Click "Run workflow"
-4. Choose branch (develop or main)
+4. Choose branch (develop or live)
 
 ---
 
@@ -311,16 +311,14 @@ Your images will be organized as:
 ```
 your-username/ebill-backend
   ├─ develop    (latest from develop branch)
-  ├─ staging    (latest from staging branch)
-  ├─ main       (latest from main branch)
-  ├─ latest     (same as main)
+  ├─ live       (latest from live/production branch)
+  ├─ latest     (same as live)
   ├─ abc1234    (specific commit)
   └─ def5678    (another commit)
 
 your-username/ebill-frontend
   ├─ develop
-  ├─ staging
-  ├─ main
+  ├─ live
   ├─ latest
   └─ [commit hashes]
 ```
@@ -408,14 +406,16 @@ docker-compose up -d
 # Test thoroughly on your local PC...
 # If it works, proceed to next step
 
-# 5. Merge to main and auto-deploy to production
-git checkout main
+# 5. Merge to live (production branch) and auto-deploy to production
+git checkout live
 git merge develop
-git push origin main
+
+# Push to live (auto-deploys to production)
+git push origin live
 
 # GitHub Actions automatically:
 # ✅ Builds Docker images
-# ✅ Pushes to Docker Hub (tag: latest, main)
+# ✅ Pushes to Docker Hub (tag: latest, live)
 # ✅ SSH to production server
 # ✅ Pulls latest images
 # ✅ Restarts containers
@@ -504,7 +504,7 @@ docker images your-username/ebill-*
 4. ✅ Push a test commit to develop branch
 5. ✅ Watch GitHub Actions build (should succeed)
 6. ✅ Verify images on Docker Hub
-7. ✅ Merge to main
+7. ✅ Merge to live (production branch)
 8. ✅ Watch GitHub Actions deploy (should auto-deploy)
 9. ✅ Verify app is running on production server
 10. ✅ Celebrate! 🎉

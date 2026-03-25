@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - develop
-      - staging
-      - main
+      - live
   workflow_dispatch:  # Allow manual trigger
 
 env:
@@ -44,8 +43,8 @@ jobs:
           BACKEND_TAGS="${{ secrets.DOCKER_USERNAME }}/ebill-backend:${BRANCH},${{ secrets.DOCKER_USERNAME }}/ebill-backend:${SHA_SHORT}"
           FRONTEND_TAGS="${{ secrets.DOCKER_USERNAME }}/ebill-frontend:${BRANCH},${{ secrets.DOCKER_USERNAME }}/ebill-frontend:${SHA_SHORT}"
           
-          # Add 'latest' tag for main branch
-          if [ "$BRANCH" = "main" ]; then
+          # Add 'latest' tag for live branch
+          if [ "$BRANCH" = "live" ]; then
             BACKEND_TAGS="${BACKEND_TAGS},${{ secrets.DOCKER_USERNAME }}/ebill-backend:latest"
             FRONTEND_TAGS="${FRONTEND_TAGS},${{ secrets.DOCKER_USERNAME }}/ebill-frontend:latest"
           fi
