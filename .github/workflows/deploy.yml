@@ -60,7 +60,7 @@ jobs:
   deploy:
     needs: determine-environment
     runs-on: ubuntu-latest
-    environment: ${{ needs.determine-environment.outputs.deploy_env }}
+    environment: ebill
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
