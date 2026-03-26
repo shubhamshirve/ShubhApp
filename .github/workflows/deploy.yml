@@ -99,32 +99,40 @@ jobs:
           # Add host to known_hosts (disable strict key checking for first time)
           ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
           
-          # Deploy script
-          ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} << 'DEPLOY_SCRIPT'
+          # Deploy script - pass variables explicitly
+          ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} << DEPLOY_SCRIPT
           set -e
           
+          # Export environment variables for Docker
+          export DOCKER_USERNAME="$DOCKER_USERNAME"
+          export IMAGE_TAG="$IMAGE_TAG"
+          export COMPOSE_FILE="$COMPOSE_FILE"
+          
           echo "🚀 Starting deployment..."
+          echo "Docker Username: \$DOCKER_USERNAME"
+          echo "Image Tag: \$IMAGE_TAG"
+          echo "Compose File: \$COMPOSE_FILE"
           
           # Navigate to app directory
           cd /app  # Change this to your app directory
           
           # Pull latest code with ff-only (fast-forward only) to prevent divergent branches
           echo "📥 Pulling latest code..."
-          git fetch origin ${{ github.ref_name }}
-          git reset --hard origin/${{ github.ref_name }}
+          git fetch origin live
+          git reset --hard origin/live
           
           # Pull latest Docker images
           echo "🐳 Pulling Docker images..."
-          docker pull $DOCKER_USERNAME/ebill-backend:$IMAGE_TAG
-          docker pull $DOCKER_USERNAME/ebill-frontend:$IMAGE_TAG
+          docker pull \$DOCKER_USERNAME/ebill-backend:\$IMAGE_TAG
+          docker pull \$DOCKER_USERNAME/ebill-frontend:\$IMAGE_TAG
           
           # Stop old containers
           echo "🛑 Stopping old containers..."
-          docker-compose -f $COMPOSE_FILE down || true
+          docker-compose -f \$COMPOSE_FILE down || true
           
           # Start new containers
           echo "▶️  Starting new containers..."
-          docker-compose -f $COMPOSE_FILE up -d
+          docker-compose -f \$COMPOSE_FILE up -d
           
           # Wait for services to be healthy
           echo "⏳ Waiting for services to be healthy..."
@@ -132,7 +140,7 @@ jobs:
           
           # Check health
           echo "✅ Checking container health..."
-          docker-compose -f $COMPOSE_FILE ps
+          docker-compose -f \$COMPOSE_FILE ps
           
           echo "✨ Deployment completed successfully!"
           
