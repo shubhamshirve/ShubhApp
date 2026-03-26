@@ -1,25 +1,16 @@
-name: Build & Push Docker Images
+name: Build & Deploy to Production
 
 on:
   push:
     branches:
       - live
-      - develop
-  pull_request:
-    branches:
-      - live
-      - develop
-
-env:
-  REGISTRY: docker.io
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -29,93 +20,41 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata (backend)
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/ebill-backend
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Extract metadata (frontend)
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/ebill-frontend
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push backend image
+      - name: Build and push backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=registry
-          cache-to: type=inline
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/ebill-backend:latest
+            ${{ secrets.DOCKER_USERNAME }}/ebill-backend:${{ github.sha }}
+          build-args: BUILD_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build and push frontend image
+      - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          build-args: |
-            REACT_APP_BACKEND_URL=${{ secrets.REACT_APP_BACKEND_URL }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=registry
-          cache-to: type=inline
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:latest
+            ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:${{ github.sha }}
+          build-args: REACT_APP_BACKEND_URL=${{ secrets.REACT_APP_BACKEND_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  deploy-staging:
+  deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    environment: staging
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Deploy to staging server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.STAGING_SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          script: |
-            cd /app/ebill
-            docker-compose pull
-            docker-compose -f docker-compose.prod.yml --env-file .env.staging up -d
-            docker-compose logs --tail=20
-
-  deploy-production:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/live' && github.event_name == 'push'
-    environment: production
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Deploy to production server
+      - name: Deploy to production
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PROD_SERVER_IP }}
@@ -123,7 +62,18 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           script: |
+            set -e
             cd /app/ebill
-            docker-compose pull
-            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
-            docker-compose logs --tail=20
+
+            echo "Pulling latest code..."
+            git fetch origin live
+            git reset --hard origin/live
+
+            echo "Pulling Docker images..."
+            docker-compose -f docker-compose.prod.yml pull
+
+            echo "Restarting services..."
+            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --remove-orphans
+
+            echo "Deployment complete!"
+            docker-compose -f docker-compose.prod.yml ps
