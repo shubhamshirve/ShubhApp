@@ -63,15 +63,7 @@ jobs:
           port: 22
           script: |
             set -e
-
-            # First-time setup: clone repo if directory doesn't exist
-            if [ ! -d /app/ebill/.git ]; then
-              echo "First deployment: cloning repository..."
-              mkdir -p /app/ebill
-              git clone -b live https://github.com/${{ github.repository }}.git /app/ebill
-            fi
-
-            cd /app/ebill
+            cd /root/ShubhApp
 
             echo "Pulling latest code..."
             git fetch origin live
