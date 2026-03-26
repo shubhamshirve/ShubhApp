@@ -7,23 +7,39 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Eye, EyeOff, LogIn, Wifi, Receipt, TrendingUp } from "lucide-react";
+import { sanitize } from "../utils/sanitize";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const validateEmail = (val) => {
+    if (!val.trim()) return "Email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) return "Enter a valid email address";
+    return "";
+  };
+
+  const validatePassword = (val) => {
+    if (!val || val.length < 6) return "Password must be at least 6 characters";
+    return "";
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) { toast.error("Email is required"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Please enter a valid email address"); return; }
-    if (!password || password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    const emailErr = validateEmail(email);
+    const passwordErr = validatePassword(password);
+    if (emailErr || passwordErr) {
+      setFieldErrors({ email: emailErr, password: passwordErr });
+      return;
+    }
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(sanitize(email), password);
       toast.success("Login successful!");
       if (user.role === "admin") {
         navigate("/admin");
@@ -117,11 +133,13 @@ const Login = () => {
                     type="email"
                     placeholder="you@example.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: "" })); }}
+                    onBlur={(e) => setFieldErrors((p) => ({ ...p, email: validateEmail(e.target.value) }))}
                     required
-                    className="border-slate-300 focus:border-[#0066B2] focus:ring-[#0066B2]"
+                    className={`border-slate-300 focus:border-[#0066B2] focus:ring-[#0066B2] ${fieldErrors.email ? "border-red-500" : ""}`}
                     data-testid="login-email"
                   />
+                  {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -132,9 +150,10 @@ const Login = () => {
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => { setPassword(e.target.value); if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: "" })); }}
+                      onBlur={(e) => setFieldErrors((p) => ({ ...p, password: validatePassword(e.target.value) }))}
                       required
-                      className="pr-10 border-slate-300 focus:border-[#0066B2] focus:ring-[#0066B2]"
+                      className={`pr-10 border-slate-300 focus:border-[#0066B2] focus:ring-[#0066B2] ${fieldErrors.password ? "border-red-500" : ""}`}
                       data-testid="login-password"
                     />
                     <button
@@ -145,6 +164,7 @@ const Login = () => {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password}</p>}
                 </div>
 
                 <div className="text-right">

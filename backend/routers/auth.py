@@ -1,5 +1,5 @@
 """Auth router: register (with OTP), login, me."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import datetime, timezone, timedelta
 import random
 import logging
@@ -8,6 +8,7 @@ from database import db
 from models import OperatorCreate, UserLogin, UserResponse, TokenResponse
 from utils import generate_id, hash_password, verify_password, create_token, generate_unique_referral_code
 from dependencies import get_current_user, get_platform_maintenance_state, get_operator_access_state
+from audit import log_audit
 from sanitization import SanitizedModel, sanitize_text
 from services.email_service import get_email_service_async, EmailServiceError
 
@@ -481,8 +482,10 @@ async def register_operator(data: OperatorCreate):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: UserLogin):
+async def login(data: UserLogin, request: Request):
     """Login for all users."""
+    ip_address = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+
     user = await db.users.find_one({"email": data.email, "deleted_at": None}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -494,6 +497,17 @@ async def login(data: UserLogin):
         raise HTTPException(status_code=401, detail="Account is not active")
 
     token = await _issue_user_session(user)
+
+    await log_audit(
+        user_id=user["id"],
+        user_name=user["name"],
+        role=user["role"],
+        action="login",
+        module="auth",
+        new_value={"email": user["email"], "role": user["role"]},
+        ip_address=ip_address,
+        operator_id=user.get("operator_id"),
+    )
 
     return TokenResponse(
         access_token=token,

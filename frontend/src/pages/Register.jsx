@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Eye, EyeOff, UserPlus, ArrowLeft, MessageCircle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp, Building2, CreditCard, Info } from "lucide-react";
+import { sanitize, sanitizeFormData } from "../utils/sanitize";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 
@@ -49,6 +50,7 @@ const Register = () => {
     bank_account_number: "",
     bank_ifsc: "",
   });
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showBankDetails, setShowBankDetails] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,72 +73,106 @@ const Register = () => {
     return () => clearTimeout(t);
   }, [countdown]);
 
+  const validateField = (name, value) => {
+    const v = typeof value === "string" ? value.trim() : value;
+    switch (name) {
+      case "company_name":
+        if (!v || v.length < 2) return "Business name must be at least 2 characters";
+        break;
+      case "owner_name":
+        if (!v || v.length < 2) return "Owner name must be at least 2 characters";
+        break;
+      case "email":
+        if (!v) return "Email is required";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address";
+        break;
+      case "phone": {
+        const digits = value.replace(/\D/g, "");
+        if (digits.length < 10) return "Phone number must be at least 10 digits";
+        break;
+      }
+      case "password":
+        if (!v || v.length < 6) return "Password must be at least 6 characters";
+        break;
+      case "confirmPassword":
+        if (v !== formData.password) return "Passwords do not match";
+        break;
+      case "gst_number":
+        if (v && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/i.test(v))
+          return "Invalid GST format (e.g., 22AAAAA0000A1Z5)";
+        break;
+      case "pan_number":
+        if (v && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(v))
+          return "Invalid PAN format (e.g., ABCDE1234F)";
+        break;
+      case "bank_ifsc":
+        if (v && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(v))
+          return "Invalid IFSC format (e.g., SBIN0001234)";
+        break;
+      default:
+        break;
+    }
+    return "";
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    const error = validateField(name, value);
+    setFieldErrors((prev) => ({ ...prev, [name]: error }));
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Clear error on change if it was previously shown
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: "" }));
+    }
   };
+
+  const FieldError = ({ name }) =>
+    fieldErrors[name] ? (
+      <p className="text-xs text-red-500 mt-1">{fieldErrors[name]}</p>
+    ) : null;
 
   // Step 1: Submit registration form
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { company_name, owner_name, email, phone, password, confirmPassword, gst_number, pan_number, bank_ifsc } = formData;
 
-    if (!company_name.trim() || company_name.trim().length < 2) {
-      toast.error("Company name must be at least 2 characters");
-      return;
-    }
-    if (!owner_name.trim() || owner_name.trim().length < 2) {
-      toast.error("Owner name must be at least 2 characters");
-      return;
-    }
-    if (!email.trim()) {
-      toast.error("Email is required");
-      return;
-    }
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phoneDigits.length < 10) {
-      toast.error("Phone number must be at least 10 digits");
-      return;
-    }
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (gst_number && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/i.test(gst_number.trim())) {
-      toast.error("Invalid GST number format (e.g., 22AAAAA0000A1Z5)");
-      return;
-    }
-    if (pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan_number.trim())) {
-      toast.error("Invalid PAN number format (e.g., ABCDE1234F)");
-      return;
-    }
-    if (bank_ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(bank_ifsc.trim())) {
-      toast.error("Invalid IFSC code format (e.g., SBIN0001234)");
+    // Validate all required fields and collect errors
+    const requiredFields = ["company_name", "owner_name", "email", "phone", "password", "confirmPassword", "gst_number", "pan_number", "bank_ifsc"];
+    const errors = {};
+    requiredFields.forEach((name) => {
+      const error = validateField(name, formData[name]);
+      if (error) errors[name] = error;
+    });
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      toast.error("Please fix the errors before submitting");
       return;
     }
 
+    const phoneDigits = phone.replace(/\D/g, "");
     setLoading(true);
     try {
+      const sanitized = sanitizeFormData(formData);
       const res = await axios.post(`${API}/auth/register-init`, {
-        company_name: company_name.trim(),
-        owner_name: owner_name.trim(),
-        email: email.trim(),
-        phone: phoneDigits.length === 10 ? phoneDigits : phoneDigits,
+        company_name: sanitized.company_name,
+        owner_name: sanitized.owner_name,
+        email: sanitized.email,
+        phone: phoneDigits,
         password,
-        business_type: formData.business_type || null,
-        gst_number: gst_number.trim() || null,
-        pan_number: pan_number.trim().toUpperCase() || null,
-        address: formData.address.trim() || null,
+        business_type: sanitized.business_type || null,
+        gst_number: sanitized.gst_number?.toUpperCase() || null,
+        pan_number: sanitized.pan_number?.toUpperCase() || null,
+        address: sanitized.address || null,
         charge_gst: formData.charge_gst,
-        bank_account_name: formData.bank_account_name.trim() || null,
-        bank_name: formData.bank_name.trim() || null,
-        bank_account_number: formData.bank_account_number.trim() || null,
-        bank_ifsc: formData.bank_ifsc.trim().toUpperCase() || null,
-        referral_code: formData.referral_code.trim().toUpperCase() || null,
+        bank_account_name: sanitized.bank_account_name || null,
+        bank_name: sanitized.bank_name || null,
+        bank_account_number: sanitized.bank_account_number || null,
+        bank_ifsc: sanitized.bank_ifsc?.toUpperCase() || null,
+        referral_code: sanitized.referral_code?.toUpperCase() || null,
       });
       setRegistrationId(res.data.registration_id);
       setOtpSent(res.data.otp_sent);
@@ -258,9 +294,12 @@ const Register = () => {
                       placeholder="Your Company Ltd."
                       value={formData.company_name}
                       onChange={handleChange}
+                      onBlur={handleBlur}
+                      className={fieldErrors.company_name ? "border-red-500" : ""}
                       required
                       data-testid="register-company"
                     />
+                    <FieldError name="company_name" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="owner_name" className="text-[#004080]">Owner Name *</Label>
@@ -270,9 +309,12 @@ const Register = () => {
                       placeholder="John Doe"
                       value={formData.owner_name}
                       onChange={handleChange}
+                      onBlur={handleBlur}
+                      className={fieldErrors.owner_name ? "border-red-500" : ""}
                       required
                       data-testid="register-owner"
                     />
+                    <FieldError name="owner_name" />
                   </div>
                 </div>
 
@@ -286,9 +328,12 @@ const Register = () => {
                       placeholder="you@company.com"
                       value={formData.email}
                       onChange={handleChange}
+                      onBlur={handleBlur}
+                      className={fieldErrors.email ? "border-red-500" : ""}
                       required
                       data-testid="register-email"
                     />
+                    <FieldError name="email" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number *</Label>
@@ -299,10 +344,15 @@ const Register = () => {
                       placeholder="9876543210"
                       value={formData.phone}
                       onChange={handleChange}
+                      onBlur={handleBlur}
+                      className={fieldErrors.phone ? "border-red-500" : ""}
                       required
                       data-testid="register-phone"
                     />
-                    <p className="text-xs text-slate-400">Used for account communication and WhatsApp notifications</p>
+                    {fieldErrors.phone
+                      ? <FieldError name="phone" />
+                      : <p className="text-xs text-slate-400">Used for account communication and WhatsApp notifications</p>
+                    }
                   </div>
                 </div>
 
@@ -317,8 +367,9 @@ const Register = () => {
                         placeholder="Min. 6 characters"
                         value={formData.password}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         required
-                        className="pr-10"
+                        className={`pr-10 ${fieldErrors.password ? "border-red-500" : ""}`}
                         data-testid="register-password"
                       />
                       <button
@@ -329,6 +380,7 @@ const Register = () => {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    <FieldError name="password" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirm Password *</Label>
@@ -339,9 +391,12 @@ const Register = () => {
                       placeholder="Repeat password"
                       value={formData.confirmPassword}
                       onChange={handleChange}
+                      onBlur={handleBlur}
+                      className={fieldErrors.confirmPassword ? "border-red-500" : ""}
                       required
                       data-testid="register-confirm-password"
                     />
+                    <FieldError name="confirmPassword" />
                   </div>
                 </div>
 
@@ -377,9 +432,11 @@ const Register = () => {
                           placeholder="ABCDE1234F"
                           value={formData.pan_number}
                           onChange={handleChange}
-                          className="uppercase"
+                          onBlur={handleBlur}
+                          className={`uppercase ${fieldErrors.pan_number ? "border-red-500" : ""}`}
                           data-testid="register-pan"
                         />
+                        <FieldError name="pan_number" />
                       </div>
                     </div>
 
@@ -392,9 +449,11 @@ const Register = () => {
                           placeholder="22AAAAA0000A1Z5"
                           value={formData.gst_number}
                           onChange={handleChange}
-                          className="uppercase"
+                          onBlur={handleBlur}
+                          className={`uppercase ${fieldErrors.gst_number ? "border-red-500" : ""}`}
                           data-testid="register-gst"
                         />
+                        <FieldError name="gst_number" />
                       </div>
                       <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg h-[66px]">
                         <div>
@@ -496,9 +555,11 @@ const Register = () => {
                             placeholder="SBIN0001234"
                             value={formData.bank_ifsc}
                             onChange={handleChange}
-                            className="uppercase"
+                            onBlur={handleBlur}
+                            className={`uppercase ${fieldErrors.bank_ifsc ? "border-red-500" : ""}`}
                             data-testid="register-ifsc"
                           />
+                          <FieldError name="bank_ifsc" />
                         </div>
                       </div>
                     </div>

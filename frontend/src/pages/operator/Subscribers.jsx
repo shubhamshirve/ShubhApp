@@ -36,6 +36,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban } from "lucide-react";
+import { sanitize } from "../../utils/sanitize";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
@@ -53,6 +54,7 @@ const OperatorSubscribers = () => {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
+  const [subFieldErrors, setSubFieldErrors] = useState({});
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -101,20 +103,42 @@ const OperatorSubscribers = () => {
     }
   };
 
+  const validateSubField = (name, value) => {
+    const v = typeof value === "string" ? value.trim() : value;
+    if (name === "name") {
+      if (!v || v.length < 2) return "Name must be at least 2 characters";
+    } else if (name === "whatsapp_number") {
+      const digits = (value || "").replace(/\D/g, "");
+      if (!digits || digits.length < 10 || digits.length > 13) return "Enter a valid 10-digit WhatsApp number";
+    } else if (name === "email") {
+      if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address";
+    }
+    return "";
+  };
+
+  const handleSubBlur = (e) => {
+    const { name, value } = e.target;
+    setSubFieldErrors((prev) => ({ ...prev, [name]: validateSubField(name, value) }));
+  };
+
+  const handleSubChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (subFieldErrors[field]) setSubFieldErrors((prev) => ({ ...prev, [field]: "" }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Validation
-    const name = formData.name.trim();
-    const phone = formData.whatsapp_number.trim();
-    const email = formData.email.trim();
-    if (!name || name.length < 2) { toast.error("Name must be at least 2 characters"); return; }
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (!phoneDigits || phoneDigits.length < 10 || phoneDigits.length > 13) {
-      toast.error("WhatsApp number must be 10 digits"); return;
+    // Validate all sub-fields
+    const nameErr = validateSubField("name", formData.name);
+    const phoneErr = validateSubField("whatsapp_number", formData.whatsapp_number);
+    const emailErr = validateSubField("email", formData.email);
+    if (nameErr || phoneErr || emailErr) {
+      setSubFieldErrors({ name: nameErr, whatsapp_number: phoneErr, email: emailErr });
+      toast.error("Please fix the errors before submitting");
+      return;
     }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error("Please enter a valid email address"); return;
-    }
+
+    const phoneDigits = formData.whatsapp_number.replace(/\D/g, "");
     
     if (formData.plans.length === 0) {
       toast.error("Please add at least one plan");
@@ -126,12 +150,19 @@ const OperatorSubscribers = () => {
       if (p.discount < 0) { toast.error("Discount cannot be negative"); return; }
     }
 
+    const payload = {
+      ...formData,
+      name: sanitize(formData.name),
+      email: sanitize(formData.email),
+      address: sanitize(formData.address),
+      whatsapp_number: phoneDigits,
+    };
     try {
       if (editingSubscriber) {
-        await authAxios.put(`/operator/subscribers/${editingSubscriber.id}`, formData);
+        await authAxios.put(`/operator/subscribers/${editingSubscriber.id}`, payload);
         toast.success("Subscriber updated successfully");
       } else {
-        await authAxios.post("/operator/subscribers", formData);
+        await authAxios.post("/operator/subscribers", payload);
         toast.success("Subscriber created successfully");
       }
       setShowDialog(false);
@@ -200,6 +231,7 @@ const OperatorSubscribers = () => {
 
   const resetForm = () => {
     setEditingSubscriber(null);
+    setSubFieldErrors({});
     setFormData({
       name: "",
       whatsapp_number: "",
@@ -513,33 +545,45 @@ const OperatorSubscribers = () => {
                   <div className="col-span-2 space-y-2">
                     <Label>Name *</Label>
                     <Input
+                      name="name"
                       value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => handleSubChange("name", e.target.value)}
+                      onBlur={handleSubBlur}
+                      className={subFieldErrors.name ? "border-red-500" : ""}
                       placeholder="Subscriber name"
                       required
                       data-testid="subscriber-name-input"
                     />
+                    {subFieldErrors.name && <p className="text-xs text-red-500 mt-1">{subFieldErrors.name}</p>}
                   </div>
 
                   <div className="space-y-2">
                     <Label>WhatsApp Number *</Label>
                     <Input
+                      name="whatsapp_number"
                       value={formData.whatsapp_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_number: e.target.value }))}
+                      onChange={(e) => handleSubChange("whatsapp_number", e.target.value)}
+                      onBlur={handleSubBlur}
+                      className={subFieldErrors.whatsapp_number ? "border-red-500" : ""}
                       placeholder="9876543210"
                       required
                       data-testid="subscriber-phone-input"
                     />
+                    {subFieldErrors.whatsapp_number && <p className="text-xs text-red-500 mt-1">{subFieldErrors.whatsapp_number}</p>}
                   </div>
 
                   <div className="space-y-2">
                     <Label>Email</Label>
                     <Input
+                      name="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => handleSubChange("email", e.target.value)}
+                      onBlur={handleSubBlur}
+                      className={subFieldErrors.email ? "border-red-500" : ""}
                       placeholder="email@example.com"
                     />
+                    {subFieldErrors.email && <p className="text-xs text-red-500 mt-1">{subFieldErrors.email}</p>}
                   </div>
 
                   <div className="col-span-2 space-y-2">
