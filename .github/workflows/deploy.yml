@@ -108,9 +108,10 @@ jobs:
           # Navigate to app directory
           cd /app  # Change this to your app directory
           
-          # Pull latest code
+          # Pull latest code with ff-only (fast-forward only) to prevent divergent branches
           echo "📥 Pulling latest code..."
-          git pull origin ${{ github.ref_name }}
+          git fetch origin ${{ github.ref_name }}
+          git reset --hard origin/${{ github.ref_name }}
           
           # Pull latest Docker images
           echo "🐳 Pulling Docker images..."
