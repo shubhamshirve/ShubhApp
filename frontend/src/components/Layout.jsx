@@ -52,7 +52,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
       {/* Mobile overlay - only rendered and interactive on mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden lg:pointer-events-none"
+          className="fixed inset-0 bg-black/50 z-40 pointer-events-auto lg:hidden lg:pointer-events-none"
           onClick={onClose}
         />
       )}
@@ -163,14 +163,14 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden lg:pointer-events-none"
+          className="fixed inset-0 bg-black/50 z-40 pointer-events-auto lg:hidden lg:pointer-events-none"
           onClick={onClose}
         />
       )}
-      
+
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50
-        w-64 bg-white border-r border-slate-200 
+        w-64 bg-white border-r border-slate-200
         transform transition-transform duration-200 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
