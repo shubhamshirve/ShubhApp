@@ -5,9 +5,8 @@
 # Git / system noise
 .DS_Store
 Thumbs.db
-gcm-diagnose.log
 
-# Environment files
+# Environment files (keep only the example)
 .env
 .env.local
 .env.*
@@ -17,20 +16,12 @@ gcm-diagnose.log
 node_modules/
 frontend/node_modules/
 frontend/build/
-.pnp
-.pnp.js
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
 coverage/
 dist/
 .cache/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
 # Python / backend
 __pycache__/
@@ -41,50 +32,26 @@ venv/
 .venv/
 backend/venv/
 
-# Build and archives
+# Build artifacts and logs
 build/
 *.zip
 *.tar
 *.tar.gz
-*.tgz
-*.pack
+build_output.txt
+*_log_v*.txt
+mongodb_log*.txt
+test_result.md
 
-# App data / runtime artifacts
+# Windows scripts
+*.bat
+
+# Server setup scripts
+server-setup.sh
+
+# Runtime artifacts
 dump.rdb
 *.pem
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+uploads/
+
+# Docker data
+mongodb_data/
