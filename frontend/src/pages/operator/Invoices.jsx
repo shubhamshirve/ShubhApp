@@ -240,6 +240,34 @@ const OperatorInvoices = () => {
     }
   };
 
+  const pollJobStatus = async (jobId) => {
+    const maxAttempts = 300;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const res = await authAxios.get(`/operator/jobs/${jobId}`);
+        const { status, result, error } = res.data;
+
+        if (status === "completed") {
+          setBulkResult(result);
+          await fetchInvoices();
+          await fetchDashboard();
+          if (result.created > 0) {
+            toast.success(`${result.created} invoice(s) created`);
+          }
+          return;
+        } else if (status === "failed") {
+          toast.error(`Job failed: ${error}`);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } catch (e) {
+        toast.error("Failed to check job status");
+        return;
+      }
+    }
+    toast.error("Job polling timed out");
+  };
+
   const handleBulkUpload = async () => {
     if (!bulkFile) return;
     setBulkUploading(true);
@@ -250,12 +278,9 @@ const OperatorInvoices = () => {
       const res = await authAxios.post("/operator/invoices/bulk-upload", form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      setBulkResult(res.data);
-      await fetchInvoices();
-      await fetchDashboard();
-      if (res.data.created > 0) {
-        toast.success(`${res.data.created} invoice(s) created`);
-      }
+      const { job_id } = res.data;
+      toast.success("Job queued. Processing...");
+      await pollJobStatus(job_id);
     } catch (error) {
       toast.error(error.response?.data?.detail || "Upload failed");
     } finally {

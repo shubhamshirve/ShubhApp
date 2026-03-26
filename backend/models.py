@@ -812,3 +812,19 @@ class WalletSuspendRequest(SanitizedModel):
     """Used for admin wallet suspension toggle."""
     suspend: bool = Field(..., description="True = suspend, False = unsuspend")
     reason: str = Field(..., min_length=5, max_length=500, description="Reason for this action")
+
+
+# ============== BACKGROUND JOB MODELS ==============
+
+class BackgroundJobResponse(SanitizedModel):
+    """Response model for background job status."""
+    id: str
+    type: str
+    status: str  # pending, processing, completed, failed
+    operator_id: str
+    created_by: str
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

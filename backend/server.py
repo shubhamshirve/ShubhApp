@@ -39,6 +39,7 @@ from routers.wallet import router as wallet_router
 from routers.support import router as support_router
 from services.global_settings_store import get_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
+from services.job_queue_service import JobQueueService
 
 # ── Logging ────────────────────────────────────────────────────────────────
 import logging
@@ -392,6 +393,16 @@ async def startup_event():
         args=[db],
         coalesce=True,
         misfire_grace_time=3600,
+    )
+
+    # Background job processor - runs every 30 seconds
+    scheduler.add_job(
+        JobQueueService.process_next_job,
+        "interval",
+        seconds=30,
+        id="process_background_jobs",
+        coalesce=True,
+        misfire_grace_time=60,
     )
 
     scheduler.start()

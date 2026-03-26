@@ -1139,7 +1139,7 @@ async def bulk_upload_plans(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_operator)
 ):
-    """Bulk upload service plans from a CSV or XLSX file."""
+    """Bulk upload service plans from a CSV or XLSX file (background job)."""
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot upload operator plans")
     if await check_operator_read_only(current_user["operator_id"]):
@@ -1147,75 +1147,22 @@ async def bulk_upload_plans(
 
     content = await file.read()
     filename = sanitize_filename(file.filename or "", default="plans").lower()
-    rows = []
-    VALID_VALIDITY = ["monthly", "quarterly", "half_yearly", "yearly"]
-    VALID_TAX_TYPE = ["inclusive", "exclusive", "none"]
 
-    try:
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(content))
-            ws = wb.active
-            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
-        else:
-            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
-            for row in reader:
-                rows.append({k.strip().lower(): v.strip() for k, v in row.items()})
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
-
-    now = datetime.now(timezone.utc)
-    created, skipped, errors = [], [], []
-
-    for idx, row in enumerate(rows, start=2):
-        name = row.get("name", "").strip()
-        if not name:
-            errors.append({"row": idx, "reason": "name is required"})
-            continue
-
-        try:
-            price = float(row.get("price", 0) or 0)
-        except ValueError:
-            errors.append({"row": idx, "name": name, "reason": "Invalid price"})
-            continue
-
-        validity = row.get("validity", "monthly").strip().lower()
-        if validity not in VALID_VALIDITY:
-            errors.append({"row": idx, "name": name, "reason": f"Invalid validity '{validity}'. Use: {VALID_VALIDITY}"})
-            continue
-
-        tax_type = row.get("tax_type", "none").strip().lower()
-        if tax_type not in VALID_TAX_TYPE:
-            tax_type = "none"
-
-        try:
-            tax_percentage = float(row.get("tax_percentage", 0) or 0)
-        except ValueError:
-            tax_percentage = 0
-
-        # Check for duplicate name
-        dup = await db.operator_plans.find_one(
-            {"name": name, "operator_id": current_user["operator_id"], "deleted_at": None}
-        )
-        if dup:
-            skipped.append({"row": idx, "name": name, "reason": "Plan name already exists"})
-            continue
-
-        plan = {
-            "id": generate_id(), "name": name, "price": price, "validity": validity,
-            "tax_percentage": tax_percentage, "tax_type": tax_type,
-            "description": row.get("description", "") or None,
-            "status": "active", "operator_id": current_user["operator_id"],
-            "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    from services.job_queue_service import JobQueueService
+    job_id = await JobQueueService.enqueue_job(
+        job_type="bulk_upload_plans",
+        operator_id=current_user["operator_id"],
+        user_id=current_user["id"],
+        payload={
+            "filename": filename,
+            "file_content": content,
         }
-        await db.operator_plans.insert_one(plan)
-        created.append(name)
+    )
 
     return {
-        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
-        "created": len(created), "skipped": len(skipped), "errors": errors[:20]
+        "job_id": job_id,
+        "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
+        "status_url": f"/api/operator/jobs/{job_id}"
     }
 
 
@@ -1407,7 +1354,7 @@ async def bulk_upload_subscribers(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_operator)
 ):
-    """Bulk upload subscribers from a CSV or XLSX file."""
+    """Bulk upload subscribers from a CSV or XLSX file (background job)."""
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot upload subscribers")
     if await check_operator_read_only(current_user["operator_id"]):
@@ -1415,109 +1362,22 @@ async def bulk_upload_subscribers(
 
     content = await file.read()
     filename = sanitize_filename(file.filename or "", default="subscribers").lower()
-    rows = []
 
-    try:
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(content))
-            ws = wb.active
-            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
-        else:
-            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
-            for row in reader:
-                rows.append({k.strip().lower(): v.strip() for k, v in row.items()})
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
-
-    # Fetch operator plans for name→id mapping
-    op_plans = await db.operator_plans.find(
-        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-    ).to_list(500)
-    plan_map = {p["name"].strip().lower(): p for p in op_plans}
-
-    # ── Pre-flight: check subscriber limit BEFORE processing any rows ──────────
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    max_subscribers = None
-    if operator and operator.get("saas_plan_id"):
-        sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
-        if sp:
-            max_subscribers = sp.get("max_subscribers")
-
-    if max_subscribers is not None:
-        current_count = await db.subscribers.count_documents(
-            {"operator_id": current_user["operator_id"], "deleted_at": None}
-        )
-        # Count valid rows (name + whatsapp present) to get the intended upload size
-        valid_row_count = sum(
-            1 for r in rows
-            if r.get("name", "").strip() and r.get("whatsapp_number", "").strip()
-        )
-        available_slots = max_subscribers - current_count
-        if valid_row_count > available_slots:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Upload exceeds subscriber limit. "
-                    f"Your plan allows {max_subscribers} subscribers. "
-                    f"You currently have {current_count} and are trying to add {valid_row_count} more "
-                    f"(total would be {current_count + valid_row_count}). "
-                    f"Available slots: {available_slots}. "
-                    f"Please upgrade your plan."
-                )
-            )
-
-    now = datetime.now(timezone.utc)
-    created, skipped, errors = [], [], []
-
-    for idx, row in enumerate(rows, start=2):
-        name = row.get("name", "").strip()
-        whatsapp = row.get("whatsapp_number", "").strip()
-        plan_name = row.get("plan_name", "").strip().lower()
-
-        if not name or not whatsapp:
-            errors.append({"row": idx, "reason": "name and whatsapp_number are required"})
-            continue
-
-        plan = plan_map.get(plan_name)
-        if not plan:
-            errors.append({"row": idx, "name": name, "reason": f"Plan '{row.get('plan_name','')}' not found"})
-            continue
-
-        # Check duplicate WhatsApp
-        dup = await db.subscribers.find_one(
-            {"whatsapp_number": whatsapp, "operator_id": current_user["operator_id"], "deleted_at": None}
-        )
-        if dup:
-            skipped.append({"row": idx, "name": name, "reason": f"WhatsApp {whatsapp} already exists"})
-            continue
-
-        billing_date = int(row.get("billing_date", 1) or 1)
-        billing_date = max(1, min(28, billing_date))
-        discount = float(row.get("discount", 0) or 0)
-
-        subscriber = {
-            "id": generate_id(), "name": name, "whatsapp_number": whatsapp,
-            "email": row.get("email", "") or None,
-            "address": row.get("address", "") or None,
-            "plans": [{
-                "plan_id": plan["id"],
-                "plan_name": plan["name"],
-                "billing_date": billing_date,
-                "discount": discount,
-                "status": "active"
-            }],
-            "status": "active", "operator_id": current_user["operator_id"],
-            "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
+    from services.job_queue_service import JobQueueService
+    job_id = await JobQueueService.enqueue_job(
+        job_type="bulk_upload_subscribers",
+        operator_id=current_user["operator_id"],
+        user_id=current_user["id"],
+        payload={
+            "filename": filename,
+            "file_content": content,
         }
-        await db.subscribers.insert_one(subscriber)
-        created.append(name)
+    )
 
     return {
-        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
-        "created": len(created), "skipped": len(skipped), "errors": errors[:20]
+        "job_id": job_id,
+        "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
+        "status_url": f"/api/operator/jobs/{job_id}"
     }
 
 
@@ -1633,7 +1493,7 @@ async def bulk_upload_invoices(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_operator)
 ):
-    """Bulk upload invoices from a CSV or XLSX file."""
+    """Bulk upload invoices from a CSV or XLSX file (background job)."""
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot upload invoices")
     if await check_operator_read_only(current_user["operator_id"]):
@@ -1641,123 +1501,22 @@ async def bulk_upload_invoices(
 
     content = await file.read()
     filename = sanitize_filename(file.filename or "", default="invoices").lower()
-    rows = []
 
-    try:
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(content))
-            ws = wb.active
-            headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(max_row=1))]
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
-        else:
-            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
-            for row in reader:
-                rows.append({(k or "").strip().lower(): (v or "").strip() for k, v in row.items()})
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
-
-    subscribers = await db.subscribers.find(
-        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0, "id": 1, "name": 1, "whatsapp_number": 1}
-    ).to_list(5000)
-    subscriber_map = {
-        (s.get("whatsapp_number") or "").strip(): s
-        for s in subscribers if (s.get("whatsapp_number") or "").strip()
-    }
-    plans = await db.operator_plans.find(
-        {"operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-    ).to_list(1000)
-    plan_map = {p["name"].strip().lower(): p for p in plans}
-
-    now = datetime.now(timezone.utc)
-    created, skipped, errors = [], [], []
-
-    for idx, row in enumerate(rows, start=2):
-        try:
-            whatsapp_number = (row.get("subscriber_whatsapp_number") or row.get("whatsapp_number") or "").strip()
-            plan_name = (row.get("plan_name") or "").strip().lower()
-
-            if not whatsapp_number or not plan_name:
-                raise ValueError("subscriber_whatsapp_number and plan_name are required")
-
-            subscriber = subscriber_map.get(whatsapp_number)
-            if not subscriber:
-                raise ValueError(f"Subscriber with WhatsApp {whatsapp_number} not found")
-
-            plan = plan_map.get(plan_name)
-            if not plan:
-                raise ValueError(f"Plan '{row.get('plan_name', '')}' not found")
-
-            service_start_date = _parse_bulk_invoice_date(row.get("service_start_date", ""), "service_start_date")
-            service_end_date = _parse_bulk_invoice_date(row.get("service_end_date", ""), "service_end_date")
-            due_date = _parse_bulk_invoice_date(row.get("due_date", ""), "due_date")
-            if service_end_date <= service_start_date:
-                raise ValueError("service_end_date must be after service_start_date")
-
-            base_amount_raw = (row.get("base_amount") or "").strip()
-            discount_raw = (row.get("discount") or "").strip()
-            base_amount = float(base_amount_raw) if base_amount_raw else float(plan.get("price", 0))
-            discount = float(discount_raw) if discount_raw else 0.0
-            if base_amount <= 0:
-                raise ValueError("base_amount must be greater than 0")
-            if discount < 0 or discount > base_amount:
-                raise ValueError("discount must be between 0 and base_amount")
-
-            payload = await _build_invoice_payload(
-                current_user["operator_id"],
-                InvoiceCreate(
-                    subscriber_id=subscriber["id"],
-                    due_date=due_date,
-                    line_items=[{
-                        "plan_id": plan["id"],
-                        "base_amount": base_amount,
-                        "discount": discount,
-                        "service_start_date": service_start_date,
-                        "service_end_date": service_end_date,
-                    }],
-                ),
-            )
-
-            invoice = {
-                "id": generate_id(),
-                "invoice_number": await generate_invoice_number_atomic(db),
-                "subscriber_id": subscriber["id"],
-                "subscriber_name": subscriber["name"],
-                "line_items": payload["line_items"],
-                "base_amount": payload["base_amount"],
-                "discount": payload["discount"],
-                "tax_amount": payload["tax_amount"],
-                "final_amount": payload["final_amount"],
-                "due_date": payload["due_date"],
-                "status": "pending",
-                "payment_id": None,
-                "operator_id": current_user["operator_id"],
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-                "deleted_at": None,
-            }
-            await db.invoices.insert_one(invoice)
-
-            try:
-                from routers.wallet import deduct_wallet_for_invoice
-                await deduct_wallet_for_invoice(current_user["operator_id"], invoice["id"])
-            except Exception as wallet_error:
-                logger.warning("Wallet deduction failed for invoice %s: %s", invoice["id"], wallet_error)
-
-            created.append(invoice["invoice_number"])
-        except ValueError as exc:
-            errors.append({"row": idx, "reason": str(exc)})
-        except HTTPException as exc:
-            errors.append({"row": idx, "reason": exc.detail})
-        except Exception as exc:
-            errors.append({"row": idx, "reason": f"Unexpected error: {exc}"})
+    from services.job_queue_service import JobQueueService
+    job_id = await JobQueueService.enqueue_job(
+        job_type="bulk_upload_invoices",
+        operator_id=current_user["operator_id"],
+        user_id=current_user["id"],
+        payload={
+            "filename": filename,
+            "file_content": content,
+        }
+    )
 
     return {
-        "message": f"Bulk upload complete: {len(created)} created, {len(skipped)} skipped, {len(errors)} errors",
-        "created": len(created),
-        "skipped": len(skipped),
-        "errors": errors[:20],
+        "job_id": job_id,
+        "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
+        "status_url": f"/api/operator/jobs/{job_id}"
     }
 
 
@@ -2406,39 +2165,37 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
 
 @router.post("/bulk-notification")
 async def send_bulk_notification(data: BulkNotificationRequest, current_user: dict = Depends(require_operator)):
-    from services.whatsapp_service import WhatsAppService
-    wa_config = await _get_platform_whatsapp_config()
-    if not wa_config:
-        raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
-    template_settings = await _get_whatsapp_template_settings()
-    invoice_template = template_settings.get("invoice_template") or "invoice_notification"
-    results = {"sent": 0, "failed": 0, "errors": []}
-    wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-    for subscriber_id in data.subscriber_ids:
-        try:
-            subscriber = await db.subscribers.find_one(
-                {"id": subscriber_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-            )
-            if not subscriber:
-                continue
-            invoice = await db.invoices.find_one(
-                {"subscriber_id": subscriber_id, "status": {"$in": ["pending", "overdue"]}, "deleted_at": None},
-                {"_id": 0}
-            )
-            if invoice:
-                await wa_service.send_invoice_notification(
-                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
-                    invoice_number=invoice["invoice_number"],
-                    amount=f"₹{invoice['final_amount']:,.2f}",
-                    due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
-                    payment_link=invoice.get("payment_link"),
-                    template_name_override=invoice_template
-                )
-                results["sent"] += 1
-        except Exception as e:
-            results["failed"] += 1
-            results["errors"].append({"subscriber_id": subscriber_id, "error": str(e)})
-    return results
+    """Send bulk WhatsApp notifications (background job)."""
+    from services.job_queue_service import JobQueueService
+
+    job_id = await JobQueueService.enqueue_job(
+        job_type="bulk_notification",
+        operator_id=current_user["operator_id"],
+        user_id=current_user["id"],
+        payload={
+            "subscriber_ids": data.subscriber_ids,
+            "message_template": getattr(data, "message_template", "invoice_notification"),
+        }
+    )
+
+    return {
+        "job_id": job_id,
+        "message": "Notification job queued. Poll /api/operator/jobs/{job_id} to check status.",
+        "status_url": f"/api/operator/jobs/{job_id}"
+    }
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_status(job_id: str, current_user: dict = Depends(require_operator)):
+    """Get status of a background job."""
+    from services.job_queue_service import JobQueueService
+    from models import BackgroundJobResponse
+
+    job = await JobQueueService.get_job(job_id, current_user["operator_id"])
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return BackgroundJobResponse(**job)
 
 
 # ─── Reminder Settings (moved to global admin) ──────────────────────────────

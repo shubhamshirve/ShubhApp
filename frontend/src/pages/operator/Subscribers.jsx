@@ -281,6 +281,38 @@ const OperatorSubscribers = () => {
     } catch { toast.error("Failed to download sample"); }
   };
 
+  const pollJobStatus = async (jobId) => {
+    const maxAttempts = 300;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const res = await authAxios.get(`/operator/jobs/${jobId}`);
+        const { status, result, error } = res.data;
+
+        if (status === "completed") {
+          setBulkResult(result);
+          fetchSubscribers();
+          fetchDashboard();
+          if (result.created > 0) toast.success(`${result.created} subscriber(s) created`);
+          return;
+        } else if (status === "failed") {
+          const detail = error || "Job failed";
+          if (detail.toLowerCase().includes("upgrade") || detail.toLowerCase().includes("limit")) {
+            setShowBulkDialog(false);
+            setLimitError(detail);
+          } else {
+            toast.error(`Job failed: ${detail}`);
+          }
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } catch (e) {
+        toast.error("Failed to check job status");
+        return;
+      }
+    }
+    toast.error("Job polling timed out");
+  };
+
   const handleBulkUpload = async () => {
     if (!bulkFile) return;
     setBulkUploading(true);
@@ -292,13 +324,11 @@ const OperatorSubscribers = () => {
       const res = await authAxios.post("/operator/subscribers/bulk-upload", form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      setBulkResult(res.data);
-      fetchSubscribers();
-      fetchDashboard();
-      if (res.data.created > 0) toast.success(`${res.data.created} subscriber(s) created`);
+      const { job_id } = res.data;
+      toast.success("Job queued. Processing...");
+      await pollJobStatus(job_id);
     } catch (e) {
       const detail = e.response?.data?.detail || "Upload failed";
-      // If it's a plan limit error, show prominent dialog; otherwise show toast
       if (detail.toLowerCase().includes("upgrade") || detail.toLowerCase().includes("limit")) {
         setShowBulkDialog(false);
         setLimitError(detail);
