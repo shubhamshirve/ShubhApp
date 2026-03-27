@@ -13,6 +13,7 @@ import csv
 from database import db
 from utils import generate_id, generate_invoice_number_atomic
 from sanitization import sanitize_filename
+from audit import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,18 @@ class JobQueueService:
                 )
                 logger.info(f"Job {job_id} completed successfully")
 
+                # Log to audit logs
+                user = await db.users.find_one({"id": job["created_by"]}, {"_id": 0, "name": 1})
+                await log_audit(
+                    user_id=job["created_by"],
+                    user_name=user.get("name", "Unknown") if user else "Unknown",
+                    role="operator",
+                    action="bulk_upload_completed",
+                    module=job_type.replace("bulk_upload_", "").replace("bulk_", "").capitalize(),
+                    new_value=result,
+                    operator_id=operator_id
+                )
+
             except Exception as e:
                 # Mark as failed
                 error_msg = str(e)
@@ -137,6 +150,18 @@ class JobQueueService:
                             "error": error_msg,
                         }
                     },
+                )
+
+                # Log to audit logs
+                user = await db.users.find_one({"id": job["created_by"]}, {"_id": 0, "name": 1})
+                await log_audit(
+                    user_id=job["created_by"],
+                    user_name=user.get("name", "Unknown") if user else "Unknown",
+                    role="operator",
+                    action="bulk_upload_failed",
+                    module=job_type.replace("bulk_upload_", "").replace("bulk_", "").capitalize(),
+                    new_value={"error": error_msg},
+                    operator_id=operator_id
                 )
 
         except Exception as e:

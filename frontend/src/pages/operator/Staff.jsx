@@ -23,7 +23,6 @@ import {
 import { Checkbox } from "../../components/ui/checkbox";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, UserCog, Shield } from "lucide-react";
-import { sanitizeFormData } from "../../utils/sanitize";
 
 const PERMISSIONS = [
   { id: "view_subscribers", label: "View Subscribers" },
@@ -94,14 +93,13 @@ const OperatorStaff = () => {
       toast.error("Password must be at least 6 characters"); return;
     }
     try {
-      const sanitized = sanitizeFormData(formData);
       if (editingStaff) {
         // Update existing staff
-        await authAxios.put(`/operator/staff/${editingStaff.id}`, sanitized);
+        await authAxios.put(`/operator/staff/${editingStaff.id}`, formData);
         toast.success("Staff member updated successfully");
       } else {
         // Create new staff
-        await authAxios.post("/operator/staff", { ...sanitized, password: formData.password });
+        await authAxios.post("/operator/staff", formData);
         toast.success("Staff member added successfully");
       }
       setShowDialog(false);

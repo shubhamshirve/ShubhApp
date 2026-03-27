@@ -156,7 +156,7 @@ const OperatorPlans = () => {
     } catch { toast.error("Failed to download sample"); }
   };
 
-  const pollJobStatus = async (jobId) => {
+  const pollJobStatusInBackground = async (jobId) => {
     const maxAttempts = 300; // 15 minutes max with 3-second intervals
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -164,22 +164,17 @@ const OperatorPlans = () => {
         const { status, result, error } = res.data;
 
         if (status === "completed") {
-          setBulkResult(result);
           fetchPlans();
-          if (result.created > 0) toast.success(`${result.created} plan(s) created`);
           return;
         } else if (status === "failed") {
-          toast.error(`Job failed: ${error}`);
           return;
         }
         // Still pending or processing, wait and retry
         await new Promise(resolve => setTimeout(resolve, 3000));
       } catch (e) {
-        toast.error("Failed to check job status");
         return;
       }
     }
-    toast.error("Job polling timed out");
   };
 
   const handleBulkUpload = async () => {
@@ -193,12 +188,14 @@ const OperatorPlans = () => {
         headers: { "Content-Type": "multipart/form-data" }
       });
       const { job_id } = res.data;
-      toast.success("Job queued. Processing...");
-      // Start polling for job status
-      await pollJobStatus(job_id);
+      toast.success("File uploaded successfully. Processing in background...");
+      // Close dialog immediately
+      setShowBulkDialog(false);
+      setBulkUploading(false);
+      // Start background polling without awaiting
+      pollJobStatusInBackground(job_id);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Upload failed");
-    } finally {
       setBulkUploading(false);
     }
   };
