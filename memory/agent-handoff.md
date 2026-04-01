@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2026-03-25  
-**Active Branch:** `V7.15.10`
-**Latest Feature Branch:** `V7.15.10` (Docker Infrastructure Optimization & Production-Ready Setup)
+**Last Updated:** 2026-04-01  
+**Active Branch:** `live`
+**Latest Feature Branch:** `live` (CI/CD Fix & Content Sync)
 
 ---
 
@@ -97,7 +97,21 @@ The codebase now includes:
 - `V7.15-9` is the Settings Consolidation and Caddy Optimization branch
 - `V7.15.10` is the Docker Infrastructure Optimization branch (current)
 
-### V7.15.10 Changes (Current)
+### V7.16.5-FIX Changes (Current)
+
+**Primary Focus:** WhatsApp Service CI/CD & Deployment Fix
+
+**GitHub Actions:**
+- Added missing `whatsapp-service` build and push automated steps to `docker-build-push.yml`.
+- Configured automated image builds and storage on Docker Hub for backend, frontend, and whatsapp services.
+- Automated deployment from `live` branch with internal code pull and container restart on migration servers.
+
+**Bug Fixes:**
+- Fixed `pull access denied` error for `ebill-whatsapp` image by ensuring it is built and pushed to Docker Hub by CI/CD.
+
+---
+
+### V7.15.10 Changes
 
 **Primary Focus:** Docker & Environment Infrastructure Optimization
 

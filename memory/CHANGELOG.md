@@ -1,5 +1,15 @@
 # E-Bill Platform - CHANGELOG
 
+## 2026-04-01
+
+### V7.16.5-FIX: WhatsApp Service CI/CD & Deployment
+- **Fixed WhatsApp Deployment** - Added missing `whatsapp-service` build and push steps to the GitHub Actions workflow.
+- **Automated CI/CD Pipeline** - Implemented GitHub Actions for automated building and deployment.
+- **Docker Hub Integration** - Configured automated image builds and storage on Docker Hub for backend, frontend, and whatsapp services.
+- **Production Deployment Workflow** - Verified and finalized the deployment path to production servers for all services.
+- **Documentation Updates** - Simplified and updated CI/CD and Docker setup guides.
+
+
 ## 2026-03-25
 
 ### V7.15-10: Docker Infrastructure Optimization & Production-Ready Setup
