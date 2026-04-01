@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
@@ -29,6 +29,14 @@ import {
   Loader2,
   Upload,
   Database,
+  MessageCircle,
+  QrCode,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  LogOut,
+  Smartphone,
+  AlertCircle,
 } from "lucide-react";
 
 const OperatorSettings = () => {
@@ -42,6 +50,14 @@ const OperatorSettings = () => {
   // Theme state
   const [currentTheme, setCurrentTheme] = useState("modern");
   const [themeSaving, setThemeSaving] = useState(false);
+
+  // WhatsApp WebJS state
+  const [waWebStatus, setWaWebStatus] = useState("disconnected");
+  const [waWebQr, setWaWebQr] = useState(null);
+  const [waWebLoading, setWaWebLoading] = useState(false);
+  const [waWebInitializing, setWaWebInitializing] = useState(false);
+  const [waWebDisconnecting, setWaWebDisconnecting] = useState(false);
+  const qrPollRef = useRef(null);
   
   const [profileForm, setProfileForm] = useState({
     company_name: "",
@@ -233,6 +249,110 @@ const OperatorSettings = () => {
     }
   };
 
+  // ─── WhatsApp WebJS Functions ────────────────────────────────────────────
+  const fetchWaWebStatus = useCallback(async () => {
+    try {
+      const res = await authAxios.get("/operator/whatsapp-webjs/status");
+      setWaWebStatus(res.data.status || "disconnected");
+      return res.data;
+    } catch (error) {
+      setWaWebStatus("error");
+      return null;
+    }
+  }, [authAxios]);
+
+  const fetchWaWebQr = useCallback(async () => {
+    try {
+      const res = await authAxios.get("/operator/whatsapp-webjs/qr");
+      if (res.data.qr) {
+        setWaWebQr(res.data.qr);
+      }
+      setWaWebStatus(res.data.status || "disconnected");
+      return res.data;
+    } catch (error) {
+      console.error("Failed to fetch QR:", error);
+      return null;
+    }
+  }, [authAxios]);
+
+  const startQrPolling = useCallback(() => {
+    // Clear existing interval
+    if (qrPollRef.current) {
+      clearInterval(qrPollRef.current);
+    }
+    
+    // Poll every 2 seconds for QR updates
+    qrPollRef.current = setInterval(async () => {
+      const data = await fetchWaWebQr();
+      if (data?.status === "ready") {
+        // Connected! Stop polling
+        clearInterval(qrPollRef.current);
+        qrPollRef.current = null;
+        setWaWebQr(null);
+        toast.success("WhatsApp connected successfully!");
+      }
+    }, 2000);
+  }, [fetchWaWebQr]);
+
+  const stopQrPolling = useCallback(() => {
+    if (qrPollRef.current) {
+      clearInterval(qrPollRef.current);
+      qrPollRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopQrPolling();
+  }, [stopQrPolling]);
+
+  const handleConnectWhatsApp = async () => {
+    setWaWebInitializing(true);
+    setWaWebQr(null);
+    try {
+      const res = await authAxios.post("/operator/whatsapp-webjs/init");
+      if (res.data.status === "already_ready") {
+        setWaWebStatus("ready");
+        toast.success("WhatsApp is already connected!");
+      } else {
+        // Start polling for QR code
+        startQrPolling();
+        toast.info("Initializing WhatsApp... QR code will appear shortly.");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to initialize WhatsApp");
+      setWaWebStatus("error");
+    } finally {
+      setWaWebInitializing(false);
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    setWaWebDisconnecting(true);
+    stopQrPolling();
+    try {
+      await authAxios.post("/operator/whatsapp-webjs/disconnect");
+      setWaWebStatus("disconnected");
+      setWaWebQr(null);
+      toast.success("WhatsApp disconnected successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to disconnect WhatsApp");
+    } finally {
+      setWaWebDisconnecting(false);
+    }
+  };
+
+  const handleRefreshStatus = async () => {
+    setWaWebLoading(true);
+    await fetchWaWebStatus();
+    setWaWebLoading(false);
+  };
+
+  // Fetch WhatsApp status on mount
+  useEffect(() => {
+    fetchWaWebStatus();
+  }, [fetchWaWebStatus]);
+
   if (loading) {
     return (
       <OperatorLayout title="Settings">
@@ -276,6 +396,13 @@ const OperatorSettings = () => {
             <TabsTrigger value="theme" data-testid="tab-theme">
               <Palette className="w-4 h-4 mr-2" />
               Theme
+            </TabsTrigger>
+            <TabsTrigger value="whatsapp-web" data-testid="tab-whatsapp-web">
+              <MessageCircle className="w-4 h-4 mr-2" />
+              WhatsApp Web
+              {waWebStatus === "ready" && (
+                <span className="ml-1.5 w-2 h-2 bg-green-500 rounded-full"></span>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -754,6 +881,161 @@ const OperatorSettings = () => {
                     Saving theme...
                   </p>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* WhatsApp Web Tab */}
+          <TabsContent value="whatsapp-web">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-green-600" />
+                  WhatsApp Web Connection
+                </CardTitle>
+                <CardDescription>
+                  Connect your personal WhatsApp to send invoices and reminders directly to customers.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Connection Status */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-slate-50">
+                  <div className="flex items-center gap-3">
+                    {waWebStatus === "ready" ? (
+                      <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                        <Wifi className="w-5 h-5 text-green-600" />
+                      </div>
+                    ) : waWebStatus === "qr_pending" || waWebStatus === "initializing" ? (
+                      <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                        <QrCode className="w-5 h-5 text-amber-600" />
+                      </div>
+                    ) : waWebStatus === "service_unavailable" || waWebStatus === "error" ? (
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <AlertCircle className="w-5 h-5 text-red-600" />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center">
+                        <WifiOff className="w-5 h-5 text-slate-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        {waWebStatus === "ready" && "Connected"}
+                        {waWebStatus === "qr_pending" && "Waiting for QR Scan"}
+                        {waWebStatus === "initializing" && "Initializing..."}
+                        {waWebStatus === "disconnected" && "Not Connected"}
+                        {waWebStatus === "service_unavailable" && "Service Unavailable"}
+                        {waWebStatus === "error" && "Connection Error"}
+                        {waWebStatus === "auth_failed" && "Authentication Failed"}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {waWebStatus === "ready" && "Your WhatsApp is connected and ready to send messages"}
+                        {waWebStatus === "qr_pending" && "Scan the QR code with your phone to connect"}
+                        {waWebStatus === "initializing" && "Please wait while we initialize the connection..."}
+                        {waWebStatus === "disconnected" && "Click Connect to link your WhatsApp account"}
+                        {waWebStatus === "service_unavailable" && "WhatsApp service is currently unavailable. Please try again later."}
+                        {waWebStatus === "error" && "Something went wrong. Please try again."}
+                        {waWebStatus === "auth_failed" && "Authentication failed. Please try connecting again."}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRefreshStatus}
+                    disabled={waWebLoading}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${waWebLoading ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+
+                {/* QR Code Display */}
+                {(waWebStatus === "qr_pending" || waWebStatus === "initializing") && (
+                  <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-white">
+                    {waWebQr ? (
+                      <>
+                        <img 
+                          src={waWebQr} 
+                          alt="WhatsApp QR Code" 
+                          className="w-64 h-64 rounded-lg shadow-lg"
+                        />
+                        <div className="mt-4 text-center">
+                          <p className="text-sm font-medium text-slate-700">Scan this QR code with WhatsApp</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Open WhatsApp → Settings → Linked Devices → Link a Device
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="w-12 h-12 text-green-600 animate-spin" />
+                        <p className="mt-4 text-sm text-slate-600">Generating QR code...</p>
+                        <p className="text-xs text-slate-400 mt-1">This may take a few seconds</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  {waWebStatus === "ready" ? (
+                    <Button
+                      variant="destructive"
+                      onClick={handleDisconnectWhatsApp}
+                      disabled={waWebDisconnecting}
+                      className="gap-2"
+                    >
+                      {waWebDisconnecting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <LogOut className="w-4 h-4" />
+                      )}
+                      {waWebDisconnecting ? "Disconnecting..." : "Disconnect WhatsApp"}
+                    </Button>
+                  ) : waWebStatus === "qr_pending" || waWebStatus === "initializing" ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        stopQrPolling();
+                        setWaWebStatus("disconnected");
+                        setWaWebQr(null);
+                      }}
+                      className="gap-2"
+                    >
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleConnectWhatsApp}
+                      disabled={waWebInitializing || waWebStatus === "service_unavailable"}
+                      className="gap-2 bg-green-600 hover:bg-green-700"
+                    >
+                      {waWebInitializing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Smartphone className="w-4 h-4" />
+                      )}
+                      {waWebInitializing ? "Connecting..." : "Connect WhatsApp"}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Instructions */}
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">How it works</h4>
+                  <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                    <li>Click "Connect WhatsApp" to start the connection process</li>
+                    <li>A QR code will appear - scan it with your phone's WhatsApp app</li>
+                    <li>Once connected, you can send invoices directly via WhatsApp from the Invoices page</li>
+                    <li>Your connection will persist until you disconnect or the session expires</li>
+                  </ol>
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <p className="text-xs text-amber-800">
+                      <strong>Note:</strong> This uses your personal WhatsApp number. Messages will be sent from your account.
+                      Keep your phone connected to the internet for the connection to work.
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

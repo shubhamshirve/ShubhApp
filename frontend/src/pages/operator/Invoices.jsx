@@ -60,6 +60,8 @@ import {
   FileSpreadsheet,
   AlertCircle,
   XCircle,
+  Loader2,
+  Smartphone,
 } from "lucide-react";
 
 const PopoverDatePicker = ({ date, onSelect, label }) => {
@@ -119,6 +121,7 @@ const OperatorInvoices = () => {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
+  const [sendingWebJS, setSendingWebJS] = useState(null); // invoice id being sent via WebJS
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     subscriber_id: "",
@@ -439,6 +442,25 @@ const OperatorInvoices = () => {
     toast.success("WhatsApp Web opened");
   };
 
+  const handleSendViaWebJS = async (invoice) => {
+    setSendingWebJS(invoice.id);
+    try {
+      const res = await authAxios.post(`/operator/whatsapp-webjs/send-invoice/${invoice.id}`);
+      if (res.data.success) {
+        toast.success("Invoice sent via WhatsApp successfully!");
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || "Failed to send via WhatsApp";
+      if (errorMsg.includes("not connected")) {
+        toast.error("WhatsApp is not connected. Please connect from Settings → WhatsApp Web first.");
+      } else {
+        toast.error(errorMsg);
+      }
+    } finally {
+      setSendingWebJS(null);
+    }
+  };
+
   const handlePlanSelect = (planId) => {
     const plan = plans.find(p => p.id === planId);
     if (plan) {
@@ -641,6 +663,18 @@ const OperatorInvoices = () => {
                             <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)} data-testid={`wa-web-${invoice.id}`}>
                               <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
                               Send via WhatsApp Web
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleSendViaWebJS(invoice)} 
+                              disabled={sendingWebJS === invoice.id}
+                              data-testid={`wa-webjs-${invoice.id}`}
+                            >
+                              {sendingWebJS === invoice.id ? (
+                                <Loader2 className="w-4 h-4 mr-2 text-green-600 animate-spin" />
+                              ) : (
+                                <Smartphone className="w-4 h-4 mr-2 text-green-600" />
+                              )}
+                              {sendingWebJS === invoice.id ? "Sending..." : "Send via WhatsApp WebJS"}
                             </DropdownMenuItem>
                             {invoice.status === "overdue" && features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>

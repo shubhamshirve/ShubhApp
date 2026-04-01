@@ -89,6 +89,11 @@ RATE_LIMIT_ENABLED = IS_PRODUCTION  # Only in production
 RATE_LIMIT_REQUESTS_PER_MINUTE = 60
 
 # ============================================================================
+# WhatsApp WebJS Service Configuration
+# ============================================================================
+WHATSAPP_WEBJS_URL = os.environ.get('WHATSAPP_WEBJS_URL', 'http://localhost:8002')
+
+# ============================================================================
 # Feature Flags (can be overridden per environment)
 # ============================================================================
 FEATURES = {

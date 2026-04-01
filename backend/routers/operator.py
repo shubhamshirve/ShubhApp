@@ -2201,3 +2201,201 @@ async def get_job_status(job_id: str, current_user: dict = Depends(require_opera
 # ─── Reminder Settings (moved to global admin) ──────────────────────────────
 # GET /reminder-settings and PUT /reminder-settings are now admin-only endpoints
 # located in admin.py. Operators are subject to the platform-wide reminder config.
+
+
+# ─── WhatsApp WebJS Integration ──────────────────────────────────────────────
+# These endpoints proxy requests to the WhatsApp WebJS microservice for operators
+# to connect their personal WhatsApp accounts via QR code scanning.
+
+import httpx
+from config import WHATSAPP_WEBJS_URL
+
+@router.post("/whatsapp-webjs/init")
+async def init_whatsapp_webjs(current_user: dict = Depends(require_operator)):
+    """Initialize WhatsApp WebJS client for the operator."""
+    operator_id = current_user["operator_id"]
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(f"{WHATSAPP_WEBJS_URL}/init/{operator_id}")
+            return response.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="WhatsApp WebJS service is not available")
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS init error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/whatsapp-webjs/status")
+async def get_whatsapp_webjs_status(current_user: dict = Depends(require_operator)):
+    """Get WhatsApp WebJS connection status for the operator."""
+    operator_id = current_user["operator_id"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{WHATSAPP_WEBJS_URL}/status/{operator_id}")
+            return response.json()
+    except httpx.ConnectError:
+        return {"status": "service_unavailable", "hasQR": False}
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS status error: {e}")
+        return {"status": "error", "hasQR": False, "error": str(e)}
+
+
+@router.get("/whatsapp-webjs/qr")
+async def get_whatsapp_webjs_qr(current_user: dict = Depends(require_operator)):
+    """Get QR code for WhatsApp WebJS authentication."""
+    operator_id = current_user["operator_id"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{WHATSAPP_WEBJS_URL}/qr/{operator_id}")
+            return response.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="WhatsApp WebJS service is not available")
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS QR error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/whatsapp-webjs/disconnect")
+async def disconnect_whatsapp_webjs(current_user: dict = Depends(require_operator)):
+    """Disconnect WhatsApp WebJS client for the operator."""
+    operator_id = current_user["operator_id"]
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(f"{WHATSAPP_WEBJS_URL}/disconnect/{operator_id}")
+            return response.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="WhatsApp WebJS service is not available")
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS disconnect error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+from pydantic import BaseModel
+
+class WhatsAppWebJSSendRequest(BaseModel):
+    phone: str
+    message: str
+
+@router.post("/whatsapp-webjs/send")
+async def send_whatsapp_webjs_message(
+    data: WhatsAppWebJSSendRequest,
+    current_user: dict = Depends(require_operator)
+):
+    """Send a message via WhatsApp WebJS."""
+    operator_id = current_user["operator_id"]
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{WHATSAPP_WEBJS_URL}/send/{operator_id}",
+                json={"phone": data.phone, "message": data.message}
+            )
+            if response.status_code != 200:
+                error_data = response.json()
+                raise HTTPException(status_code=response.status_code, detail=error_data.get("error", "Failed to send message"))
+            return response.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="WhatsApp WebJS service is not available. Please try again later.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS send error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/whatsapp-webjs/send-invoice/{invoice_id}")
+async def send_invoice_via_webjs(
+    invoice_id: str,
+    current_user: dict = Depends(require_operator)
+):
+    """Send invoice details via WhatsApp WebJS."""
+    operator_id = current_user["operator_id"]
+    
+    # Get invoice details
+    invoice = await db.invoices.find_one(
+        {"id": invoice_id, "operator_id": operator_id, "deleted_at": None}, {"_id": 0}
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Get subscriber details
+    subscriber = await db.subscribers.find_one(
+        {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    
+    whatsapp_number = subscriber.get("whatsapp_number")
+    if not whatsapp_number:
+        raise HTTPException(status_code=400, detail="Subscriber does not have a WhatsApp number")
+    
+    # Get operator details for company name
+    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+    company_name = operator.get("company_name", "Your Service Provider") if operator else "Your Service Provider"
+    
+    # Build invoice message
+    due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y")
+    amount = f"₹{invoice['final_amount']:,.2f}"
+    
+    message = f"""*Invoice from {company_name}*
+
+Invoice No: {invoice['invoice_number']}
+Amount Due: {amount}
+Due Date: {due_date}
+
+Dear {subscriber['name']},
+
+This is a reminder for your pending invoice. Please make the payment at your earliest convenience."""
+
+    # Add payment link if available
+    if invoice.get("payment_link"):
+        message += f"\n\nPay online: {invoice['payment_link']}"
+    
+    message += "\n\nThank you for your business!"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # First check if WhatsApp is connected
+            status_response = await client.get(f"{WHATSAPP_WEBJS_URL}/status/{operator_id}")
+            status_data = status_response.json()
+            
+            if status_data.get("status") != "ready":
+                raise HTTPException(
+                    status_code=400, 
+                    detail="WhatsApp is not connected. Please connect your WhatsApp from Settings first."
+                )
+            
+            # Send the message
+            response = await client.post(
+                f"{WHATSAPP_WEBJS_URL}/send/{operator_id}",
+                json={"phone": whatsapp_number, "message": message}
+            )
+            
+            if response.status_code != 200:
+                error_data = response.json()
+                raise HTTPException(status_code=response.status_code, detail=error_data.get("error", "Failed to send message"))
+            
+            result = response.json()
+            
+            # Log the action
+            await log_audit(
+                operator_id=operator_id,
+                action="whatsapp_webjs_invoice_sent",
+                entity_type="invoice",
+                entity_id=invoice_id,
+                details={
+                    "invoice_number": invoice["invoice_number"],
+                    "subscriber_name": subscriber["name"],
+                    "phone": whatsapp_number
+                },
+                user_id=current_user.get("user_id") or current_user.get("id"),
+                user_name=current_user.get("name", "System")
+            )
+            
+            return {"success": True, "message_id": result.get("messageId")}
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="WhatsApp WebJS service is not available. Please try again later.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"WhatsApp WebJS send invoice error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
