@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 8002;
+const PORT = process.env.WHATSAPP_PORT || 8002;
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
 
 // Ensure auth directory exists
