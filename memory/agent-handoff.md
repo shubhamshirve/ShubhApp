@@ -101,13 +101,9 @@ The codebase now includes:
 
 **Primary Focus:** WhatsApp Service CI/CD & Deployment Fix
 
-**GitHub Actions:**
-- Added missing `whatsapp-service` build and push automated steps to `docker-build-push.yml`.
-- Configured automated image builds and storage on Docker Hub for backend, frontend, and whatsapp services.
-- Automated deployment from `live` branch with internal code pull and container restart on migration servers.
-
-**Bug Fixes:**
-- Fixed `pull access denied` error for `ebill-whatsapp` image by ensuring it is built and pushed to Docker Hub by CI/CD.
+- **Fixed WhatsApp Deployment** - Added missing `whatsapp-service` build and push steps to the GitHub Actions workflow and integrated it into the production docker-compose file.
+- **Resolved Container Conflicts** - Removed rigid `container_name` properties the production compose file to allow for non-conflicting, automated container management.
+- **Clean Deployment Flow** - Added explicit `docker-compose down` step to the CI/CD pipeline to ensure a clean state before restarting services.
 
 ---
 

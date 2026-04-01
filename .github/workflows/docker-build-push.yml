@@ -87,6 +87,9 @@ jobs:
             echo "Pulling Docker images..."
             docker-compose -f docker-compose.prod.yml pull
 
+            echo "Cleaning up old containers..."
+            docker-compose -f docker-compose.prod.yml down --remove-orphans
+
             echo "Restarting services..."
             docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --remove-orphans
 

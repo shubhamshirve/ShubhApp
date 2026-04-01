@@ -15,7 +15,6 @@ services:
   # Initialize critical environment variables
   init-env:
     image: alpine:3.20
-    container_name: ebill_init_env
     restart: "no"
     working_dir: /app
     environment:
@@ -41,7 +40,6 @@ services:
   # MongoDB - Database (Production)
   mongodb:
     image: mongo:4.4
-    container_name: ebill_mongodb
     restart: always
     depends_on:
       init-env:
@@ -83,7 +81,6 @@ services:
       args:
         BUILD_ENV: production  # Use requirements.txt (production only)
     image: ${DOCKER_USERNAME:-teasyservices}/ebill-backend:${VERSION:-latest}
-    container_name: ebill_backend
     restart: always
     depends_on:
       init-env:
@@ -134,7 +131,6 @@ services:
       args:
         REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
     image: ${DOCKER_USERNAME:-teasyservices}/ebill-frontend:${VERSION:-latest}
-    container_name: ebill_frontend
     restart: always
     depends_on:
       backend:
@@ -169,7 +165,6 @@ services:
   # Caddy Web Server (Production)
   caddy:
     image: caddy:2.8-alpine
-    container_name: ebill_caddy
     restart: always
     depends_on:
       frontend:
@@ -204,6 +199,33 @@ services:
           memory: 64M
     labels:
       - "com.example.description=Caddy reverse proxy (production)"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # WhatsApp Microservice (Production)
+  whatsapp-service:
+    image: ${DOCKER_USERNAME:-teasyservices}/ebill-whatsapp:${VERSION:-latest}
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Optional: Add any whatsapp-specific env here
+      # We rely on backend for core settings as per V7.15 optimization
+      BACKEND_URL: http://backend:8000
+    networks:
+      - ebill
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.05"
+          memory: 128M
     logging:
       driver: "json-file"
       options:
