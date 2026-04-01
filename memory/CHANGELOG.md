@@ -2,7 +2,7 @@
 
 ## 2026-04-01
 
-### V7.16.5-FIX: WhatsApp Service CI/CD & Deployment
+### V7.16.6: WhatsApp Service CI/CD & Deployment Fix
 - **Fixed WhatsApp Deployment** - Added missing `whatsapp-service` build and push steps to the GitHub Actions workflow.
 - **Automated CI/CD Pipeline** - Implemented GitHub Actions for automated building and deployment.
 - **Docker Hub Integration** - Configured automated image builds and storage on Docker Hub for backend, frontend, and whatsapp services.
