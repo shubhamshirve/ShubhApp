@@ -1,0 +1,2 @@
+2026/04/01-11:36:00.588 f53 Creating DB /app/whatsapp-service/.wwebjs_auth/session-c073f033-99f3-4e3e-8ff6-05541e4632e1/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2026/04/01-11:36:00.600 f53 Reusing MANIFEST /app/whatsapp-service/.wwebjs_auth/session-c073f033-99f3-4e3e-8ff6-05541e4632e1/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
