@@ -130,37 +130,41 @@ function initClientBackground(operatorId) {
   // Clean up any stale Chromium lock files from previous container runs
   cleanChromiumLocks(operatorId);
 
-  const puppeteerArgs = {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--disable-extensions',
-      '--disable-default-apps',
-      '--remote-debugging-port=0',
-      // Network fixes for Docker bridge networks:
-      '--disable-ipv6',             // Docker bridge often has broken IPv6; force IPv4
-      '--no-proxy-server',          // Ensure no proxy intercepts connections
-      '--ignore-certificate-errors',// Prevent TLS issues in restricted environments
-      '--disable-background-timer-throttling',
-      '--disable-renderer-backgrounding',
-      '--disable-backgrounding-occluded-windows',
-    ],
-  };
+  const chromiumArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-first-run',
+    '--disable-extensions',
+    '--disable-default-apps',
+    '--remote-debugging-port=0',
+    '--disable-background-timer-throttling',
+    '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
+    // Not using --disable-ipv6: WhatsApp may route over IPv6
+    // Not using --no-proxy-server: allows PUPPETEER_PROXY env var to work
+  ];
 
-  if (CHROMIUM_PATH) {
-    puppeteerArgs.executablePath = CHROMIUM_PATH;
+  // Optional: route Chromium through a proxy (set PUPPETEER_PROXY in docker-compose)
+  // e.g. PUPPETEER_PROXY=socks5://user:pass@host:port
+  if (process.env.PUPPETEER_PROXY) {
+    chromiumArgs.push(`--proxy-server=${process.env.PUPPETEER_PROXY}`);
+    console.log(`[${operatorId}] Using proxy: ${process.env.PUPPETEER_PROXY}`);
   }
+
+  const puppeteerOpts = {
+    headless: true,
+    args: chromiumArgs,
+    ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
+  };
 
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: operatorId,
       dataPath: AUTH_DIR,
     }),
-    puppeteer: puppeteerArgs,
+    puppeteer: puppeteerOpts,
   });
 
   client.on('qr', (qr) => {
@@ -232,6 +236,20 @@ app.get('/health', (req, res) => {
     activeClients: Object.keys(clients).length,
     memoryMB: Math.round(mem.rss / 1024 / 1024),
   });
+});
+
+// Network diagnostic: test if this container can reach web.whatsapp.com
+// Usage: curl http://localhost:8002/test-network
+app.get('/test-network', (req, res) => {
+  try {
+    const result = execSync(
+      'curl -sI --max-time 10 https://web.whatsapp.com/ 2>&1 | head -5',
+      { encoding: 'utf8', timeout: 15000 }
+    );
+    res.json({ reachable: true, response: result.trim() });
+  } catch (e) {
+    res.json({ reachable: false, error: e.message, stderr: e.stderr });
+  }
 });
 
 // Initialize client for an operator (non-blocking)
