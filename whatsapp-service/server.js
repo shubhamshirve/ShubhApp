@@ -17,55 +17,89 @@ if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
+// Auto-detect Chromium executable path (handles different Linux distros)
+function getChromiumPath() {
+  const candidates = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      console.log(`[chromium] Found at: ${p}`);
+      return p;
+    }
+  }
+
+  console.warn('[chromium] No executable found in standard paths, Puppeteer will use default.');
+  return undefined;
+}
+
+const CHROMIUM_PATH = getChromiumPath();
+
 // ── Per-operator client management ────────────────────────────────────────
 const clients = {};      // operatorId -> Client instance
 const qrCodes = {};      // operatorId -> latest QR string
-const statuses = {};     // operatorId -> 'disconnected' | 'qr_pending' | 'ready' | 'initializing'
+const statuses = {};     // operatorId -> 'disconnected' | 'qr_pending' | 'ready' | 'initializing' | 'error'
+const errors = {};       // operatorId -> last error message
 
 function getClientState(operatorId) {
   return {
     status: statuses[operatorId] || 'disconnected',
     hasQR: !!qrCodes[operatorId],
+    error: errors[operatorId] || null,
   };
 }
 
-async function initClient(operatorId) {
+// Starts the client initialization in the background (non-blocking).
+// The caller gets an immediate response; status/QR is polled separately.
+function initClientBackground(operatorId) {
   // If already initialized and ready, skip
   if (clients[operatorId] && statuses[operatorId] === 'ready') {
-    return { status: 'already_ready' };
+    return 'already_ready';
   }
 
-  // If already initializing, skip
+  // If already in-progress, skip
   if (statuses[operatorId] === 'initializing' || statuses[operatorId] === 'qr_pending') {
-    return { status: statuses[operatorId] };
+    return statuses[operatorId];
   }
 
   // Destroy old client if exists
   if (clients[operatorId]) {
-    try { await clients[operatorId].destroy(); } catch (e) { /* ignore */ }
+    try { clients[operatorId].destroy(); } catch (e) { /* ignore */ }
     delete clients[operatorId];
   }
 
   statuses[operatorId] = 'initializing';
   qrCodes[operatorId] = null;
+  errors[operatorId] = null;
+
+  const puppeteerArgs = {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--single-process',
+      '--disable-extensions',
+    ],
+  };
+
+  if (CHROMIUM_PATH) {
+    puppeteerArgs.executablePath = CHROMIUM_PATH;
+  }
 
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: operatorId,
       dataPath: AUTH_DIR,
     }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--single-process',
-      ],
-      executablePath: '/usr/bin/chromium',
-    },
+    puppeteer: puppeteerArgs,
   });
 
   client.on('qr', (qr) => {
@@ -77,18 +111,22 @@ async function initClient(operatorId) {
   client.on('ready', () => {
     console.log(`[${operatorId}] Client is ready`);
     statuses[operatorId] = 'ready';
-    qrCodes[operatorId] = null; // QR no longer needed
+    qrCodes[operatorId] = null;
+    errors[operatorId] = null;
   });
 
   client.on('authenticated', () => {
     console.log(`[${operatorId}] Authenticated`);
     qrCodes[operatorId] = null;
+    errors[operatorId] = null;
   });
 
   client.on('auth_failure', (msg) => {
     console.error(`[${operatorId}] Auth failure:`, msg);
     statuses[operatorId] = 'auth_failed';
+    errors[operatorId] = `Auth failure: ${msg}`;
     qrCodes[operatorId] = null;
+    delete clients[operatorId];
   });
 
   client.on('disconnected', (reason) => {
@@ -100,32 +138,40 @@ async function initClient(operatorId) {
 
   clients[operatorId] = client;
 
-  try {
-    await client.initialize();
-  } catch (err) {
+  // Run initialize in background — do NOT await here
+  client.initialize().catch((err) => {
     console.error(`[${operatorId}] Init error:`, err.message);
     statuses[operatorId] = 'error';
+    errors[operatorId] = err.message;
     delete clients[operatorId];
-    throw err;
-  }
+  });
 
-  return { status: statuses[operatorId] };
+  return 'initializing';
 }
 
 // ── API Endpoints ─────────────────────────────────────────────────────────
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'whatsapp-webjs' });
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    service: 'whatsapp-webjs',
+    uptime: Math.floor(process.uptime()),
+    chromium: CHROMIUM_PATH || 'default',
+    activeClients: Object.keys(clients).length,
+    memoryMB: Math.round(mem.rss / 1024 / 1024),
+  });
 });
 
-// Initialize client for an operator
-app.post('/init/:operatorId', async (req, res) => {
+// Initialize client for an operator (non-blocking)
+app.post('/init/:operatorId', (req, res) => {
   const { operatorId } = req.params;
   try {
-    const result = await initClient(operatorId);
-    res.json(result);
+    const status = initClientBackground(operatorId);
+    res.json({ status });
   } catch (err) {
+    console.error(`[${operatorId}] Init error:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -206,6 +252,7 @@ app.post('/disconnect/:operatorId', async (req, res) => {
 
   delete clients[operatorId];
   delete qrCodes[operatorId];
+  delete errors[operatorId];
   statuses[operatorId] = 'disconnected';
 
   // Clean up session files
@@ -220,4 +267,5 @@ app.post('/disconnect/:operatorId', async (req, res) => {
 // ── Start server ──────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`WhatsApp Web.js service running on port ${PORT}`);
+  console.log(`Chromium: ${CHROMIUM_PATH || 'default (puppeteer bundled)'}`);
 });

@@ -267,7 +267,9 @@ const OperatorSettings = () => {
       if (res.data.qr) {
         setWaWebQr(res.data.qr);
       }
-      setWaWebStatus(res.data.status || "disconnected");
+      if (res.data.status) {
+        setWaWebStatus(res.data.status);
+      }
       return res.data;
     } catch (error) {
       console.error("Failed to fetch QR:", error);
@@ -280,18 +282,29 @@ const OperatorSettings = () => {
     if (qrPollRef.current) {
       clearInterval(qrPollRef.current);
     }
-    
-    // Poll every 2 seconds for QR updates
-    qrPollRef.current = setInterval(async () => {
-      const data = await fetchWaWebQr();
-      if (data?.status === "ready") {
-        // Connected! Stop polling
-        clearInterval(qrPollRef.current);
-        qrPollRef.current = null;
-        setWaWebQr(null);
-        toast.success("WhatsApp connected successfully!");
-      }
-    }, 2000);
+
+    // Give Chromium ~5s to spin up before the first poll
+    const startPolling = () => {
+      qrPollRef.current = setInterval(async () => {
+        const data = await fetchWaWebQr();
+        if (data?.status === "ready") {
+          // Connected! Stop polling
+          clearInterval(qrPollRef.current);
+          qrPollRef.current = null;
+          setWaWebQr(null);
+          toast.success("WhatsApp connected successfully!");
+        } else if (data?.status === "error" || data?.status === "auth_failed") {
+          // Failed — stop polling and show error
+          clearInterval(qrPollRef.current);
+          qrPollRef.current = null;
+          setWaWebStatus(data.status);
+          toast.error(data.error || "WhatsApp connection failed. Please try again.");
+        }
+      }, 4000); // Poll every 4 seconds
+    };
+
+    // Wait 5 seconds initially so Chromium has time to launch
+    setTimeout(startPolling, 5000);
   }, [fetchWaWebQr]);
 
   const stopQrPolling = useCallback(() => {
@@ -315,9 +328,10 @@ const OperatorSettings = () => {
         setWaWebStatus("ready");
         toast.success("WhatsApp is already connected!");
       } else {
-        // Start polling for QR code
+        setWaWebStatus("initializing");
+        // Start polling for QR code after a short delay
         startQrPolling();
-        toast.info("Initializing WhatsApp... QR code will appear shortly.");
+        toast.info("Starting WhatsApp... QR code may take 20-40 seconds to appear on first launch.");
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to initialize WhatsApp");
