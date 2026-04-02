@@ -54,6 +54,26 @@ function getClientState(operatorId) {
   };
 }
 
+// Clean up stale Chromium lock files left by previous container runs.
+// These cause "profile is in use" errors on container restart/redeploy.
+function cleanChromiumLocks(operatorId) {
+  // whatsapp-web.js LocalAuth stores the browser cache in .wwebjs_cache/session-{clientId}/
+  const cacheDir = path.join(__dirname, '.wwebjs_cache', `session-${operatorId}`);
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+
+  for (const lockFile of lockFiles) {
+    const lockPath = path.join(cacheDir, lockFile);
+    if (fs.existsSync(lockPath)) {
+      try {
+        fs.rmSync(lockPath, { force: true });
+        console.log(`[${operatorId}] Removed stale lock: ${lockFile}`);
+      } catch (e) {
+        console.warn(`[${operatorId}] Could not remove ${lockFile}: ${e.message}`);
+      }
+    }
+  }
+}
+
 // Starts the client initialization in the background (non-blocking).
 // The caller gets an immediate response; status/QR is polled separately.
 function initClientBackground(operatorId) {
@@ -77,6 +97,9 @@ function initClientBackground(operatorId) {
   qrCodes[operatorId] = null;
   errors[operatorId] = null;
 
+  // Clean up any stale Chromium lock files from previous container runs
+  cleanChromiumLocks(operatorId);
+
   const puppeteerArgs = {
     headless: true,
     args: [
@@ -87,6 +110,9 @@ function initClientBackground(operatorId) {
       '--no-first-run',
       '--single-process',
       '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--remote-debugging-port=0',  // random port to avoid conflicts
     ],
   };
 
