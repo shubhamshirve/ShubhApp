@@ -1,6 +1,13 @@
 # E-Bill Platform - CHANGELOG
 
-## 2026-04-01
+## 2026-04-02
+
+### V8.3: Production Deployment Hardening
+- **Fixed Container Name Conflicts** - Removed rigid `container_name` properties from all services in `docker-compose.prod.yml` to prevent "container name already in use" errors during CI/CD redeployment.
+- **Added Clean Deployment Step** - Added explicit `docker-compose down --remove-orphans` before starting services to ensure a clean state.
+- **Fixed WhatsApp Image Tag** - Aligned the CI/CD workflow image tag (`ebill-whatsapp-webjs`) with the service definition in `docker-compose.prod.yml`.
+- **Added V8.3 CI/CD Trigger** - Updated `docker-build-push.yml` to trigger on pushes to the `V8.3` branch.
+
 
 ### V7.16.6: WhatsApp Service CI/CD & Deployment Fix
 - **Fixed WhatsApp Deployment** - Added missing `whatsapp-service` build and push steps to the GitHub Actions workflow.

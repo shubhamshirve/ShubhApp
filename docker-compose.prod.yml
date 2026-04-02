@@ -15,7 +15,6 @@ services:
   # Initialize critical environment variables
   init-env:
     image: alpine:3.20
-    container_name: ebill_init_env
     restart: "no"
     working_dir: /app
     environment:
@@ -41,7 +40,6 @@ services:
   # MongoDB - Database (Production)
   mongodb:
     image: mongo:4.4
-    container_name: ebill_mongodb
     restart: always
     depends_on:
       init-env:
@@ -83,7 +81,6 @@ services:
       args:
         BUILD_ENV: production  # Use requirements.txt (production only)
     image: ${DOCKER_USERNAME:-teasyservices}/ebill-backend:${VERSION:-latest}
-    container_name: ebill_backend
     restart: always
     depends_on:
       init-env:
@@ -135,7 +132,6 @@ services:
       args:
         REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
     image: ${DOCKER_USERNAME:-teasyservices}/ebill-frontend:${VERSION:-latest}
-    container_name: ebill_frontend
     restart: always
     depends_on:
       backend:
@@ -173,7 +169,6 @@ services:
       context: ./whatsapp-service
       dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-teasyservices}/ebill-whatsapp-webjs:${VERSION:-latest}
-    container_name: ebill_whatsapp_webjs
     restart: always
     depends_on:
       backend:
@@ -210,7 +205,6 @@ services:
   # Caddy Web Server (Production)
   caddy:
     image: caddy:2.8-alpine
-    container_name: ebill_caddy
     restart: always
     depends_on:
       frontend:
