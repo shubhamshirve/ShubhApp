@@ -17,6 +17,30 @@ if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
+// ── Startup: purge ALL stale Chromium lock files across all sessions ──────
+// This runs once when the container boots. It handles lock files left behind
+// when the previous container was killed (force-stopped by docker-compose down).
+(function purgeAllStaleLocks() {
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  try {
+    const entries = fs.readdirSync(AUTH_DIR);
+    for (const entry of entries) {
+      const sessionPath = path.join(AUTH_DIR, entry);
+      if (!fs.statSync(sessionPath).isDirectory()) continue;
+      for (const lockFile of lockFiles) {
+        const lockPath = path.join(sessionPath, lockFile);
+        if (fs.existsSync(lockPath)) {
+          fs.rmSync(lockPath, { force: true });
+          console.log(`[startup] Removed stale lock: ${lockPath}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`[startup] Lock cleanup failed: ${e.message}`);
+  }
+})();
+
+
 // Auto-detect Chromium executable path (handles different Linux distros)
 function getChromiumPath() {
   const candidates = [
@@ -55,24 +79,32 @@ function getClientState(operatorId) {
 }
 
 // Clean up stale Chromium lock files left by previous container runs.
-// These cause "profile is in use" errors on container restart/redeploy.
+// These cause "profile is in use by another computer" errors on container restart.
+// LocalAuth uses AUTH_DIR/session-{clientId} as the Chromium userDataDir,
+// so lock files live inside .wwebjs_auth/session-{operatorId}/
 function cleanChromiumLocks(operatorId) {
-  // whatsapp-web.js LocalAuth stores the browser cache in .wwebjs_cache/session-{clientId}/
-  const cacheDir = path.join(__dirname, '.wwebjs_cache', `session-${operatorId}`);
+  // The CORRECT path — .wwebjs_auth, NOT .wwebjs_cache
+  const sessionDir = path.join(AUTH_DIR, `session-${operatorId}`);
+
+  if (!fs.existsSync(sessionDir)) {
+    return; // no session dir yet, nothing to clean
+  }
+
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
 
   for (const lockFile of lockFiles) {
-    const lockPath = path.join(cacheDir, lockFile);
+    const lockPath = path.join(sessionDir, lockFile);
     if (fs.existsSync(lockPath)) {
       try {
         fs.rmSync(lockPath, { force: true });
-        console.log(`[${operatorId}] Removed stale lock: ${lockFile}`);
+        console.log(`[${operatorId}] Removed stale lock: ${lockPath}`);
       } catch (e) {
         console.warn(`[${operatorId}] Could not remove ${lockFile}: ${e.message}`);
       }
     }
   }
 }
+
 
 // Starts the client initialization in the background (non-blocking).
 // The caller gets an immediate response; status/QR is polled separately.
