@@ -1,8 +1,8 @@
 # Agent Handoff - E-Bill Platform
 
-**Last Updated:** 2026-04-01  
-**Active Branch:** `V7.16.6`
-**Latest Feature Branch:** `V7.16.6` (WhatsApp Service CI/CD & Deployment Fix)
+**Last Updated:** 2026-04-02  
+**Active Branch:** `V8.4`
+**Latest Feature Branch:** `V8.4` (Decommission WhatsApp & Automation Enhancements)
 
 ---
 
@@ -10,8 +10,9 @@
 
 The codebase now includes:
 
-- Docker infrastructure fully optimized for dev and production environments
-- Minimal .env configuration (only 8-10 core variables)
+- WhatsApp WebJS functionality decommissioned and purged from docker-compose
+- Automated initialized wallets with SaaS monthly prices for admin-created operators
+- Unified payment gateway configurations enforcing operator key usage exclusively
 - Fixed MongoDB authentication with proper credential handling
 - Dual docker-compose files: docker-compose.yml (dev) and docker-compose.prod.yml (prod)
 - Conditional Dockerfile builds with BUILD_ENV argument for dev vs production
@@ -95,11 +96,17 @@ The codebase now includes:
 - `V7.15-7` is the index.html unnecessary script cleanup branch
 - `V7.15-8` is the Admin Env Settings and Service Refactor branch
 - `V7.15-9` is the Settings Consolidation and Caddy Optimization branch
-- `V7.15.10` is the Docker Infrastructure Optimization branch (current)
+- `V8.4` is the Decommission WhatsApp & Automation Enhancements branch (current)
 
-### V7.16.6 Changes (Current)
+### V8.4 Changes (Current)
 
-**Primary Focus:** WhatsApp Service CI/CD & Deployment Fix
+**Primary Focus:** WhatsApp Decommissioning & Automated Funding
+
+**UI / Backend:**
+- Removed WhatsApp Web UI tab and dropdown action options.
+- Initialized operator wallets with monthly_price when created manually by admins.
+- Consolidated payment gateways and strictly enforced usage of operator keys.
+- Removed `whatsapp-webjs` service from docker compose descriptors.
 
 - **Fixed WhatsApp Deployment** - Added missing `whatsapp-service` build and push steps to the GitHub Actions workflow and integrated it into the production docker-compose file.
 - **Resolved Container Conflicts** - Removed rigid `container_name` properties the production compose file to allow for non-conflicting, automated container management.

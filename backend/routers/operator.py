@@ -86,13 +86,13 @@ async def get_operator_features(current_user: dict = Depends(require_operator)):
     """Return which addon features are active for this operator."""
     if current_user["role"] == "admin":
         return {code: True for code in [
-            "audit_log", "payment_gateway", "custom_payment_gateway",
+            "audit_log", "payment_gateway",
             "announcement", "whatsapp_notifications",
             "staff_management"
         ]}
     operator_id = current_user["operator_id"]
     addon_codes = [
-        "audit_log", "payment_gateway", "custom_payment_gateway",
+        "audit_log", "payment_gateway",
         "announcement", "whatsapp_notifications",
         "staff_management"
     ]
@@ -706,13 +706,6 @@ async def verify_checkout_payment(
         # Activate any addons bundled with this subscription order
         if order.get("addon_codes"):
             for code in order["addon_codes"]:
-                # Mutual exclusion check for payment gateway addons
-                if code == "payment_gateway" and "custom_payment_gateway" in active:
-                    active.remove("custom_payment_gateway")
-                    addon_expiry.pop("custom_payment_gateway", None)
-                elif code == "custom_payment_gateway" and "payment_gateway" in active:
-                    active.remove("payment_gateway")
-                    addon_expiry.pop("payment_gateway", None)
                 if code not in active:
                     active.append(code)
                     # If staff_management addon, set max_staff = 5
@@ -1938,8 +1931,8 @@ async def configure_payment_gateway(data: PaymentGatewayConfig, current_user: di
     raise HTTPException(status_code=403, detail="Payment gateway keys are managed by admin. Please contact admin for updates.")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    if not await _has_addon(current_user["operator_id"], "custom_payment_gateway"):
-        raise HTTPException(status_code=403, detail="Custom Payment Gateway add-on is not enabled for your plan.")
+    if not await _has_addon(current_user["operator_id"], "payment_gateway"):
+        raise HTTPException(status_code=403, detail="Payment Gateway add-on is not enabled for your plan.")
     now = datetime.now(timezone.utc)
     gateway_config = {
         "id": generate_id(), "operator_id": current_user["operator_id"],

@@ -4,12 +4,13 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 8002;
+const PORT = process.env.WHATSAPP_PORT || 8002;
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
 
 // Ensure auth directory exists
@@ -17,55 +18,153 @@ if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
+// ── Startup: purge ALL stale Chromium lock files across all sessions ──────
+// SingletonLock is a Linux SYMLINK. fs.existsSync() follows symlinks and returns
+// false for dangling ones — so we CANNOT use existsSync to detect them.
+// Solution: use shell 'find -delete' which handles dangling symlinks correctly.
+(function purgeAllStaleLocks() {
+  const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  try {
+    // Run three separate finds — avoids ( ) grouping which breaks in /bin/sh (dash)
+    for (const name of lockNames) {
+      execSync(`find "${AUTH_DIR}" -maxdepth 3 -name "${name}" -delete 2>/dev/null || true`, { stdio: 'pipe' });
+    }
+    console.log('[startup] Chromium lock purge complete');
+  } catch (e) {
+    console.warn(`[startup] Lock cleanup warning: ${e.message}`);
+  }
+})();
+
+
+// Auto-detect Chromium executable path (handles different Linux distros)
+function getChromiumPath() {
+  const candidates = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      console.log(`[chromium] Found at: ${p}`);
+      return p;
+    }
+  }
+
+  console.warn('[chromium] No executable found in standard paths, Puppeteer will use default.');
+  return undefined;
+}
+
+const CHROMIUM_PATH = getChromiumPath();
+
 // ── Per-operator client management ────────────────────────────────────────
 const clients = {};      // operatorId -> Client instance
 const qrCodes = {};      // operatorId -> latest QR string
-const statuses = {};     // operatorId -> 'disconnected' | 'qr_pending' | 'ready' | 'initializing'
+const statuses = {};     // operatorId -> 'disconnected' | 'qr_pending' | 'ready' | 'initializing' | 'error'
+const errors = {};       // operatorId -> last error message
 
 function getClientState(operatorId) {
   return {
     status: statuses[operatorId] || 'disconnected',
     hasQR: !!qrCodes[operatorId],
+    error: errors[operatorId] || null,
   };
 }
 
-async function initClient(operatorId) {
-  // If already initialized and ready, skip
-  if (clients[operatorId] && statuses[operatorId] === 'ready') {
-    return { status: 'already_ready' };
+// Clean up stale Chromium lock files before launching a new browser instance.
+// IMPORTANT: SingletonLock is a Linux SYMLINK. We must use lstatSync() (not
+// existsSync/statSync) because those follow symlinks and return false for
+// dangling symlinks — which is exactly what a stale lock becomes after
+// the previous container is killed (the symlink target no longer exists).
+function cleanChromiumLocks(operatorId) {
+  const sessionDir = path.join(AUTH_DIR, `session-${operatorId}`);
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+
+  // Run separate finds per lock type — avoids ( ) grouping which breaks in /bin/sh
+  const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  for (const name of lockNames) {
+    try {
+      execSync(`find "${sessionDir}" -maxdepth 1 -name "${name}" -delete 2>/dev/null || true`, { stdio: 'pipe' });
+    } catch (e) { /* session dir may not exist yet */ }
   }
 
-  // If already initializing, skip
+  // Also try via Node.js (handles regular files that find might miss)
+  for (const lockFile of lockFiles) {
+    const lockPath = path.join(sessionDir, lockFile);
+    try {
+      fs.lstatSync(lockPath);  // lstatSync does NOT follow symlinks — detects dangling symlinks
+      fs.rmSync(lockPath, { force: true });
+      console.log(`[${operatorId}] Removed stale lock: ${lockFile}`);
+    } catch (e) {
+      // lstatSync throws if file doesn't exist at all — that's fine
+    }
+  }
+}
+
+
+// Starts the client initialization in the background (non-blocking).
+// The caller gets an immediate response; status/QR is polled separately.
+function initClientBackground(operatorId) {
+  // If already initialized and ready, skip
+  if (clients[operatorId] && statuses[operatorId] === 'ready') {
+    return 'already_ready';
+  }
+
+  // If already in-progress, skip
   if (statuses[operatorId] === 'initializing' || statuses[operatorId] === 'qr_pending') {
-    return { status: statuses[operatorId] };
+    return statuses[operatorId];
   }
 
   // Destroy old client if exists
   if (clients[operatorId]) {
-    try { await clients[operatorId].destroy(); } catch (e) { /* ignore */ }
+    try { clients[operatorId].destroy(); } catch (e) { /* ignore */ }
     delete clients[operatorId];
   }
 
   statuses[operatorId] = 'initializing';
   qrCodes[operatorId] = null;
+  errors[operatorId] = null;
+
+  // Clean up any stale Chromium lock files from previous container runs
+  cleanChromiumLocks(operatorId);
+
+  const chromiumArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-first-run',
+    '--disable-extensions',
+    '--disable-default-apps',
+    '--remote-debugging-port=0',
+    '--disable-background-timer-throttling',
+    '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
+    // Not using --disable-ipv6: WhatsApp may route over IPv6
+    // Not using --no-proxy-server: allows PUPPETEER_PROXY env var to work
+  ];
+
+  // Optional: route Chromium through a proxy (set PUPPETEER_PROXY in docker-compose)
+  // e.g. PUPPETEER_PROXY=socks5://user:pass@host:port
+  if (process.env.PUPPETEER_PROXY) {
+    chromiumArgs.push(`--proxy-server=${process.env.PUPPETEER_PROXY}`);
+    console.log(`[${operatorId}] Using proxy: ${process.env.PUPPETEER_PROXY}`);
+  }
+
+  const puppeteerOpts = {
+    headless: true,
+    args: chromiumArgs,
+    ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
+  };
 
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: operatorId,
       dataPath: AUTH_DIR,
     }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--single-process',
-      ],
-      executablePath: '/usr/bin/chromium',
-    },
+    puppeteer: puppeteerOpts,
   });
 
   client.on('qr', (qr) => {
@@ -77,18 +176,22 @@ async function initClient(operatorId) {
   client.on('ready', () => {
     console.log(`[${operatorId}] Client is ready`);
     statuses[operatorId] = 'ready';
-    qrCodes[operatorId] = null; // QR no longer needed
+    qrCodes[operatorId] = null;
+    errors[operatorId] = null;
   });
 
   client.on('authenticated', () => {
     console.log(`[${operatorId}] Authenticated`);
     qrCodes[operatorId] = null;
+    errors[operatorId] = null;
   });
 
   client.on('auth_failure', (msg) => {
     console.error(`[${operatorId}] Auth failure:`, msg);
     statuses[operatorId] = 'auth_failed';
+    errors[operatorId] = `Auth failure: ${msg}`;
     qrCodes[operatorId] = null;
+    delete clients[operatorId];
   });
 
   client.on('disconnected', (reason) => {
@@ -100,32 +203,63 @@ async function initClient(operatorId) {
 
   clients[operatorId] = client;
 
-  try {
-    await client.initialize();
-  } catch (err) {
+  // Run initialize in background — do NOT await here
+  client.initialize().catch(async (err) => {
     console.error(`[${operatorId}] Init error:`, err.message);
     statuses[operatorId] = 'error';
+    errors[operatorId] = err.message;
+    // Destroy the client to kill Chromium so next retry doesn't
+    // fail with 'browser is already running for this userDataDir'
+    try {
+      await client.destroy();
+    } catch (destroyErr) {
+      console.warn(`[${operatorId}] Destroy on error:`, destroyErr.message);
+    }
     delete clients[operatorId];
-    throw err;
-  }
+    // Also clean up any new lock files the failed session may have left
+    cleanChromiumLocks(operatorId);
+  });
 
-  return { status: statuses[operatorId] };
+  return 'initializing';
 }
 
 // ── API Endpoints ─────────────────────────────────────────────────────────
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'whatsapp-webjs' });
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    service: 'whatsapp-webjs',
+    uptime: Math.floor(process.uptime()),
+    chromium: CHROMIUM_PATH || 'default',
+    activeClients: Object.keys(clients).length,
+    memoryMB: Math.round(mem.rss / 1024 / 1024),
+  });
 });
 
-// Initialize client for an operator
-app.post('/init/:operatorId', async (req, res) => {
+// Network diagnostic: test if this container can reach web.whatsapp.com
+// Usage: curl http://localhost:8002/test-network
+app.get('/test-network', (req, res) => {
+  try {
+    const result = execSync(
+      'curl -sI --max-time 10 https://web.whatsapp.com/ 2>&1 | head -5',
+      { encoding: 'utf8', timeout: 15000 }
+    );
+    res.json({ reachable: true, response: result.trim() });
+  } catch (e) {
+    res.json({ reachable: false, error: e.message, stderr: e.stderr });
+  }
+});
+
+// Initialize client for an operator (non-blocking)
+app.post('/init/:operatorId', (req, res) => {
   const { operatorId } = req.params;
   try {
-    const result = await initClient(operatorId);
-    res.json(result);
+    const status = initClientBackground(operatorId);
+    res.json({ status });
   } catch (err) {
+    console.error(`[${operatorId}] Init error:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -206,6 +340,7 @@ app.post('/disconnect/:operatorId', async (req, res) => {
 
   delete clients[operatorId];
   delete qrCodes[operatorId];
+  delete errors[operatorId];
   statuses[operatorId] = 'disconnected';
 
   // Clean up session files
@@ -220,4 +355,5 @@ app.post('/disconnect/:operatorId', async (req, res) => {
 // ── Start server ──────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`WhatsApp Web.js service running on port ${PORT}`);
+  console.log(`Chromium: ${CHROMIUM_PATH || 'default (puppeteer bundled)'}`);
 });

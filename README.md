@@ -4,15 +4,17 @@ Production-oriented billing platform for ISP, broadband, and cable operators. Th
 
 ## Current Version
 
-- Documentation updated for branch `V7.15-11`
-- Latest feature and fix delivery implemented through `V7.15-11`
+- Documentation updated for branch `V8.4`
+- Latest feature and fix delivery implemented through `V8.4`
 - Current release focus:
-  - **GitHub Actions CI/CD Pipeline** - Automated build, test, and deployment to environments
-  - **Docker Hub Integration** - Auto-push images with branch/commit tags
-  - **Multi-Environment Deployment** - Auto-deploy to dev/staging/production via SSH
-  - **Rate-Limit Optimized** - Efficient caching, minimal API calls
-  - **Production-Ready Workflows** - Manual triggers, branch-based deployments
+  - **WhatsApp WebJS Sunset** - Complete removal of legacy WhatsApp service
+  - **Automated Wallets** - Balance initialization on operator creation
+  - **Unified Payment Gateways** - Simplified and secure gateway enforcement
   - See: [CI/CD Quick Reference](./CI_CD_QUICK_REFERENCE.md) and [Full Setup Guide](./GITHUB_ACTIONS_SETUP.md)
+  - previous features from V8.3:
+    - Fixed Container Name Conflicts
+    - Added Clean Deployment Step
+    - WhatsApp Image Tag Fix
   - previous features from V7.15-10:
     - Docker Infrastructure Optimization - Dual environment compose files (dev/prod) with proper security
     - Minimal .env Configuration - Reduced from 40+ to 8-10 core variables

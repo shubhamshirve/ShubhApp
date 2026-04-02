@@ -27,6 +27,7 @@ from sanitization import SanitizedModel, sanitize_filename, sanitize_text
 from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 from services.email_service import EmailServiceError, get_email_providers_async
+from routers.wallet import get_or_create_wallet, credit_wallet
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -239,6 +240,16 @@ async def create_operator_manually(data: AdminOperatorCreate, current_user: dict
         "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.operators.insert_one(operator)
+
+    # Initialize wallet according to plan amount (monthly_price)
+    await get_or_create_wallet(operator_id)
+    if plan.get("monthly_price", 0) > 0:
+        await credit_wallet(
+            operator_id=operator_id,
+            amount=plan["monthly_price"],
+            description=f"Initial balance from {plan['name']} plan",
+            tx_type="admin_credit"
+        )
 
     user = {
         "id": user_id, "email": data.email, "name": data.owner_name, "phone": data.phone,
@@ -512,11 +523,6 @@ async def assign_addon_to_operator(
         raise HTTPException(status_code=404, detail="Operator not found")
     now = datetime.now(timezone.utc)
     existing_addons = operator.get("active_addons") or []
-    # Mutual exclusion: payment_gateway and custom_payment_gateway cannot coexist
-    if addon_code == "payment_gateway" and "custom_payment_gateway" in existing_addons:
-        existing_addons.remove("custom_payment_gateway")
-    elif addon_code == "custom_payment_gateway" and "payment_gateway" in existing_addons:
-        existing_addons.remove("payment_gateway")
     if addon_code not in existing_addons:
         existing_addons.append(addon_code)
     # Set addon expiry = operator's current subscription_ends_at

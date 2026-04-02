@@ -660,22 +660,6 @@ const OperatorInvoices = () => {
                                 Send via WhatsApp API
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)} data-testid={`wa-web-${invoice.id}`}>
-                              <MessageCircle className="w-4 h-4 mr-2 text-emerald-600" />
-                              Send via WhatsApp Web
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleSendViaWebJS(invoice)} 
-                              disabled={sendingWebJS === invoice.id}
-                              data-testid={`wa-webjs-${invoice.id}`}
-                            >
-                              {sendingWebJS === invoice.id ? (
-                                <Loader2 className="w-4 h-4 mr-2 text-green-600 animate-spin" />
-                              ) : (
-                                <Smartphone className="w-4 h-4 mr-2 text-green-600" />
-                              )}
-                              {sendingWebJS === invoice.id ? "Sending..." : "Send via WhatsApp WebJS"}
-                            </DropdownMenuItem>
                             {invoice.status === "overdue" && features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
                                 <Bell className="w-4 h-4 mr-2 text-amber-600" />

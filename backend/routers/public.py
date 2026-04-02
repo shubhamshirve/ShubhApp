@@ -28,16 +28,11 @@ async def _has_addon(operator_id: str, addon_code: str) -> bool:
 
 async def _get_payment_gateway_for_operator(operator_id: str):
     """Determine which payment gateway keys to use for an operator's subscriber payments."""
-    has_custom_pg = await _has_addon(operator_id, "custom_payment_gateway")
-    has_platform_pg = await _has_addon(operator_id, "payment_gateway")
+    has_pg = await _has_addon(operator_id, "payment_gateway")
 
-    if has_custom_pg:
+    if has_pg:
         gateway = await db.payment_gateways.find_one({"operator_id": operator_id}, {"_id": 0})
         if gateway and gateway.get("is_active"):
-            return gateway
-    elif has_platform_pg:
-        gateway = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
-        if gateway:
             return gateway
 
     return None
