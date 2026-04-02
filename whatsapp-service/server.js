@@ -140,11 +140,16 @@ function initClientBackground(operatorId) {
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--no-first-run',
-      '--single-process',
       '--disable-extensions',
-      '--disable-background-networking',
       '--disable-default-apps',
-      '--remote-debugging-port=0',  // random port to avoid conflicts
+      '--remote-debugging-port=0',
+      // Network fixes for Docker bridge networks:
+      '--disable-ipv6',             // Docker bridge often has broken IPv6; force IPv4
+      '--no-proxy-server',          // Ensure no proxy intercepts connections
+      '--ignore-certificate-errors',// Prevent TLS issues in restricted environments
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
     ],
   };
 
@@ -197,11 +202,20 @@ function initClientBackground(operatorId) {
   clients[operatorId] = client;
 
   // Run initialize in background — do NOT await here
-  client.initialize().catch((err) => {
+  client.initialize().catch(async (err) => {
     console.error(`[${operatorId}] Init error:`, err.message);
     statuses[operatorId] = 'error';
     errors[operatorId] = err.message;
+    // Destroy the client to kill Chromium so next retry doesn't
+    // fail with 'browser is already running for this userDataDir'
+    try {
+      await client.destroy();
+    } catch (destroyErr) {
+      console.warn(`[${operatorId}] Destroy on error:`, destroyErr.message);
+    }
     delete clients[operatorId];
+    // Also clean up any new lock files the failed session may have left
+    cleanChromiumLocks(operatorId);
   });
 
   return 'initializing';

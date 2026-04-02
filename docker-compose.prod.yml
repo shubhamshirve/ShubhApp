@@ -179,6 +179,10 @@ services:
       - whatsapp_auth:/app/.wwebjs_auth
     networks:
       - ebill
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    dns_search: []
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
