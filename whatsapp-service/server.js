@@ -23,12 +23,12 @@ if (!fs.existsSync(AUTH_DIR)) {
 // false for dangling ones — so we CANNOT use existsSync to detect them.
 // Solution: use shell 'find -delete' which handles dangling symlinks correctly.
 (function purgeAllStaleLocks() {
+  const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
   try {
-    // find handles dangling symlinks, any nesting depth, and all lock types
-    execSync(
-      `find "${AUTH_DIR}" -maxdepth 3 \( -name "SingletonLock" -o -name "SingletonSocket" -o -name "SingletonCookie" \) -delete 2>/dev/null || true`,
-      { stdio: 'pipe' }
-    );
+    // Run three separate finds — avoids ( ) grouping which breaks in /bin/sh (dash)
+    for (const name of lockNames) {
+      execSync(`find "${AUTH_DIR}" -maxdepth 3 -name "${name}" -delete 2>/dev/null || true`, { stdio: 'pipe' });
+    }
     console.log('[startup] Chromium lock purge complete');
   } catch (e) {
     console.warn(`[startup] Lock cleanup warning: ${e.message}`);
@@ -82,13 +82,13 @@ function cleanChromiumLocks(operatorId) {
   const sessionDir = path.join(AUTH_DIR, `session-${operatorId}`);
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
 
-  // Also use find for belt-and-suspenders coverage of dangling symlinks
-  try {
-    execSync(
-      `find "${sessionDir}" -maxdepth 1 \( -name "SingletonLock" -o -name "SingletonSocket" -o -name "SingletonCookie" \) -delete 2>/dev/null || true`,
-      { stdio: 'pipe' }
-    );
-  } catch (e) { /* session dir may not exist yet */ }
+  // Run separate finds per lock type — avoids ( ) grouping which breaks in /bin/sh
+  const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  for (const name of lockNames) {
+    try {
+      execSync(`find "${sessionDir}" -maxdepth 1 -name "${name}" -delete 2>/dev/null || true`, { stdio: 'pipe' });
+    } catch (e) { /* session dir may not exist yet */ }
+  }
 
   // Also try via Node.js (handles regular files that find might miss)
   for (const lockFile of lockFiles) {
