@@ -75,7 +75,6 @@ services:
       MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-mongo-password}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
-      WHATSAPP_WEBJS_URL: http://whatsapp-webjs:8002
     ports:
       - "127.0.0.1:8000:8000"
     networks:
@@ -108,27 +107,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # WhatsApp WebJS Service
-  whatsapp-webjs:
-    build:
-      context: ./whatsapp-service
-    container_name: ebill_whatsapp_webjs
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "127.0.0.1:8002:8002"
-    volumes:
-      - whatsapp_auth:/app/.wwebjs_auth
-    networks:
-      - ebill
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-
   # Caddy Web Server
   caddy:
     image: caddy:2-alpine
@@ -153,7 +131,6 @@ volumes:
   mongo_data:
   caddy_data:
   caddy_config:
-  whatsapp_auth:
 
 networks:
   ebill:

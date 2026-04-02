@@ -96,7 +96,6 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       JWT_SECRET: ${JWT_SECRET}
       BACKUP_PASSWORD: ${BACKUP_PASSWORD}
-      WHATSAPP_WEBJS_URL: http://whatsapp-webjs:8002
     expose:
       - "8000"
     networks:
@@ -163,55 +162,6 @@ services:
         max-size: "50m"
         max-file: "10"
 
-  # WhatsApp WebJS Service (Production)
-  whatsapp-webjs:
-    build:
-      context: ./whatsapp-service
-      dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-teasyservices}/ebill-whatsapp-webjs:${VERSION:-latest}
-    restart: always
-    depends_on:
-      backend:
-        condition: service_healthy
-    expose:
-      - "8002"
-    volumes:
-      - whatsapp_auth:/app/.wwebjs_auth
-    networks:
-      - ebill
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    dns_search: []
-    environment:
-      # Cloudflare WARP SOCKS5 proxy — routes Chromium through WARP to bypass
-      # WhatsApp's datacenter IP block. WARP must be running on the host in proxy
-      # mode (warp-cli mode proxy && warp-cli connect). 172.17.0.1 is the Docker
-      # host gateway reachable from any container.
-      - PUPPETEER_PROXY=socks5://172.17.0.1:40000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 2048M
-        reservations:
-          cpus: "0.2"
-          memory: 512M
-    labels:
-      - "com.example.description=WhatsApp WebJS service"
-      - "com.example.version=${VERSION:-latest}"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "10"
-
   # Caddy Web Server (Production)
   caddy:
     image: caddy:2.8-alpine
@@ -261,8 +211,6 @@ volumes:
   caddy_data:
     driver: local
   caddy_config:
-    driver: local
-  whatsapp_auth:
     driver: local
 
 networks:
