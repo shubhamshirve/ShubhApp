@@ -183,6 +183,12 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     dns_search: []
+    environment:
+      # Cloudflare WARP SOCKS5 proxy — routes Chromium through WARP to bypass
+      # WhatsApp's datacenter IP block. WARP must be running on the host in proxy
+      # mode (warp-cli mode proxy && warp-cli connect). 172.17.0.1 is the Docker
+      # host gateway reachable from any container.
+      - PUPPETEER_PROXY=socks5://172.17.0.1:40000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
