@@ -4,6 +4,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const app = express();
 app.use(cors());
@@ -18,25 +19,19 @@ if (!fs.existsSync(AUTH_DIR)) {
 }
 
 // ── Startup: purge ALL stale Chromium lock files across all sessions ──────
-// This runs once when the container boots. It handles lock files left behind
-// when the previous container was killed (force-stopped by docker-compose down).
+// SingletonLock is a Linux SYMLINK. fs.existsSync() follows symlinks and returns
+// false for dangling ones — so we CANNOT use existsSync to detect them.
+// Solution: use shell 'find -delete' which handles dangling symlinks correctly.
 (function purgeAllStaleLocks() {
-  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
   try {
-    const entries = fs.readdirSync(AUTH_DIR);
-    for (const entry of entries) {
-      const sessionPath = path.join(AUTH_DIR, entry);
-      if (!fs.statSync(sessionPath).isDirectory()) continue;
-      for (const lockFile of lockFiles) {
-        const lockPath = path.join(sessionPath, lockFile);
-        if (fs.existsSync(lockPath)) {
-          fs.rmSync(lockPath, { force: true });
-          console.log(`[startup] Removed stale lock: ${lockPath}`);
-        }
-      }
-    }
+    // find handles dangling symlinks, any nesting depth, and all lock types
+    execSync(
+      `find "${AUTH_DIR}" -maxdepth 3 \( -name "SingletonLock" -o -name "SingletonSocket" -o -name "SingletonCookie" \) -delete 2>/dev/null || true`,
+      { stdio: 'pipe' }
+    );
+    console.log('[startup] Chromium lock purge complete');
   } catch (e) {
-    console.warn(`[startup] Lock cleanup failed: ${e.message}`);
+    console.warn(`[startup] Lock cleanup warning: ${e.message}`);
   }
 })();
 
@@ -78,29 +73,32 @@ function getClientState(operatorId) {
   };
 }
 
-// Clean up stale Chromium lock files left by previous container runs.
-// These cause "profile is in use by another computer" errors on container restart.
-// LocalAuth uses AUTH_DIR/session-{clientId} as the Chromium userDataDir,
-// so lock files live inside .wwebjs_auth/session-{operatorId}/
+// Clean up stale Chromium lock files before launching a new browser instance.
+// IMPORTANT: SingletonLock is a Linux SYMLINK. We must use lstatSync() (not
+// existsSync/statSync) because those follow symlinks and return false for
+// dangling symlinks — which is exactly what a stale lock becomes after
+// the previous container is killed (the symlink target no longer exists).
 function cleanChromiumLocks(operatorId) {
-  // The CORRECT path — .wwebjs_auth, NOT .wwebjs_cache
   const sessionDir = path.join(AUTH_DIR, `session-${operatorId}`);
-
-  if (!fs.existsSync(sessionDir)) {
-    return; // no session dir yet, nothing to clean
-  }
-
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
 
+  // Also use find for belt-and-suspenders coverage of dangling symlinks
+  try {
+    execSync(
+      `find "${sessionDir}" -maxdepth 1 \( -name "SingletonLock" -o -name "SingletonSocket" -o -name "SingletonCookie" \) -delete 2>/dev/null || true`,
+      { stdio: 'pipe' }
+    );
+  } catch (e) { /* session dir may not exist yet */ }
+
+  // Also try via Node.js (handles regular files that find might miss)
   for (const lockFile of lockFiles) {
     const lockPath = path.join(sessionDir, lockFile);
-    if (fs.existsSync(lockPath)) {
-      try {
-        fs.rmSync(lockPath, { force: true });
-        console.log(`[${operatorId}] Removed stale lock: ${lockPath}`);
-      } catch (e) {
-        console.warn(`[${operatorId}] Could not remove ${lockFile}: ${e.message}`);
-      }
+    try {
+      fs.lstatSync(lockPath);  // lstatSync does NOT follow symlinks — detects dangling symlinks
+      fs.rmSync(lockPath, { force: true });
+      console.log(`[${operatorId}] Removed stale lock: ${lockFile}`);
+    } catch (e) {
+      // lstatSync throws if file doesn't exist at all — that's fine
     }
   }
 }
