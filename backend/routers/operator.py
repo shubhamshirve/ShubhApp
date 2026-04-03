@@ -1074,37 +1074,6 @@ async def get_operator_plans(current_user: dict = Depends(require_operator)):
         raise HTTPException(status_code=500, detail=f"Error retrieving plans: {str(e)}")
 
 
-@router.put("/plans/{plan_id}", response_model=OperatorPlanResponse)
-async def update_operator_plan(plan_id: str, data: OperatorPlanCreate, current_user: dict = Depends(require_operator)):
-    if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot update operator plans")
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    existing = await db.operator_plans.find_one(
-        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
-    )
-    if not existing:
-        raise HTTPException(status_code=404, detail="Plan not found")
-    update_data = data.model_dump()
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.operator_plans.update_one({"id": plan_id}, {"$set": update_data})
-    updated = await db.operator_plans.find_one({"id": plan_id}, {"_id": 0})
-    return OperatorPlanResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
-
-
-@router.delete("/plans/{plan_id}")
-async def delete_operator_plan(plan_id: str, current_user: dict = Depends(require_operator_no_staff)):
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    result = await db.operator_plans.update_one(
-        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None},
-        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Plan not found")
-    return {"message": "Plan deleted"}
-
-
 # ─── Bulk Upload: Plans ────────────────────────────────────────────────────────
 
 @router.get("/plans/sample-csv")
@@ -1157,6 +1126,37 @@ async def bulk_upload_plans(
         "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
         "status_url": f"/api/operator/jobs/{job_id}"
     }
+
+
+@router.put("/plans/{plan_id}", response_model=OperatorPlanResponse)
+async def update_operator_plan(plan_id: str, data: OperatorPlanCreate, current_user: dict = Depends(require_operator)):
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot update operator plans")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    existing = await db.operator_plans.find_one(
+        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None}, {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    update_data = data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.operator_plans.update_one({"id": plan_id}, {"$set": update_data})
+    updated = await db.operator_plans.find_one({"id": plan_id}, {"_id": 0})
+    return OperatorPlanResponse(**{**updated, "created_at": datetime.fromisoformat(updated["created_at"])})
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_operator_plan(plan_id: str, current_user: dict = Depends(require_operator_no_staff)):
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    result = await db.operator_plans.update_one(
+        {"id": plan_id, "operator_id": current_user["operator_id"], "deleted_at": None},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"message": "Plan deleted"}
 
 
 # ─── Subscribers ────────────────────────────────────────────────────────────
