@@ -77,46 +77,89 @@ jobs:
           envs: BRANCH_NAME
           script: |
             set -e
-            cd /root/ShubhApp || { mkdir -p /root/ShubhApp && cd /root/ShubhApp; }
+            APP_DIR="/root/ShubhApp"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
             if [ ! -d ".git" ]; then
-              echo "Initializing git repository in /root/ShubhApp..."
+              echo "Initializing git repository in $APP_DIR..."
               git init
               git remote add origin https://github.com/shubhamshirve/ShubhApp.git
             fi
 
             echo "Pulling latest code for branch $BRANCH_NAME..."
-            git fetch origin $BRANCH_NAME
-            git reset --hard origin/$BRANCH_NAME
+            git fetch origin "$BRANCH_NAME"
+            git reset --hard "origin/$BRANCH_NAME"
 
-            # Check for existing config in current folder or migrate from old folder
-            if [ ! -f ".env.production" ] && [ ! -f ".env" ]; then
-              if [ -f "/root/ebill/.env.production" ]; then
-                echo "Migrating .env.production from /root/ebill..."
-                cp /root/ebill/.env.production .
-              elif [ -f "/root/ebill/.env" ]; then
-                echo "Migrating .env from /root/ebill..."
-                cp /root/ebill/.env .
+            # ---------------------------------------------------------------
+            # ENV FILE RESOLUTION
+            # Priority: .env.production > .env (in current dir)
+            # Fallback: migrate from old /root/ebill location
+            # ---------------------------------------------------------------
+            resolve_env_file() {
+              # Try .env.production first (non-empty)
+              if [ -s "$APP_DIR/.env.production" ]; then
+                echo "$APP_DIR/.env.production"
+                return 0
               fi
-            fi
+              # Try .env (non-empty)
+              if [ -s "$APP_DIR/.env" ]; then
+                echo "$APP_DIR/.env"
+                return 0
+              fi
+              # Attempt migration from old location
+              if [ -s "/root/ebill/.env.production" ]; then
+                echo "Migrating .env.production from /root/ebill..." >&2
+                cp /root/ebill/.env.production "$APP_DIR/.env.production"
+                echo "$APP_DIR/.env.production"
+                return 0
+              fi
+              if [ -s "/root/ebill/.env" ]; then
+                echo "Migrating .env from /root/ebill..." >&2
+                cp /root/ebill/.env "$APP_DIR/.env"
+                echo "$APP_DIR/.env"
+                return 0
+              fi
+              return 1
+            }
 
-            # Determine which env file to use
-            ENV_FILE=".env"
-            if [ -f ".env.production" ]; then
-              ENV_FILE=".env.production"
-            elif [ ! -f ".env" ]; then
-              echo "Error: No .env or .env.production found! Please create one on the server."
+            ENV_FILE_ABS=$(resolve_env_file) || {
+              echo "=========================================================="
+              echo "ERROR: No valid environment file found!"
+              echo ""
+              echo "Please create /root/ShubhApp/.env.production on the server"
+              echo "with all required variables. See .env.example for reference."
+              echo ""
+              echo "Required variables:"
+              echo "  DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD"
+              echo "  JWT_SECRET, BACKUP_PASSWORD, CORS_ORIGINS, REACT_APP_BACKEND_URL"
+              echo "=========================================================="
               exit 1
+            }
+
+            echo "Using environment file: $ENV_FILE_ABS"
+
+            # Validate required variables are present in env file
+            MISSING=""
+            for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL; do
+              if ! grep -qE "^${VAR}=.+" "$ENV_FILE_ABS"; then
+                MISSING="$MISSING $VAR"
+              fi
+            done
+            if [ -n "$MISSING" ]; then
+              echo "WARNING: The following required variables are missing or empty in $ENV_FILE_ABS:"
+              echo " $MISSING"
+              echo "Deployment may fail or behave unexpectedly."
             fi
-            echo "Using environment file: $ENV_FILE"
 
             echo "Pulling Docker images..."
-            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE pull
+            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
 
             echo "Cleaning up old containers..."
-            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE down --remove-orphans
+            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
             echo "Restarting services..."
-            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE up -d --remove-orphans
+            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans
 
             echo "Deployment complete!"
             docker-compose -f docker-compose.prod.yml ps
