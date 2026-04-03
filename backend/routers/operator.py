@@ -1219,6 +1219,72 @@ async def get_subscribers(
     return [SubscriberResponse(**{**s, "created_at": datetime.fromisoformat(s["created_at"])}) for s in subscribers]
 
 
+# ─── Bulk Upload: Subscribers ─────────────────────────────────────────────────
+
+@router.get("/subscribers/sample-csv")
+async def get_subscribers_sample_csv(current_user: dict = Depends(require_operator)):
+    """Download a sample CSV template for bulk subscriber upload."""
+    rows = [
+        [
+            "name", "whatsapp_number", "email", "address",
+            "plan_name_1", "billing_date_1", "discount_1",
+            "plan_name_2", "billing_date_2", "discount_2",
+            "plan_name_3", "billing_date_3", "discount_3",
+            "plan_name_4", "billing_date_4", "discount_4",
+            "plan_name_5", "billing_date_5", "discount_5",
+        ],
+        # Single plan example
+        ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",     "Monthly Basic", "1",  "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
+        # Two plans example
+        ["Priya Sharma",  "9123456789", "priya@example.com",   "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0",  "Fiber Pro",     "5",  "0", "", "", "", "", "", "", "", ""],
+        # Three plans with discount on first
+        ["Amit Patel",    "9988776655", "amit@example.com",    "789 FC Road, Pune",       "Monthly Basic", "10", "50", "Fiber Pro",     "10", "0", "Cable TV", "10", "0", "", "", "", "", ""],
+        # Single plan, no email
+        ["Sunita Verma",  "9871234567", "",                    "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
+    ]
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(rows)
+    csv_content = output.getvalue()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=subscribers_sample.csv"}
+    )
+
+
+@router.post("/subscribers/bulk-upload")
+async def bulk_upload_subscribers(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_operator)
+):
+    """Bulk upload subscribers from a CSV or XLSX file (background job)."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot upload subscribers")
+    if await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    content = await file.read()
+    filename = sanitize_filename(file.filename or "", default="subscribers").lower()
+
+    from services.job_queue_service import JobQueueService
+    job_id = await JobQueueService.enqueue_job(
+        job_type="bulk_upload_subscribers",
+        operator_id=current_user["operator_id"],
+        user_id=current_user["id"],
+        payload={
+            "filename": filename,
+            "file_content": content,
+        }
+    )
+
+    return {
+        "job_id": job_id,
+        "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
+        "status_url": f"/api/operator/jobs/{job_id}"
+    }
+
+
 @router.get("/subscribers/{subscriber_id}", response_model=SubscriberResponse)
 async def get_subscriber(subscriber_id: str, current_user: dict = Depends(require_operator)):
     subscriber = await db.subscribers.find_one(
@@ -1317,72 +1383,6 @@ async def activate_subscriber(subscriber_id: str, current_user: dict = Depends(r
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     return {"message": "Subscriber activated"}
-
-
-# ─── Bulk Upload: Subscribers ─────────────────────────────────────────────────
-
-@router.get("/subscribers/sample-csv")
-async def get_subscribers_sample_csv(current_user: dict = Depends(require_operator)):
-    """Download a sample CSV template for bulk subscriber upload."""
-    rows = [
-        [
-            "name", "whatsapp_number", "email", "address",
-            "plan_name_1", "billing_date_1", "discount_1",
-            "plan_name_2", "billing_date_2", "discount_2",
-            "plan_name_3", "billing_date_3", "discount_3",
-            "plan_name_4", "billing_date_4", "discount_4",
-            "plan_name_5", "billing_date_5", "discount_5",
-        ],
-        # Single plan example
-        ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",     "Monthly Basic", "1",  "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
-        # Two plans example
-        ["Priya Sharma",  "9123456789", "priya@example.com",   "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0",  "Fiber Pro",     "5",  "0", "", "", "", "", "", "", "", ""],
-        # Three plans with discount on first
-        ["Amit Patel",    "9988776655", "amit@example.com",    "789 FC Road, Pune",       "Monthly Basic", "10", "50", "Fiber Pro",     "10", "0", "Cable TV", "10", "0", "", "", "", "", ""],
-        # Single plan, no email
-        ["Sunita Verma",  "9871234567", "",                    "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
-    ]
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerows(rows)
-    csv_content = output.getvalue()
-    return Response(
-        content=csv_content,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=subscribers_sample.csv"}
-    )
-
-
-@router.post("/subscribers/bulk-upload")
-async def bulk_upload_subscribers(
-    file: UploadFile = File(...),
-    current_user: dict = Depends(require_operator)
-):
-    """Bulk upload subscribers from a CSV or XLSX file (background job)."""
-    if current_user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot upload subscribers")
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
-
-    content = await file.read()
-    filename = sanitize_filename(file.filename or "", default="subscribers").lower()
-
-    from services.job_queue_service import JobQueueService
-    job_id = await JobQueueService.enqueue_job(
-        job_type="bulk_upload_subscribers",
-        operator_id=current_user["operator_id"],
-        user_id=current_user["id"],
-        payload={
-            "filename": filename,
-            "file_content": content,
-        }
-    )
-
-    return {
-        "job_id": job_id,
-        "message": "Job queued. Poll /api/operator/jobs/{job_id} to check status.",
-        "status_url": f"/api/operator/jobs/{job_id}"
-    }
 
 
 # ─── Invoices ─────────────────────────────────────────────────────────────────
