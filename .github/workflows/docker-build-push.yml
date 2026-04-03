@@ -143,7 +143,16 @@ jobs:
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
             echo "Starting services..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans
+            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
+              echo "=========================================================="
+              echo "ERROR: docker-compose up failed. Dumping logs..."
+              echo "--- backend logs ---"
+              docker-compose -f docker-compose.prod.yml logs --tail=50 backend || true
+              echo "--- mongodb logs ---"
+              docker-compose -f docker-compose.prod.yml logs --tail=20 mongodb || true
+              echo "=========================================================="
+              exit 1
+            }
 
             echo "Deployment complete!"
             docker-compose -f docker-compose.prod.yml ps
