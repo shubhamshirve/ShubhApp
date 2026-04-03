@@ -88,20 +88,35 @@ jobs:
             git fetch origin $BRANCH_NAME
             git reset --hard origin/$BRANCH_NAME
 
-            # Migrate configuration if it exists in the old folder
-            if [ ! -f ".env.production" ] && [ -f "/root/ebill/.env.production" ]; then
-              echo "Migrating .env.production from /root/ebill..."
-              cp /root/ebill/.env.production .
+            # Check for existing config in current folder or migrate from old folder
+            if [ ! -f ".env.production" ] && [ ! -f ".env" ]; then
+              if [ -f "/root/ebill/.env.production" ]; then
+                echo "Migrating .env.production from /root/ebill..."
+                cp /root/ebill/.env.production .
+              elif [ -f "/root/ebill/.env" ]; then
+                echo "Migrating .env from /root/ebill..."
+                cp /root/ebill/.env .
+              fi
             fi
 
+            # Determine which env file to use
+            ENV_FILE=".env"
+            if [ -f ".env.production" ]; then
+              ENV_FILE=".env.production"
+            elif [ ! -f ".env" ]; then
+              echo "Error: No .env or .env.production found! Please create one on the server."
+              exit 1
+            fi
+            echo "Using environment file: $ENV_FILE"
+
             echo "Pulling Docker images..."
-            docker-compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE pull
 
             echo "Cleaning up old containers..."
-            docker-compose -f docker-compose.prod.yml down --remove-orphans
+            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE down --remove-orphans
 
             echo "Restarting services..."
-            docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --remove-orphans
+            docker-compose -f docker-compose.prod.yml --env-file $ENV_FILE up -d --remove-orphans
 
             echo "Deployment complete!"
             docker-compose -f docker-compose.prod.yml ps
