@@ -725,7 +725,7 @@ const OperatorSubscribers = () => {
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-800">Download Sample File</p>
-                  <p className="text-xs text-blue-600 mt-0.5">Columns: name, whatsapp_number, email, address, plan_name, billing_date, discount</p>
+                  <p className="text-xs text-blue-600 mt-0.5">One row per subscriber. Supports up to 5 plans per subscriber via plan_name_1…5, billing_date_1…5, discount_1…5 columns.</p>
                 </div>
                 <Button variant="outline" size="sm" className="shrink-0 border-blue-200 text-blue-700" onClick={handleDownloadSample}>
                   <Download className="w-3.5 h-3.5 mr-1" /> Sample CSV

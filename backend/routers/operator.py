@@ -1325,11 +1325,22 @@ async def activate_subscriber(subscriber_id: str, current_user: dict = Depends(r
 async def get_subscribers_sample_csv(current_user: dict = Depends(require_operator)):
     """Download a sample CSV template for bulk subscriber upload."""
     rows = [
-        ["name", "whatsapp_number", "email", "address", "plan_name", "billing_date", "discount"],
-        ["Rajesh Kumar",   "9876543210", "rajesh@example.com",   "123 MG Road, Mumbai",    "Monthly Basic", "1",  "0"],
-        ["Priya Sharma",   "9123456789", "priya@example.com",    "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0"],
-        ["Amit Patel",     "9988776655", "amit@example.com",     "789 FC Road, Pune",       "Monthly Basic", "10", "50"],
-        ["Sunita Verma",   "9871234567", "",                     "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0"],
+        [
+            "name", "whatsapp_number", "email", "address",
+            "plan_name_1", "billing_date_1", "discount_1",
+            "plan_name_2", "billing_date_2", "discount_2",
+            "plan_name_3", "billing_date_3", "discount_3",
+            "plan_name_4", "billing_date_4", "discount_4",
+            "plan_name_5", "billing_date_5", "discount_5",
+        ],
+        # Single plan example
+        ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",     "Monthly Basic", "1",  "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
+        # Two plans example
+        ["Priya Sharma",  "9123456789", "priya@example.com",   "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0",  "Fiber Pro",     "5",  "0", "", "", "", "", "", "", "", ""],
+        # Three plans with discount on first
+        ["Amit Patel",    "9988776655", "amit@example.com",    "789 FC Road, Pune",       "Monthly Basic", "10", "50", "Fiber Pro",     "10", "0", "Cable TV", "10", "0", "", "", "", "", ""],
+        # Single plan, no email
+        ["Sunita Verma",  "9871234567", "",                    "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
     ]
     output = io.StringIO()
     writer = csv.writer(output)

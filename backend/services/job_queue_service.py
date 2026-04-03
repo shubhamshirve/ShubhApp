@@ -321,15 +321,44 @@ class JobQueueService:
         for idx, row in enumerate(rows, start=2):
             name = row.get("name", "").strip()
             whatsapp = row.get("whatsapp_number", "").strip()
-            plan_name = row.get("plan_name", "").strip().lower()
 
             if not name or not whatsapp:
                 errors.append({"row": idx, "reason": "name and whatsapp_number are required"})
                 continue
 
-            plan = plan_map.get(plan_name)
-            if not plan:
-                errors.append({"row": idx, "name": name, "reason": f"Plan '{row.get('plan_name', '')}' not found"})
+            # Parse up to 5 plan slots (plan_name_1..5)
+            plans = []
+            plan_errors = []
+            for i in range(1, 6):
+                pname = row.get(f"plan_name_{i}", "").strip()
+                if not pname:
+                    continue
+                plan = plan_map.get(pname.lower())
+                if not plan:
+                    plan_errors.append(f"Plan '{pname}' not found")
+                    continue
+                try:
+                    bdate = max(1, min(28, int(row.get(f"billing_date_{i}", 1) or 1)))
+                except (ValueError, TypeError):
+                    bdate = 1
+                try:
+                    disc = float(row.get(f"discount_{i}", 0) or 0)
+                except (ValueError, TypeError):
+                    disc = 0.0
+                plans.append({
+                    "plan_id": plan["id"],
+                    "plan_name": plan["name"],
+                    "billing_date": bdate,
+                    "discount": disc,
+                    "status": "active",
+                })
+
+            if plan_errors:
+                errors.append({"row": idx, "name": name, "reason": "; ".join(plan_errors)})
+                continue
+
+            if not plans:
+                errors.append({"row": idx, "name": name, "reason": "At least one plan (plan_name_1) is required"})
                 continue
 
             # Check duplicate WhatsApp
@@ -340,25 +369,13 @@ class JobQueueService:
                 skipped.append({"row": idx, "name": name, "reason": f"WhatsApp {whatsapp} already exists"})
                 continue
 
-            billing_date = int(row.get("billing_date", 1) or 1)
-            billing_date = max(1, min(28, billing_date))
-            discount = float(row.get("discount", 0) or 0)
-
             subscriber = {
                 "id": generate_id(),
                 "name": name,
                 "whatsapp_number": whatsapp,
                 "email": row.get("email", "") or None,
                 "address": row.get("address", "") or None,
-                "plans": [
-                    {
-                        "plan_id": plan["id"],
-                        "plan_name": plan["name"],
-                        "billing_date": billing_date,
-                        "discount": discount,
-                        "status": "active",
-                    }
-                ],
+                "plans": plans,
                 "status": "active",
                 "operator_id": operator_id,
                 "created_at": now.isoformat(),
