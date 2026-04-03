@@ -75,9 +75,11 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           envs: BRANCH_NAME
+          command_timeout: 30m
           script: |
             set -e
             APP_DIR="/root/ShubhApp"
+            DEPLOY_LOG="$APP_DIR/deploy.log"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
@@ -97,28 +99,21 @@ jobs:
             # Fallback: migrate from old /root/ebill location
             # ---------------------------------------------------------------
             resolve_env_file() {
-              # Try .env.production first (non-empty)
               if [ -s "$APP_DIR/.env.production" ]; then
-                echo "$APP_DIR/.env.production"
-                return 0
+                echo "$APP_DIR/.env.production"; return 0
               fi
-              # Try .env (non-empty)
               if [ -s "$APP_DIR/.env" ]; then
-                echo "$APP_DIR/.env"
-                return 0
+                echo "$APP_DIR/.env"; return 0
               fi
-              # Attempt migration from old location
               if [ -s "/root/ebill/.env.production" ]; then
                 echo "Migrating .env.production from /root/ebill..." >&2
                 cp /root/ebill/.env.production "$APP_DIR/.env.production"
-                echo "$APP_DIR/.env.production"
-                return 0
+                echo "$APP_DIR/.env.production"; return 0
               fi
               if [ -s "/root/ebill/.env" ]; then
                 echo "Migrating .env from /root/ebill..." >&2
                 cp /root/ebill/.env "$APP_DIR/.env"
-                echo "$APP_DIR/.env"
-                return 0
+                echo "$APP_DIR/.env"; return 0
               fi
               return 1
             }
@@ -126,20 +121,17 @@ jobs:
             ENV_FILE_ABS=$(resolve_env_file) || {
               echo "=========================================================="
               echo "ERROR: No valid environment file found!"
-              echo ""
               echo "Please create /root/ShubhApp/.env.production on the server"
               echo "with all required variables. See .env.example for reference."
-              echo ""
-              echo "Required variables:"
-              echo "  DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD"
-              echo "  JWT_SECRET, BACKUP_PASSWORD, CORS_ORIGINS, REACT_APP_BACKEND_URL"
+              echo "Required: DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD"
+              echo "          JWT_SECRET, BACKUP_PASSWORD, CORS_ORIGINS, REACT_APP_BACKEND_URL"
               echo "=========================================================="
               exit 1
             }
 
             echo "Using environment file: $ENV_FILE_ABS"
 
-            # Validate required variables are present in env file
+            # Validate required variables are present and non-empty
             MISSING=""
             for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL; do
               if ! grep -qE "^${VAR}=.+" "$ENV_FILE_ABS"; then
@@ -147,18 +139,21 @@ jobs:
               fi
             done
             if [ -n "$MISSING" ]; then
-              echo "WARNING: The following required variables are missing or empty in $ENV_FILE_ABS:"
-              echo " $MISSING"
+              echo "WARNING: Missing or empty variables in $ENV_FILE_ABS: $MISSING"
               echo "Deployment may fail or behave unexpectedly."
             fi
 
-            echo "Pulling Docker images..."
+            # ---------------------------------------------------------------
+            # PULL images first (can be slow — done synchronously so errors
+            # are visible, but SSH timeout is raised to 30 min above)
+            # ---------------------------------------------------------------
+            echo "Pulling Docker images (this may take several minutes)..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
 
-            echo "Cleaning up old containers..."
+            echo "Stopping old containers..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
-            echo "Restarting services..."
+            echo "Starting services..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans
 
             echo "Deployment complete!"
