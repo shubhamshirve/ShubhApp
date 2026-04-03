@@ -151,7 +151,8 @@ const OperatorPlans = () => {
     try {
       const res = await authAxios.get("/operator/plans/sample-csv", { responseType: "blob" });
       const url = URL.createObjectURL(res.data);
-      const a = document.createElement("a"); a.href = url; a.download = "plans_sample.csv"; a.click();
+      const a = document.createElement("a"); a.href = url; a.download = "plans_sample.csv";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch { toast.error("Failed to download sample"); }
   };

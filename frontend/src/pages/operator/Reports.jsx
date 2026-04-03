@@ -157,7 +157,7 @@ const OperatorReports = () => {
     const a = document.createElement("a");
     a.href = url;
     a.download = `invoices_${format(dateRange.start, "yyyyMMdd")}_${format(dateRange.end, "yyyyMMdd")}.csv`;
-    a.click();
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success("CSV exported");
   };
@@ -177,7 +177,7 @@ const OperatorReports = () => {
     const a = document.createElement("a");
     a.href = url;
     a.download = `gst_report_${format(dateRange.start, "yyyyMMdd")}_${format(dateRange.end, "yyyyMMdd")}.csv`;
-    a.click();
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success("GST report exported");
   };

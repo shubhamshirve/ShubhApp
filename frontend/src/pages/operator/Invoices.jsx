@@ -236,7 +236,7 @@ const OperatorInvoices = () => {
       const a = document.createElement("a");
       a.href = url;
       a.download = "invoices_sample.csv";
-      a.click();
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
       toast.error("Failed to download sample");
