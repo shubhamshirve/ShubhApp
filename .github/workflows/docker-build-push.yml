@@ -77,7 +77,7 @@ jobs:
           envs: BRANCH_NAME
           script: |
             set -e
-            cd /root/ShubhApp
+            cd /root/ebill
 
             echo "Pulling latest code for branch $BRANCH_NAME..."
             git fetch origin $BRANCH_NAME
