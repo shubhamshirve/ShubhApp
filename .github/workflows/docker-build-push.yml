@@ -77,7 +77,12 @@ jobs:
           envs: BRANCH_NAME
           script: |
             set -e
-            cd /root/ebill
+            cd /root/ShubhApp || { mkdir -p /root/ShubhApp && cd /root/ShubhApp; }
+            if [ ! -d ".git" ]; then
+              echo "Initializing git repository in /root/ShubhApp..."
+              git init
+              git remote add origin https://github.com/shubhamshirve/ShubhApp.git
+            fi
 
             echo "Pulling latest code for branch $BRANCH_NAME..."
             git fetch origin $BRANCH_NAME
