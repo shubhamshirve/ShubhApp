@@ -88,6 +88,12 @@ jobs:
             git fetch origin $BRANCH_NAME
             git reset --hard origin/$BRANCH_NAME
 
+            # Migrate configuration if it exists in the old folder
+            if [ ! -f ".env.production" ] && [ -f "/root/ebill/.env.production" ]; then
+              echo "Migrating .env.production from /root/ebill..."
+              cp /root/ebill/.env.production .
+            fi
+
             echo "Pulling Docker images..."
             docker-compose -f docker-compose.prod.yml pull
 
