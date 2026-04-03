@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - live
-      - V7.16.6
-      - V8.3
   workflow_dispatch:
 
 jobs:
