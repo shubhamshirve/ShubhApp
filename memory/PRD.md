@@ -1,186 +1,56 @@
-# SaaS Billing Platform - PRD
+# E-Bill — Product Requirements Document
 
 ## Product Summary
 
-E-Bill is a multi-tenant billing platform for ISP, broadband, cable, and similar subscription operators. It supports platform admins, business operators, and staff users with role-based access, invoicing, subscription billing, reminders, wallets, support tickets, and operator-branded public invoices.
+Multi-tenant SaaS billing platform for ISP, broadband, and cable operators. Supports platform admins, business operators, and staff with role-based access.
 
-## Core Personas
+## Roles
 
-### Admin
-- manages operators, SaaS plans, addons, wallets, reports, settings, support, and platform-level controls
+| Role | Key Capabilities |
+|------|----------------|
+| **Admin** | Manage operators, SaaS plans, addons, wallets, payment gateways, reports, impersonation, platform settings |
+| **Operator** | Manage subscribers, plans, invoices, staff, settings, subscription, reports |
+| **Staff** | Operator-side access with no destructive delete permissions |
 
-### Operator
-- manages subscribers, plans, invoices, staff, settings, subscription, reports, reminders, and branded billing workflows
+## Tech Stack
 
-### Staff
-- works inside an operator account with restricted permissions and no destructive delete access
+- **Frontend:** React, React Router, Axios, Tailwind, shadcn/ui (Radix)
+- **Backend:** FastAPI, Motor/PyMongo, APScheduler
+- **Auth:** JWT (single active session per user), admin impersonation
+- **Infra:** Docker Compose, Caddy, MongoDB 4.4
 
-## Technical Architecture
+## Core Business Rules
 
-- Frontend: React, React Router, Axios, Tailwind, Radix/shadcn-style components
-- Backend: FastAPI, Motor/MongoDB, APScheduler
-- Auth: JWT-based auth with role support and admin impersonation
-- Infra: Docker Compose, Caddy, MongoDB
+- One active session per user — new login invalidates previous token
+- Pending invoices are editable; paid invoices protected from operator cancellation
+- Password recovery via email OTP only (WhatsApp discontinued)
+- Public online payments store mode as `"online"`
+- Subscriber plans stored as embedded array (up to 5 per subscriber)
+- Bulk subscriber CSV: one row per subscriber, plan columns suffixed `_1` through `_5`
+- Wallet crediting is GST-exclusive
+- Operator payment gateway keys enforced on public payments (no platform fallback)
+- Staff cannot perform destructive deletes
 
-## Current Product Capabilities
+## Key Workflows
 
-### Authentication and Access
-- admin/operator/staff login
-- admin impersonation of operators
-- configurable session timeout
-- single active session per user
-- forced invalidation of previous session on new login
-- email-based registration OTP
-- email-only forgot-password OTP
-- password changes and resets invalidate existing sessions
+1. **Subscriber lifecycle:** Create (with 1–5 plans) → Invoice auto-generated → Reminder sent → Expiry check → Renewal
+2. **Payment flow:** Invoice generated → Payment link shared → Payment via Razorpay → Status updated → Receipt (planned)
+3. **Bulk upload:** Download sample CSV → Fill data → Upload → Background job → Poll for result
+4. **Admin impersonation:** Admin selects operator → Assumes operator session → Return to admin
 
-### Operator Billing Workflows
-- create invoices manually
-- generate multi-line invoices
-- edit invoices while status is `pending`
-- mark invoices `paid`, `overdue`, or `cancelled` with business-rule enforcement
-- require payment mode and payment date when operator manually marks an invoice paid
-- prevent operator cancellation of already-paid invoices
-- allow admin cancellation of paid invoices
-- generate public invoice URLs using `invoice_number`
-- preserve fallback for legacy internal-id public invoice links
+## Scheduled Automation (IST, admin-configurable)
 
-### Subscriber and Plan Management
-- subscribers can hold multiple active plans
-- plan-wise billing dates and discounts
-- invoice grouping for common billing dates
-- operator plans CRUD
-- bulk upload support for key entities
+| Job | Default Time |
+|-----|-------------|
+| Auto Backup | 03:00 |
+| Expiry Check | 00:05 |
+| Invoice Generation | 08:00 |
+| Reminder Processing | 10:00 |
+| Wallet Balance Check | 09:00 |
 
-### Branding and Invoice Presentation
-- operator invoice settings
-- logo upload
-- field visibility toggles
-- branded public invoice view
-- branded PDF/print output using shared invoice view data
-- invoice settings address fallback from operator registration/profile data
-- invoice logo preview/persistence/rendering using backend-served uploaded assets
+## Current Gaps
 
-### Dashboard and Analytics
-- monthly invoice value
-- received value this month
-- pending value this month
-- total pending value on the operator dashboard
-
-### Payments, Wallets, and Platform Billing
-- SaaS subscription checkout
-- operator wallet management
-- wallet top-up with GST-exclusive credit logic
-- admin wallet credit/debit/suspend controls
-- admin-assigned operator payment gateway credentials
-- payment links for invoices
-- public online payment verification
-- referral codes automatically generated for admin-created operators
-- admin-managed referral benefits and reward settings
-
-### Platform Controls
-- maintenance mode with banner/read-only behavior
-- global reminder settings
-- IST-based cron scheduling
-- admin-configurable cron timing controls with live APScheduler reschedule on save
-- scheduler startup logging and async APScheduler registration for better VPS reliability
-- audit logs
-- backup and restore
-- support tickets
-- Resend email delivery with SMTP fallback transport support
-- installable web app support through manifest and service worker
-- admin settings and email settings refresh persisted values after save
-- auto-backup runs surface in the backup list after completion
-- admin profile/name management
-- browser/app cache clear tools for admin and operator dashboards
-- automatic cache clear on login/session switch
-- Resend and SMTP test mail actions
-- SMTP fallback compatibility when `AUTH` is unavailable
-- operator invoice bulk upload with sample CSV/XLSX support
-- backend-served `/api/uploads` URLs for uploaded invoice assets
-- operator dashboard monthly value stats
-- SMTP implicit SSL and clearer error handling
-- removal of legacy and unused scripts (PostHog and error handler) from `index.html` for better performance
-
-
-### Discovery and Distribution
-- SEO-ready homepage metadata
-- Open Graph and Twitter preview metadata for shared links
-- JSON-LD schema for organization and software application identity
-- install icons and mobile web app metadata for add-to-home-screen behavior
-
-## Scheduled Jobs
-
-The scheduler now uses `Asia/Kolkata`, with admin-editable default times.
-
-| Job | IST Time | Purpose |
-|-----|----------|---------|
-| Auto Backup | 03:00 | daily backup |
-| Expiry Check | 00:05 | mark expired subscriptions/trials |
-| Invoice Generation | 08:00 | generate upcoming invoices |
-| Wallet Check | 09:00 | low balance checks and actions |
-| Reminder Processing | 10:00 | process reminders |
-
-## Business Rules
-
-### Session Rules
-- one user account may have only one active session at a time
-- new login invalidates old session
-- password reset/change also invalidates prior sessions
-
-### Invoice Rules
-- pending invoices can be edited
-- operator can mark pending invoice paid only after supplying payment mode and payment date
-- operator cannot cancel paid invoices
-- admin can cancel paid invoices
-- public online payment marks payment mode as `online`
-
-### Recovery Rules
-- forgot-password recovery OTP is email-only
-- WhatsApp is no longer available as a recovery OTP channel
-
-## Important APIs
-
-### Auth
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `PUT /api/auth/change-password`
-- `POST /api/auth/forgot-password`
-- `POST /api/auth/verify-recovery-otp`
-- `POST /api/auth/reset-password`
-- `POST /api/auth/resend-recovery-otp`
-- `GET /api/auth/app-state`
-
-### Operator Invoices
-- `POST /api/operator/invoices`
-- `GET /api/operator/invoices`
-- `PUT /api/operator/invoices/{invoice_id}`
-- `PUT /api/operator/invoices/{invoice_id}/status`
-- `POST /api/operator/invoices/{invoice_id}/payment-link`
-
-### Public Invoice
-- `GET /api/public/invoice/{invoice_ref}`
-- `POST /api/public/invoice/{invoice_ref}/verify-payment`
-- `GET /api/public/invoice/{invoice_ref}/pdf`
-
-## Current Gaps / Next Product Work
-
-- admin-managed payment gateway assignment and operator gateway-setting removal
-- dedicated payment receipt generation and delivery
-- broader email + WhatsApp confirmation workflows
-- richer import/export coverage
-- deeper reporting and GST reconciliation
-
-## Version Notes
-
-This PRD is aligned with the codebase through:
-- `V7.14-6` branch creation
-- `V7.14-7` feature delivery
-- `V7.14-8` documentation alignment
-- `V7.14-9` scheduler reliability fix
-- `V7.14-10` app title, email fallback, and cron settings delivery
-- `V7.14-11` metadata, previews, and web app installability delivery
-- `V7.14-12` cache clearing, admin profile, and email test tooling delivery
-- `V7.14-13` invoice bulk upload, address fallback, and logo rendering delivery
-- `V7.14-14` dashboard stats, SMTP stability, and referral automation delivery
-- unnecessary script cleanup (PostHog, error handler) from `index.html` delivery
+- Payment receipt generation and delivery
+- Email announcement broadcasts
+- GST reconciliation reporting
+- WhatsApp Business API notifications (infrastructure ready, not wired to UI)

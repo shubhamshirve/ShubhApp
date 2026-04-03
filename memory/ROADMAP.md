@@ -1,281 +1,37 @@
-# E-Bill Platform - Roadmap
+# E-Bill Platform — Roadmap
 
-## Completed
-- [x] Referral + wallet system
-- [x] SaaS plan revamp and simplified pricing
-- [x] Support ticket system
-- [x] Landing page removal and login redirect
-- [x] KYC fields in registration and admin operator management
-- [x] Maintenance mode
-- [x] Global reminder controls and IST cron scheduling
-- [x] Multi-plan subscribers and multi-line invoices
-- [x] Admin wallet actions
-- [x] Invoice branding and public invoice consistency
-- [x] Single-session enforcement and stronger invoice payment controls
+## Completed (as of V8.8)
 
----
-
-## Current Release State
-
-Latest shipped functional branch: `V7.15-8`
-
-What is now live in code:
-- operator referral code auto-generation for admin-created and legacy operators
-- logo upload reorganization to root `/uploads` folder
-- subscription renewal window restriction (3 days before to expiry date)
-- wallet topup button on subscription page
-- wallet transaction history with meaningful description display
-- announcements enhanced to 6-per-week limit
-- announcements email delivery via Resend API
-- weekly announcements quota display and counter
-- single active session per user
-- email-only password recovery OTP
-- pending invoice editing
-- paid invoice protection against operator cancellation
-- payment mode and payment date confirmation when operators mark invoices as paid
-- hardened APScheduler startup for VPS cron reliability with explicit job registration logging
-- app title update to `E-Bill | Invoice Automation Software`
-- Resend plus SMTP fallback email delivery
-- admin-configurable cron timings with live scheduler reschedule
-- richer SEO metadata and social preview tags
-- installable web app support via manifest and service worker
-- cron settings persistence refresh in the admin UI
-- auto-backup list refresh after cron completion
-- email settings refresh after save/reload
-- admin payment gateway assignment from the admin dialog
-- operator payment gateway UI removed
-- browser cache clear tools in admin/operator settings
-- automatic cache clear on login/session switch
-- admin display-name updates from settings
-- Resend and SMTP test mail actions
-- SMTP fallback compatibility when AUTH is unavailable
-- operator invoice bulk upload with sample CSV/XLSX flow
-- invoice settings address fallback from registration/profile data
-- invoice logo preview/persistence/render fixes
-- backend-served `/api/uploads` asset URLs
-- operator dashboard monthly invoice/value stats
-- SMTP test/send stability improvements including implicit SSL on port 465
-- admin-created operator referral-code generation
-- admin-managed referral benefits/settings
-- removed unnecessary legacy scripts (PostHog, PerformanceServerTiming handler) from `index.html` for performance
-- migrated sensitive environment variables (JWT, Razorpay, Resend, WhatsApp) from `.env` to database-backed Env Tab
-- centralized environment service with database-first priority and automatic fallback
-- refactored WhatsApp and Razorpay services with async factory functions for dynamic configuration
-- updated email and cron services to utilize database-stored platform secrets
-
-
-What is still mostly pending:
-- deeper payment receipt/confirmation flows
-- broader messaging improvements
-- import/export polishing
-- advanced reporting and reconciliation work
+- [x] Multi-tenant auth (admin / operator / staff) with single-session JWT
+- [x] Email OTP registration and password recovery
+- [x] Multi-plan subscribers (up to 5 plans per subscriber)
+- [x] Multi-line invoices with branding and public links
+- [x] Bulk upload: subscribers (multi-plan), plans, invoices
+- [x] Wallet management with GST-exclusive crediting
+- [x] Razorpay payment gateway per operator
+- [x] Admin impersonation and return flow
+- [x] Scheduled jobs (IST, admin-configurable): backup, expiry, invoices, reminders, wallet check
+- [x] Support tickets, audit logs, automated backups
+- [x] Maintenance mode, cache management
+- [x] Referral codes, discount codes
+- [x] Installable PWA
+- [x] Staff management with restricted permissions
+- [x] Docker CI/CD (GitHub Actions → Docker Hub → production)
+- [x] WhatsApp WebJS decommissioned (V8.6)
 
 ---
 
-## Active Priorities
+## Planned
 
-### 1. CI/CD Pipeline Implementation
-- Status: `next`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `M`
-- Scope:
-  - configure GitHub Actions for automated testing and deployment
-  - implement secure secret management during build/deploy
-  - streamline the deployment from dev to production
-- Why next:
-  - environment variables are now centralized in the database
-  - the platform is ready for more automated and frequent deployments
-  - follows the user's explicit request for a faster deployment flow
+### P1 — High Priority
+- [ ] **Payment Receipts** — Generate and deliver payment confirmation receipts to subscribers
+- [ ] **Email Announcements** — Bulk email delivery to subscriber segments
 
-### 2. Payment Receipts and Confirmation Delivery
-- Status: `planned`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `M`
-- Scope:
-  - generate payment receipt documents for subscriber payments and SaaS/platform payments where relevant
-  - expose receipt download or retrieval in UI
-  - optionally send receipt or payment confirmation through WhatsApp/email
-- Why next:
-  - invoice payment mode/date capture is now stored for manual payments
-  - public online payment verification is already in place
-  - the system now has enough payment metadata to support receipt generation cleanly
+### P2 — Medium Priority
+- [ ] **GST Reconciliation** — Tax reporting and reconciliation exports
+- [ ] **Advanced Analytics** — Richer dashboards, churn analysis, revenue trends
+- [ ] **Import/Export Polish** — Better error reporting in bulk uploads, download results
 
-### 2. Messaging and Reporting Polish
-- Status: `planned`
-- Priority: `P2`
-- Importance: `Medium`
-- Effort: `S-M`
-- Scope:
-  - send announcements by email in addition to WhatsApp where configured
-  - review message template consistency across reminders, invoices, and confirmations
-  - hide GST-specific reporting UX where operator GST is not enabled
-
-### 2B. Payment Gateway Delegation Cleanup
-- Status: `completed`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `S-M`
-- Scope:
-  - allow admins to assign payment gateway keys directly to an operator from the admin dialog
-  - remove operator-side payment gateway settings from the operator UI
-
-### 2C. Cache Refresh and Admin Email Tooling
-- Status: `completed`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `S-M`
-- Scope:
-  - added a UI path to clear cached browser/app data
-  - allowed admin name updates
-  - added test email actions for Resend and fallback SMTP
-  - made fallback SMTP tolerant of servers without AUTH support
-
-### 2D. Invoice Bulk Upload and Branding Fixes
-- Status: `completed`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `S-M`
-- Scope:
-  - added operator invoice bulk upload with sample CSV/XLSX flow
-  - added invoice address fallback from registration/profile data
-  - fixed invoice logo preview, persistence, and public rendering
-  - served uploaded assets through backend `/api/uploads` URLs
-
-### 2E. Operator Dashboard and Referral Management
-- Status: `completed`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `S-M`
-- Scope:
-  - added monthly invoice value, received value this month, pending value this month, and total pending value to the operator dashboard
-  - hardened SMTP sending/testing and added implicit SSL support on port 465
-  - generated referral codes automatically for admin-created operators
-  - moved referral benefits/settings into admin general settings and wired referral logic to those values
-
-### 2A. Delivery Reliability and Scheduler Configuration
-- Status: `completed`
-- Priority: `P1`
-- Importance: `High`
-- Effort: `M`
-- Scope:
-  - changed app/browser title to the requested product wording
-  - added fallback mail delivery when Resend API fails
-  - exposed cron timing configuration in admin settings
-  - fixed settings refresh so saved cron/email values reload correctly
-  - fixed auto-backup visibility in the backup list
-
-### 3. Import/Export Enhancements
-- Status: `planned`
-- Priority: `P2`
-- Importance: `Medium`
-- Effort: `S-M`
-- Scope:
-  - improve CSV/XLSX coverage where gaps remain
-  - standardize export formatting and filenames
-  - improve import validation feedback
-
-### 4. GST Reconciliation and Tax Reporting
-- Status: `deferred`
-- Priority: `P3`
-- Importance: `Medium`
-- Effort: `L`
-- Scope:
-  - R1 / 3B style reconciliation outputs
-  - tax-domain correctness review before rollout
-
-### 5. Advanced Analytics and Operational Reporting
-- Status: `deferred`
-- Priority: `P3`
-- Importance: `Medium`
-- Effort: `M-L`
-- Scope:
-  - richer dashboards
-  - business trends and payment analytics
-  - operator-side deeper reporting
-
----
-
-## Completed Work Notes
-
-### Wallet and Billing Integrity
-- wallet top-up is GST-exclusive for crediting
-- stored breakup fields support auditability
-- referral rewards use credited amount basis
-
-### Auth and OTP Hardening
-- registration OTP via email
-- forgot-password OTP via email
-- resend throttling and invalid-attempt limits
-- demo hints removed from frontend
-
-### Session and Role Security
-- configurable JWT timeout exists
-- destructive staff restrictions remain enforced
-- only one active login session is allowed per user
-- password changes and resets invalidate existing sessions
-
-### Invoices
-- invoice-number public links with legacy fallback
-- branding, logo upload, field visibility settings
-- multi-line invoice creation and rendering
-- pending invoice edit support
-- mark-paid confirmation with payment metadata capture
-- operator cannot cancel paid invoice; admin can
-
-### Platform Controls
-- maintenance mode
-- global reminders
-- IST-based cron scheduling
-- admin wallet controls
-- index.html script cleanup (PostHog, error handler)
-
-
----
-
-## Pending Validation Themes
-
-These are implemented in code but still need more manual/live verification in some cases:
-
-- single-session login behavior across two devices/browsers
-- admin cancellation path for already-paid invoices
-- pending-invoice edit regression with line items and totals
-- manual payment mode/date storage and reporting consistency
-- provider-backed OTP delivery using valid email credentials
-- Resend-to-SMTP fallback email delivery with valid credentials
-- admin cron-setting persistence and live scheduler reschedule behavior
-- backup list refresh behavior after scheduled auto-backup runs
-- email settings refresh behavior after save/reload
-- link previews across social/messaging platforms
-- install prompt/add-to-home-screen behavior on supported browsers
-- admin payment gateway assignment regression and payment-link verification
-- operator invoice bulk upload sample-file flow
-- invoice address fallback when company address is empty
-- invoice logo preview/render behavior on operator/public pages
-- backend `/api/uploads` asset serving
-- operator dashboard monthly value stats
-- SMTP stability and implicit SSL test coverage
-- admin-created operator referral-code generation
-- referral benefits/settings calculations
-- public payment and branded PDF/print receipt consistency
-
-Detailed validation backlog is tracked in [PENDING_TESTS.md](/d:/eBill/memory/PENDING_TESTS.md).
-
----
-
-## Recommended Next Execution Order
-
-1. Verify `V7.14-11` flows in browser and with real/test providers.
-2. Build payment receipt generation on top of the new stored payment metadata.
-3. Expand confirmation delivery through WhatsApp/email.
-4. Finish messaging/reporting polish.
-5. Revisit reconciliation and analytics after receipt and reporting layers stabilize.
-
----
-
-## Risk Notes
-
-- Single-session auth is security-positive, but any flow issuing tokens must continue to set `active_session_id` correctly.
-- Invoice status changes now carry more business rules; future admin invoice UI must respect operator/admin differences.
-- Receipt generation should reuse the existing public invoice/PDF stack where possible to avoid duplicate payment formatting logic.
+### P3 — Deferred
+- [ ] **WhatsApp Business API** — Template-based notifications (infrastructure exists in `whatsapp_service.py`)
+- [ ] **Payment Receipt PDF** — Branded PDF receipts on payment confirmation
