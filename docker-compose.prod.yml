@@ -203,33 +203,6 @@ services:
         max-size: "50m"
         max-file: "10"
 
-  # WhatsApp Microservice (Production)
-  whatsapp-service:
-    image: ${DOCKER_USERNAME:-teasyservices}/ebill-whatsapp-webjs:${VERSION:-latest}
-    restart: always
-    depends_on:
-      backend:
-        condition: service_healthy
-    environment:
-      # Optional: Add any whatsapp-specific env here
-      # We rely on backend for core settings as per V7.15 optimization
-      BACKEND_URL: http://backend:8000
-    networks:
-      - ebill
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512M
-        reservations:
-          cpus: "0.05"
-          memory: 128M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "10"
-
 volumes:
   mongo_data:
     driver: local

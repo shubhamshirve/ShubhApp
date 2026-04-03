@@ -49,17 +49,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push whatsapp-service
-        uses: docker/build-push-action@v5
-        with:
-          context: ./whatsapp-service
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ebill-whatsapp-webjs:latest
-            ${{ secrets.DOCKER_USERNAME }}/ebill-whatsapp-webjs:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
