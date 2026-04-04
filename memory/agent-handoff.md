@@ -1,8 +1,8 @@
 # Agent Handoff — E-Bill Platform
 
-**Last Updated:** 2026-04-03
+**Last Updated:** 2026-04-04
 **Active Branch:** `live` (auto-deploys to production)
-**Latest Version:** V8.8
+**Latest Version:** V8.9
 
 ---
 
@@ -27,6 +27,7 @@
 ### Invoices
 - Multi-line invoices with operator branding
 - Public links and public payment verification
+- Manual payment link generation for operators
 - Bulk upload via CSV/XLSX
 
 ### Payments

@@ -623,7 +623,7 @@ const OperatorInvoices = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {invoice.status !== "paid" && !invoice.payment_link && (features?.payment_gateway || features?.custom_payment_gateway) && (
+                            {invoice.status !== "paid" && !invoice.payment_link && features?.payment_gateway && (
                               <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
                                 <Link2 className="w-4 h-4 mr-2 text-blue-600" />
                                 Generate Payment Link

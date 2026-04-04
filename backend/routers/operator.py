@@ -664,13 +664,6 @@ async def verify_checkout_payment(
         active = operator.get("active_addons", [])
         addon_expiry = operator.get("addon_expiry", {})
         new_code = order["item_code"]
-        # Mutual exclusion: payment_gateway and custom_payment_gateway cannot coexist
-        if new_code == "payment_gateway" and "custom_payment_gateway" in active:
-            active.remove("custom_payment_gateway")
-            addon_expiry.pop("custom_payment_gateway", None)
-        elif new_code == "custom_payment_gateway" and "payment_gateway" in active:
-            active.remove("payment_gateway")
-            addon_expiry.pop("payment_gateway", None)
         if new_code not in active:
             active.append(new_code)
         # Expiry = current subscription end date
@@ -1735,23 +1728,20 @@ async def create_payment_link(invoice_id: str, current_user: dict = Depends(requ
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     # Determine which payment gateway to use:
-    # - custom_payment_gateway addon → operator's own keys
-    # - payment_gateway addon → platform keys
-    has_custom_pg = await _has_addon(current_user["operator_id"], "custom_payment_gateway")
-    has_platform_pg = await _has_addon(current_user["operator_id"], "payment_gateway")
+    # - payment_gateway addon with operator's own configured keys → operator's own keys
+    # - payment_gateway addon without own keys → platform keys
+    if not await _has_addon(current_user["operator_id"], "payment_gateway"):
+        raise HTTPException(status_code=403, detail="Payment gateway add-on is not enabled. Please activate the 'Payment Gateway' add-on.")
 
-    if has_custom_pg:
+    operator_gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"], "is_active": True}, {"_id": 0})
+    if operator_gateway:
         # Use operator's own gateway keys
-        gateway = await db.payment_gateways.find_one({"operator_id": current_user["operator_id"]}, {"_id": 0})
-        if not gateway or not gateway.get("is_active"):
-            raise HTTPException(status_code=400, detail="Custom payment gateway not configured. Please contact admin to assign your gateway keys.")
-    elif has_platform_pg:
+        gateway = operator_gateway
+    else:
         # Use platform gateway keys
         gateway = await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
         if not gateway:
             raise HTTPException(status_code=400, detail="Platform payment gateway not configured. Please contact admin.")
-    else:
-        raise HTTPException(status_code=403, detail="Payment gateway add-on is not enabled. Please activate 'Payment Gateway' or 'Custom Payment Gateway' add-on.")
 
     subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
     try:

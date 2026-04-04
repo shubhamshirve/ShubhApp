@@ -240,8 +240,7 @@ async def seed_data():
     # Required addons
     required_addons = [
         {"code": "audit_log",              "name": "Audit Logs",               "price": 100, "description": "Full audit trail of all user actions"},
-        {"code": "payment_gateway",        "name": "Payment Gateway",          "price": 100, "description": "Collect online payments from subscribers"},
-        {"code": "custom_payment_gateway", "name": "Custom Payment Gateway",   "price": 100, "description": "Use your own Razorpay/Cashfree credentials"},
+        {"code": "payment_gateway",        "name": "Payment Gateway",          "price": 100, "description": "Collect online payments from subscribers (platform or own Razorpay/Cashfree credentials)"},
         {"code": "announcement",           "name": "Announcements",            "price": 100, "description": "Send bulk announcements (max 3/day)"},
         {"code": "whatsapp_notifications", "name": "WhatsApp Notifications",   "price": 100, "description": "Send WhatsApp invoices, reminders and notifications to subscribers"},
         {"code": "staff_management",       "name": "Staff Management",         "price": 100, "description": "Allow up to 5 staff members for your account"},

@@ -27,15 +27,19 @@ async def _has_addon(operator_id: str, addon_code: str) -> bool:
 
 
 async def _get_payment_gateway_for_operator(operator_id: str):
-    """Determine which payment gateway keys to use for an operator's subscriber payments."""
-    has_pg = await _has_addon(operator_id, "payment_gateway")
+    """Determine which payment gateway keys to use for an operator's subscriber payments.
 
-    if has_pg:
-        gateway = await db.payment_gateways.find_one({"operator_id": operator_id}, {"_id": 0})
-        if gateway and gateway.get("is_active"):
-            return gateway
+    If the operator has the payment_gateway addon and their own active keys configured,
+    those keys are used. Otherwise falls back to the platform gateway keys.
+    """
+    if not await _has_addon(operator_id, "payment_gateway"):
+        return None
 
-    return None
+    operator_gateway = await db.payment_gateways.find_one({"operator_id": operator_id, "is_active": True}, {"_id": 0})
+    if operator_gateway:
+        return operator_gateway
+
+    return await db.payment_gateways.find_one({"is_platform_gateway": True, "is_active": True}, {"_id": 0})
 
 
 # ── GET /public/invoice/{invoice_ref} ─────────────────────────────────────────

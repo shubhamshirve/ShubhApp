@@ -1,5 +1,12 @@
 # E-Bill Platform — CHANGELOG
 
+## 2026-04-04
+
+### V8.9: Payment Link Generation & UI Enhancements
+- **Manual Payment Links:** Operators can now generate manual payment links for individual invoices via the Invoices page.
+- **Dynamic Payment Routing:** Integrated operator-specific gateway credentials for manual payment links to ensure correct fund routing.
+- **Invoice UI Update:** Added "Generate Payment Link" action button to the Invoices table for faster operator access.
+
 ## 2026-04-03
 
 ### V8.8: Bulk Subscriber Upload — Multi-Plan Support
