@@ -1,6 +1,12 @@
 # E-Bill Platform — CHANGELOG
 
-## 2026-04-04
+## 2026-04-14
+
+### V8.10: Direct UPI Payments Integration
+- **Direct UPI App Payments (Intent Link):** Added the ability for operators to accept direct peer-to-peer UPI payments without a payment gateway. 
+- **Business Profile Settings:** Added a new field for `UPI ID` in the operator's business profile.
+- **Invoice Preferences:** Operators can now independently toggle "Accept Payment via Gateway" and "Accept Payment via UPI Apps".
+- **Dynamic Invoice UI:** The public invoice page dynamically displays "Pay Online" and/or "Pay via UPI App" buttons based on operator settings.
 
 ### V8.9: Payment Link Generation & UI Enhancements
 - **Manual Payment Links:** Operators can now generate manual payment links for individual invoices via the Invoices page.

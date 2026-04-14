@@ -68,7 +68,8 @@ const OperatorSettings = () => {
     bank_account_name: "",
     bank_account_number: "",
     bank_ifsc: "",
-    bank_name: ""
+    bank_name: "",
+    upi_id: ""
   });
 
   const [invoiceForm, setInvoiceForm] = useState({
@@ -80,6 +81,8 @@ const OperatorSettings = () => {
     invoice_prefix: "INV",
     invoice_footer: "",
     show_gst: true,
+    accept_payment_gateway: true,
+    accept_upi: false,
     terms_conditions: "",
     invoice_template: "classic",
     visible_fields: {
@@ -120,7 +123,8 @@ const OperatorSettings = () => {
         bank_account_name: profileRes.data.bank_account_name || "",
         bank_account_number: profileRes.data.bank_account_number || "",
         bank_ifsc: profileRes.data.bank_ifsc || "",
-        bank_name: profileRes.data.bank_name || ""
+        bank_name: profileRes.data.bank_name || "",
+        upi_id: profileRes.data.upi_id || ""
       });
 
       setInvoiceForm({
@@ -132,6 +136,8 @@ const OperatorSettings = () => {
         invoice_prefix: invoiceRes.data.invoice_prefix || "INV",
         invoice_footer: invoiceRes.data.invoice_footer || "",
         show_gst: invoiceRes.data.show_gst !== false,
+        accept_payment_gateway: invoiceRes.data.accept_payment_gateway !== false,
+        accept_upi: invoiceRes.data.accept_upi === true,
         terms_conditions: invoiceRes.data.terms_conditions || "",
         invoice_template: invoiceRes.data.invoice_template || "classic",
         visible_fields: {
@@ -524,6 +530,16 @@ const OperatorSettings = () => {
                           disabled={isReadOnly}
                         />
                       </div>
+
+                      <div className="space-y-2">
+                        <Label>UPI ID</Label>
+                        <Input
+                          value={profileForm.upi_id}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, upi_id: e.target.value }))}
+                          placeholder="e.g. yourname@upi"
+                          disabled={isReadOnly}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -779,6 +795,32 @@ const OperatorSettings = () => {
                         checked={invoiceForm.show_gst}
                         onCheckedChange={(checked) => setInvoiceForm(prev => ({...prev, show_gst: checked}))}
                         data-testid="inv-show-gst"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="font-normal">Accept Payment via Gateway</Label>
+                        <p className="text-xs text-slate-500">Allow customers to pay via your assigned payment gateway</p>
+                      </div>
+                      <Switch
+                        checked={invoiceForm.accept_payment_gateway}
+                        onCheckedChange={(checked) => setInvoiceForm(prev => ({...prev, accept_payment_gateway: checked}))}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="font-normal">Accept Payment via UPI Apps</Label>
+                        <p className="text-xs text-slate-500">Allow customers to open UPI apps directly to pay to your UPI ID</p>
+                      </div>
+                      <Switch
+                        checked={invoiceForm.accept_upi}
+                        onCheckedChange={(checked) => {
+                          if (checked && !profileForm.upi_id?.trim()) {
+                            toast.error("Please add your UPI ID in Business Profile first");
+                            return;
+                          }
+                          setInvoiceForm(prev => ({...prev, accept_upi: checked}));
+                        }}
                       />
                     </div>
                     <div className="space-y-2">

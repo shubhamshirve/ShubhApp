@@ -7,7 +7,7 @@ import { loadRazorpayScript } from "../lib/razorpay";
 import {
   FileText, Download, CreditCard, CheckCircle2, Clock, XCircle,
   Building2, User, MapPin, Phone, Mail, Calendar, IndianRupee,
-  AlertCircle, Loader2, Receipt, ArrowLeft
+  AlertCircle, Loader2, Receipt, ArrowLeft, Smartphone
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
@@ -150,6 +150,15 @@ export default function PublicInvoice() {
     }
   };
 
+  const handlePayViaUpi = () => {
+    if (!data?.operator?.upi_id) {
+      toast.error("Operator UPI ID not found.");
+      return;
+    }
+    const upiLink = `upi://pay?pa=${data.operator.upi_id}&pn=${encodeURIComponent(data.operator.company_name || "Merchant")}&tr=${data.invoice.invoice_number}&am=${data.invoice.final_amount}&cu=INR`;
+    window.location.href = upiLink;
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -181,7 +190,9 @@ export default function PublicInvoice() {
 
   const { invoice, operator, subscriber, plan, invoice_settings, payment } = data;
   const isUnpaid = invoice.status === "pending" || invoice.status === "overdue";
-  const showPayButton = isUnpaid && payment?.enabled;
+  const acceptPaymentGateway = invoice_settings?.accept_payment_gateway !== false && payment?.enabled;
+  const acceptUpi = invoice_settings?.accept_upi === true && operator?.upi_id;
+  const showPayButton = isUnpaid && (acceptPaymentGateway || acceptUpi);
   const showGst = invoice_settings?.show_gst !== false;
   const visibleFields = invoice_settings?.visible_fields || {};
   const taxPercentage = plan?.tax_percentage || 0;
@@ -212,14 +223,29 @@ export default function PublicInvoice() {
               <span className="hidden sm:inline">Download PDF</span>
             </button>
             {showPayButton && (
-              <button
-                onClick={handlePayNow}
-                disabled={paying}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition shadow-sm disabled:opacity-50"
-              >
-                {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                Pay Now
-              </button>
+              <div className="flex gap-2">
+                {acceptUpi && (
+                  <button
+                    onClick={handlePayViaUpi}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition shadow-sm"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span className="hidden sm:inline">Pay via UPI App</span>
+                    <span className="sm:hidden">UPI</span>
+                  </button>
+                )}
+                {acceptPaymentGateway && (
+                  <button
+                    onClick={handlePayNow}
+                    disabled={paying}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition shadow-sm disabled:opacity-50"
+                  >
+                    {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                    <span className="hidden sm:inline">Pay Online</span>
+                    <span className="sm:hidden">Pay</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -528,15 +554,26 @@ export default function PublicInvoice() {
 
         {/* Pay Now CTA (Large, sticky at bottom on mobile) */}
         {showPayButton && (
-          <div className="mt-6 sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20 print:hidden">
-            <button
-              onClick={handlePayNow}
-              disabled={paying}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 rounded-xl transition shadow-sm disabled:opacity-50"
-            >
-              {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-              Pay {formatCurrency(invoice.final_amount)}
-            </button>
+          <div className="mt-6 sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20 print:hidden flex gap-2">
+            {acceptUpi && (
+              <button
+                onClick={handlePayViaUpi}
+                className="flex-1 flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3.5 rounded-xl transition shadow-sm"
+              >
+                <Smartphone className="w-5 h-5" />
+                UPI App
+              </button>
+            )}
+            {acceptPaymentGateway && (
+              <button
+                onClick={handlePayNow}
+                disabled={paying}
+                className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 rounded-xl transition shadow-sm disabled:opacity-50"
+              >
+                {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                Pay Online
+              </button>
+            )}
           </div>
         )}
 

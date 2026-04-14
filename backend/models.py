@@ -139,6 +139,7 @@ class OperatorCreate(SanitizedModel):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    upi_id: Optional[str] = None
     referral_code: Optional[str] = None  # code used during registration
 
     @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
@@ -185,6 +186,7 @@ class OperatorUpdate(SanitizedModel):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    upi_id: Optional[str] = None
     status: Optional[str] = None
 
     @field_validator("gst_number", "pan_number", "address", "bank_account_name", "bank_account_number", "bank_ifsc", "bank_name", "business_type", mode="before")
@@ -246,6 +248,7 @@ class OperatorResponse(SanitizedModel):
     addon_expiry: Optional[Dict[str, str]] = None
     referral_code: Optional[str] = None
     referred_by_code: Optional[str] = None
+    upi_id: Optional[str] = None
     wallet_suspended: bool = False
     created_at: datetime
 
@@ -266,6 +269,7 @@ class AdminOperatorCreate(SanitizedModel):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    upi_id: Optional[str] = None
     saas_plan_id: str
     status: str = "active"  # active, trial, suspended
     subscription_months: int = 1
@@ -642,6 +646,8 @@ class InvoiceCustomization(SanitizedModel):
     invoice_prefix: str = "INV"
     invoice_footer: Optional[str] = None
     show_gst: bool = True
+    accept_payment_gateway: bool = True
+    accept_upi: bool = False
     terms_conditions: Optional[str] = None
     invoice_template: str = "classic"  # "classic" or "modern"
     visible_fields: Dict[str, bool] = Field(default_factory=lambda: {

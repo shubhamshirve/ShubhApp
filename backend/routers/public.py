@@ -94,6 +94,7 @@ async def get_public_invoice(invoice_ref: str):
             "bank_account_number": operator.get("bank_account_number"),
             "bank_ifsc": operator.get("bank_ifsc"),
             "bank_name": operator.get("bank_name"),
+            "upi_id": operator.get("upi_id"),
         },
         "subscriber": {
             "name": subscriber.get("name", ""),
