@@ -797,31 +797,43 @@ const OperatorSettings = () => {
                         data-testid="inv-show-gst"
                       />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="font-normal">Accept Payment via Gateway</Label>
-                        <p className="text-xs text-slate-500">Allow customers to pay via your assigned payment gateway</p>
-                      </div>
-                      <Switch
-                        checked={invoiceForm.accept_payment_gateway}
-                        onCheckedChange={(checked) => setInvoiceForm(prev => ({...prev, accept_payment_gateway: checked}))}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="font-normal">Accept Payment via UPI Apps</Label>
-                        <p className="text-xs text-slate-500">Allow customers to open UPI apps directly to pay to your UPI ID</p>
-                      </div>
-                      <Switch
-                        checked={invoiceForm.accept_upi}
-                        onCheckedChange={(checked) => {
-                          if (checked && !profileForm.upi_id?.trim()) {
-                            toast.error("Please add your UPI ID in Business Profile first");
-                            return;
+                    <div className="space-y-4 pt-4 border-t">
+                      <p className="text-sm font-medium text-slate-700">Payment Options</p>
+                      <div className="space-y-2">
+                        <Label>Accepted Payment Methods on Invoice</Label>
+                        <Select
+                          value={
+                            invoiceForm.accept_payment_gateway && invoiceForm.accept_upi ? "both" 
+                            : invoiceForm.accept_payment_gateway ? "gateway" 
+                            : invoiceForm.accept_upi ? "upi" 
+                            : "none"
                           }
-                          setInvoiceForm(prev => ({...prev, accept_upi: checked}));
-                        }}
-                      />
+                          onValueChange={(val) => {
+                            if ((val === "upi" || val === "both") && !profileForm.upi_id?.trim()) {
+                              toast.error("Please add your UPI ID in Business Profile first");
+                              return;
+                            }
+                            setInvoiceForm(prev => ({
+                              ...prev,
+                              accept_payment_gateway: val === "gateway" || val === "both",
+                              accept_upi: val === "upi" || val === "both"
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Payment Methods" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="both">Both (Payment Gateway & UPI App)</SelectItem>
+                            <SelectItem value="gateway">Payment Gateway Only</SelectItem>
+                            <SelectItem value="upi">UPI App Only</SelectItem>
+                            <SelectItem value="none">Do not accept payments online</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-slate-500">
+                          Configure which "Pay Now" options are visible to subscribers on their invoice.
+                        </p>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Invoice Footer</Label>
