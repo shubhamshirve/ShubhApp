@@ -97,6 +97,7 @@ async def get_public_invoice(invoice_ref: str):
         } if subscriber else None,
         "plan": {
             "name": plan.get("name", "") if plan else "",
+            "description": plan.get("description") if plan else None,
             "tax_percentage": plan.get("tax_percentage", 0) if plan else 0,
             "tax_type": plan.get("tax_type", "none") if plan else "none",
             "validity": plan.get("validity", "") if plan else "",

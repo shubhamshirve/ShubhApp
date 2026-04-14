@@ -1416,6 +1416,7 @@ async def _build_invoice_payload(operator_id: str, data: InvoiceCreate | Invoice
 
         enriched_item = item.model_dump()
         enriched_item["plan_name"] = plan["name"]
+        enriched_item["plan_description"] = plan.get("description")
         enriched_item["tax_amount"] = round(tax_amount, 2)
         enriched_item["final_amount"] = round(final_amount, 2)
         enriched_item["service_start_date"] = item.service_start_date.isoformat()

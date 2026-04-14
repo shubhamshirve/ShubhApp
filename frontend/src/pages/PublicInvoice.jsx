@@ -422,6 +422,9 @@ export default function PublicInvoice() {
                         <p className="text-sm text-slate-500 mt-0.5">
                           {formatDate(item.service_start_date)} to {formatDate(item.service_end_date)}
                         </p>
+                        {item.plan_description && (
+                          <p className="text-xs text-slate-400 mt-1 italic">{item.plan_description}</p>
+                        )}
                       </td>
                       <td className="py-4 text-right font-medium text-slate-800">
                         {formatCurrency(item.base_amount)}
@@ -435,6 +438,9 @@ export default function PublicInvoice() {
                       <p className="text-sm text-slate-500 mt-0.5">
                         {formatDate(invoice.service_start_date)} to {formatDate(invoice.service_end_date)}
                       </p>
+                      {data?.plan?.description && (
+                        <p className="text-xs text-slate-400 mt-1 italic">{data.plan.description}</p>
+                      )}
                     </td>
                     <td className="py-4 text-right font-medium text-slate-800">
                       {formatCurrency(invoice.base_amount)}
