@@ -56,6 +56,7 @@ export default function PublicInvoice() {
   const [error, setError] = useState(null);
   const [paying, setPaying] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [showUpiModal, setShowUpiModal] = useState(false);
 
   const fetchInvoice = useCallback(async () => {
     try {
@@ -150,13 +151,39 @@ export default function PublicInvoice() {
     }
   };
 
-  const handlePayViaUpi = () => {
+  const handlePayViaUpi = (appId) => {
     if (!data?.operator?.upi_id) {
       toast.error("Operator UPI ID not found.");
       return;
     }
-    const upiLink = `upi://pay?pa=${data.operator.upi_id}&pn=${encodeURIComponent(data.operator.company_name || "Merchant")}&tr=${data.invoice.invoice_number}&am=${data.invoice.final_amount}&cu=INR`;
-    window.location.href = upiLink;
+    const params = `pa=${data.operator.upi_id}&pn=${encodeURIComponent(data.operator.company_name || "Merchant")}&tr=${data.invoice.invoice_number}&am=${data.invoice.final_amount}&cu=INR`;
+    
+    let link = `upi://pay?${params}`; // Default
+    const isAndroid = /android/i.test(navigator.userAgent || "");
+
+    if (appId === "gpay") {
+      link = isAndroid 
+        ? `intent://pay?${params}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end` 
+        : `gpay://upi/pay?${params}`;
+    } else if (appId === "phonepe") {
+      link = isAndroid 
+        ? `intent://pay?${params}#Intent;scheme=upi;package=com.phonepe.app;end` 
+        : `phonepe://pay?${params}`;
+    } else if (appId === "paytm") {
+      link = isAndroid 
+        ? `intent://pay?${params}#Intent;scheme=upi;package=net.one97.paytm;end` 
+        : `paytmmp://pay?${params}`;
+    } else if (appId === "bhim") {
+      link = isAndroid 
+        ? `intent://pay?${params}#Intent;scheme=upi;package=in.org.npci.upiapp;end` 
+        : `bhim://pay?${params}`;
+    }
+
+    if (appId !== "other") {
+      setShowUpiModal(false);
+    }
+    
+    window.location.href = link;
   };
 
   // Loading state
@@ -226,11 +253,11 @@ export default function PublicInvoice() {
               <div className="flex gap-2">
                 {acceptUpi && (
                   <button
-                    onClick={handlePayViaUpi}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition shadow-sm"
+                    onClick={() => setShowUpiModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition shadow-sm"
                   >
                     <Smartphone className="w-4 h-4" />
-                    <span className="hidden sm:inline">Pay via UPI App</span>
+                    <span className="hidden sm:inline">Pay with UPI</span>
                     <span className="sm:hidden">UPI</span>
                   </button>
                 )}
@@ -557,11 +584,11 @@ export default function PublicInvoice() {
           <div className="mt-6 sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-20 print:hidden flex gap-2">
             {acceptUpi && (
               <button
-                onClick={handlePayViaUpi}
-                className="flex-1 flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3.5 rounded-xl transition shadow-sm"
+                onClick={() => setShowUpiModal(true)}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition shadow-sm"
               >
                 <Smartphone className="w-5 h-5" />
-                UPI App
+                Pay with UPI
               </button>
             )}
             {acceptPaymentGateway && (
@@ -574,6 +601,53 @@ export default function PublicInvoice() {
                 Pay Online
               </button>
             )}
+          </div>
+        )}
+
+        {/* UPI App Selection Modal */}
+        {showUpiModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 print:hidden">
+            <div className="bg-white w-full max-w-sm rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-center p-5 sm:p-6 border-b border-slate-100">
+                <h3 className="font-semibold text-lg text-slate-800">Select UPI App</h3>
+                <button onClick={() => setShowUpiModal(false)} className="text-slate-400 hover:text-slate-600 transition p-1 rounded-full hover:bg-slate-100">
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-4 sm:p-6 grid grid-cols-2 gap-3 sm:gap-4">
+                <button onClick={() => handlePayViaUpi("gpay")} className="flex flex-col items-center justify-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition drop-shadow-sm bg-white group">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center mb-3 transition">
+                    <span className="text-xl font-bold text-blue-600">G</span>
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">Google Pay</span>
+                </button>
+                <button onClick={() => handlePayViaUpi("phonepe")} className="flex flex-col items-center justify-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition drop-shadow-sm bg-white group">
+                  <div className="w-12 h-12 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center mb-3 transition">
+                    <span className="text-xl font-bold text-purple-600">Ph</span>
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">PhonePe</span>
+                </button>
+                <button onClick={() => handlePayViaUpi("paytm")} className="flex flex-col items-center justify-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition drop-shadow-sm bg-white group">
+                  <div className="w-12 h-12 rounded-full bg-sky-50 group-hover:bg-sky-100 flex items-center justify-center mb-3 transition">
+                    <span className="text-xl font-bold text-sky-500">Pt</span>
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">Paytm</span>
+                </button>
+                <button onClick={() => handlePayViaUpi("bhim")} className="flex flex-col items-center justify-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition drop-shadow-sm bg-white group">
+                  <div className="w-12 h-12 rounded-full bg-orange-50 group-hover:bg-orange-100 flex items-center justify-center mb-3 transition">
+                    <span className="text-xl font-bold text-orange-500">B</span>
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">BHIM</span>
+                </button>
+                <button onClick={() => handlePayViaUpi("other")} className="col-span-2 flex items-center justify-center gap-2 p-3.5 border border-slate-200 rounded-xl hover:bg-slate-50 transition text-slate-700 bg-white drop-shadow-sm mt-1">
+                  <Smartphone className="w-5 h-5 text-slate-500" />
+                  <span className="text-sm font-medium">Other UPI Apps</span>
+                </button>
+              </div>
+              <div className="bg-slate-50 px-5 py-4 border-t border-slate-100 text-center">
+                <p className="text-xs text-slate-500">Select an app installed on this device.</p>
+              </div>
+            </div>
           </div>
         )}
 
