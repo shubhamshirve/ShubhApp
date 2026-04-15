@@ -156,7 +156,17 @@ export default function PublicInvoice() {
       toast.error("Operator UPI ID not found.");
       return;
     }
-    const params = `pa=${data.operator.upi_id}&pn=${encodeURIComponent(data.operator.company_name || "Merchant")}&tr=${data.invoice.invoice_number}&am=${data.invoice.final_amount}&cu=INR`;
+    const planName = data.invoice.plan_name || data.plan?.name || "";
+    const startDate = data.invoice.service_start_date
+      ? new Date(data.invoice.service_start_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+      : "";
+    const endDate = data.invoice.service_end_date
+      ? new Date(data.invoice.service_end_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+      : "";
+    const tenurePart = startDate && endDate ? ` (${startDate} - ${endDate})` : "";
+    const noteParts = [planName && `Plan: ${planName}`, tenurePart && `Tenure: ${tenurePart}`].filter(Boolean);
+    const txnNote = noteParts.length > 0 ? noteParts.join(" | ") : `Invoice #${data.invoice.invoice_number}`;
+    const params = `pa=${data.operator.upi_id}&pn=${encodeURIComponent(data.operator.company_name || "Merchant")}&tr=${data.invoice.invoice_number}&tn=${encodeURIComponent(txnNote)}&am=${data.invoice.final_amount}&cu=INR`;
     
     let link = `upi://pay?${params}`; // Default
     const isAndroid = /android/i.test(navigator.userAgent || "");
