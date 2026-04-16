@@ -672,6 +672,70 @@ async def get_platform_whatsapp_config(current_user: dict = Depends(require_admi
     }
 
 
+@router.get("/whatsapp-diagnostics")
+async def get_whatsapp_diagnostics(current_user: dict = Depends(require_admin)):
+    """
+    Fetch live account diagnostics from Meta WhatsApp API.
+    Returns phone number status, throughput (live vs development mode), and WABA details.
+    """
+    from services.whatsapp_service import WhatsAppService
+    config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+    if not config or not config.get("access_token") or not config.get("phone_number_id"):
+        raise HTTPException(status_code=400, detail="WhatsApp is not configured yet.")
+    wa = WhatsAppService(config["phone_number_id"], config["access_token"])
+    result = {}
+
+    # Phone number details
+    phone_status = await wa.check_account_status()
+    result["phone_number"] = phone_status
+
+    # WABA details (if business_account_id configured)
+    waba_id = config.get("business_account_id", "")
+    if waba_id:
+        waba_status = await wa.check_waba_status(waba_id)
+        result["waba"] = waba_status
+    else:
+        result["waba"] = {"note": "business_account_id not configured"}
+
+    # Determine mode
+    throughput = (phone_status.get("throughput") or {}).get("level", "")
+    display_phone = phone_status.get("display_phone_number", "")
+
+    # Meta's test/demo phone numbers use the US +1 555-xxx-xxxx range
+    is_test_number = "555" in display_phone.replace(" ", "").replace("-", "")
+
+    is_development_mode = throughput not in ("STANDARD",) or is_test_number
+    result["mode"] = "LIVE" if (throughput == "STANDARD" and not is_test_number) else "DEVELOPMENT"
+    result["throughput_level"] = throughput
+    result["is_test_number"] = is_test_number
+
+    if is_test_number:
+        result["warning"] = (
+            f"You are using Meta's TEST phone number ({display_phone}). "
+            "This is the default sandbox number provided by Meta — it is NOT your real business number. "
+            "Messages sent from this number are ONLY delivered to phone numbers you add as 'Test Numbers' "
+            "in the Meta for Developers portal. All other recipients get a 200 OK but never receive the message."
+        )
+        result["fix_steps"] = [
+            "OPTION A (Quick test): Add your own mobile number as a 'Test Number' — "
+            "Meta for Developers → Your App → WhatsApp → API Setup → 'To' field → Manage phone number list",
+            "OPTION B (Production): Add and verify your real business WhatsApp number — "
+            "Meta Business Suite → WhatsApp → Phone Numbers → Add Number",
+        ]
+    elif throughput not in ("STANDARD",):
+        result["warning"] = (
+            "Your account throughput is not STANDARD. Messages may only be delivered to test numbers."
+        )
+        result["fix_steps"] = [
+            "Complete WhatsApp Business API verification in Meta Business Suite to upgrade to STANDARD throughput."
+        ]
+    else:
+        result["warning"] = None
+        result["fix_steps"] = []
+
+    return result
+
+
 @router.put("/whatsapp-config")
 async def update_platform_whatsapp_config(data: WhatsAppConfig, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)

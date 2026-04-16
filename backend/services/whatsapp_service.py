@@ -394,7 +394,6 @@ class WhatsAppService:
             if response.status_code != 200:
                 error_body = response.text
                 logger.error(f"WhatsApp API error: {error_body}")
-                # Try to extract meaningful error message
                 try:
                     error_json = response.json()
                     error_msg = error_json.get("error", {}).get("error_data", {}).get("details", "") or error_json.get("error", {}).get("message", "")
@@ -403,7 +402,33 @@ class WhatsAppService:
                 except (ValueError, KeyError):
                     pass
                 raise Exception(f"WhatsApp API error: {response.status_code} - {error_body}")
-            
+
+            result = response.json()
+            # Log successful send with recipient and message ID for traceability
+            msg_id = (result.get("messages") or [{}])[0].get("id", "")
+            wa_id = (result.get("contacts") or [{}])[0].get("wa_id", "")
+            to_input = (result.get("contacts") or [{}])[0].get("input", payload.get("to", ""))
+            logger.info(
+                f"WhatsApp message sent | to={to_input} | wa_id={wa_id} | msg_id={msg_id} | template={payload.get('template', {}).get('name', '')}"
+            )
+            return result
+
+    async def check_account_status(self) -> Dict[str, Any]:
+        """Fetch phone number status from Meta — tells us if account is in live vs development mode."""
+        url = (
+            f"{self.BASE_URL}/{self.phone_number_id}"
+            "?fields=verified_name,code_verification_status,display_phone_number,"
+            "quality_rating,platform_type,throughput,status"
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=self.headers, timeout=30.0)
+            return response.json()
+
+    async def check_waba_status(self, waba_id: str) -> Dict[str, Any]:
+        """Fetch WhatsApp Business Account details."""
+        url = f"{self.BASE_URL}/{waba_id}?fields=id,name,message_template_namespace,account_review_status,primary_funding_id,timezone_id"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=self.headers, timeout=30.0)
             return response.json()
     
     def _normalize_phone(self, phone: str) -> str:

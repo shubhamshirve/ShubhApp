@@ -2276,9 +2276,17 @@ async def send_whatsapp_notification(data: SendNotificationRequest, request: Req
                 )
 
         msg_id = None
+        recipient_wa_id = None
         if result and "messages" in result and len(result["messages"]) > 0:
             msg_id = result["messages"][0].get("id")
-        return {"success": True, "message_id": msg_id}
+        if result and "contacts" in result and len(result["contacts"]) > 0:
+            recipient_wa_id = result["contacts"][0].get("wa_id")
+        return {
+            "success": True,
+            "message_id": msg_id,
+            "recipient_wa_id": recipient_wa_id,
+            "detail": f"Message sent to {recipient_wa_id or subscriber.get('whatsapp_number', '')}",
+        }
     except Exception as e:
         logger.error(f"WhatsApp notification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send notification: {e}")

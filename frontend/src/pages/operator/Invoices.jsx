@@ -409,11 +409,15 @@ const OperatorInvoices = () => {
 
   const handleSendNotification = async (invoiceId, type = "invoice") => {
     try {
-      await authAxios.post("/operator/send-notification", {
+      const res = await authAxios.post("/operator/send-notification", {
         invoice_id: invoiceId,
         notification_type: type
       });
-      toast.success("Notification sent via WhatsApp!");
+      const { message_id, recipient_wa_id } = res.data || {};
+      const detail = recipient_wa_id
+        ? `Sent to +${recipient_wa_id}${message_id ? ` (ID: ${message_id.slice(-8)})` : ""}`
+        : "WhatsApp message sent!";
+      toast.success(detail, { duration: 6000 });
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send notification");
     }

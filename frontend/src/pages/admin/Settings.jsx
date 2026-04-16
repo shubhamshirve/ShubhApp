@@ -130,6 +130,10 @@ const AdminSettings = () => {
   const [testPhone, setTestPhone] = useState("");
   const [testSending, setTestSending] = useState(false);
 
+  // WhatsApp diagnostics state
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+
   // Global Reminder settings state
   const [reminderSettings, setReminderSettings] = useState({
     enabled: true,
@@ -341,6 +345,19 @@ const AdminSettings = () => {
       toast.error(error.response?.data?.detail || "Failed to update WhatsApp config");
     } finally {
       setWaLoading(false);
+    }
+  };
+
+  const fetchDiagnostics = async () => {
+    setDiagnosticsLoading(true);
+    setDiagnostics(null);
+    try {
+      const res = await authAxios.get("/admin/whatsapp-diagnostics");
+      setDiagnostics(res.data);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to fetch diagnostics");
+    } finally {
+      setDiagnosticsLoading(false);
     }
   };
 
@@ -1005,6 +1022,107 @@ const AdminSettings = () => {
                   </div>
                 </form>
               </CardContent>
+            </Card>
+
+            {/* Account Diagnostics */}
+            <Card className="border-amber-200">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="text-amber-600">🔍</span>
+                    Account Diagnostics
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchDiagnostics}
+                    disabled={diagnosticsLoading || !waConfig.is_configured}
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50 gap-1.5"
+                  >
+                    {diagnosticsLoading ? "Checking..." : "Run Diagnostics"}
+                  </Button>
+                </div>
+                <p className="text-sm text-slate-500">
+                  Check your WhatsApp Business account status — whether it's in <strong>Live</strong> or <strong>Development (test)</strong> mode. In development mode, messages are only delivered to test numbers.
+                </p>
+              </CardHeader>
+              {diagnostics && (
+                <CardContent>
+                  <div className="space-y-3">
+                    {/* Mode badge */}
+                    <div className={`flex items-center gap-3 p-3 rounded-lg border ${
+                      diagnostics.mode === "LIVE"
+                        ? "bg-green-50 border-green-200"
+                        : diagnostics.mode === "DEVELOPMENT"
+                        ? "bg-red-50 border-red-200"
+                        : "bg-yellow-50 border-yellow-200"
+                    }`}>
+                      <span className="text-2xl">
+                        {diagnostics.mode === "LIVE" ? "✅" : diagnostics.mode === "DEVELOPMENT" ? "⚠️" : "❓"}
+                      </span>
+                      <div>
+                        <p className={`font-bold text-sm ${
+                          diagnostics.mode === "LIVE" ? "text-green-800" : diagnostics.mode === "DEVELOPMENT" ? "text-red-800" : "text-yellow-800"
+                        }`}>
+                          Account Mode: {diagnostics.mode}
+                          {diagnostics.throughput_level && (
+                            <span className="ml-2 text-xs font-normal opacity-75">(throughput: {diagnostics.throughput_level})</span>
+                          )}
+                        </p>
+                        {diagnostics.mode === "DEVELOPMENT" && (
+                          <p className="text-xs text-red-700 mt-0.5">
+                            Messages only delivered to pre-approved test numbers in Meta. All others get 200 OK but are silently dropped.
+                          </p>
+                        )}
+                        {diagnostics.mode === "LIVE" && (
+                          <p className="text-xs text-green-700 mt-0.5">Messages can be sent to all WhatsApp numbers.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Warning message */}
+                    {diagnostics.warning && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-2">
+                        <p><strong>⚠ {diagnostics.is_test_number ? "Test Number Detected" : "Action Required"}:</strong> {diagnostics.warning}</p>
+                        {diagnostics.fix_steps?.length > 0 && (
+                          <div>
+                            <p className="font-semibold mb-1">How to fix:</p>
+                            <ul className="space-y-1.5">
+                              {diagnostics.fix_steps.map((step, i) => (
+                                <li key={i} className="flex gap-1.5">
+                                  <span className="font-bold shrink-0">{i + 1}.</span>
+                                  <span>{step}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <p className="border-t border-amber-200 pt-2">
+                          👉 <a href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer" className="underline font-medium">Open Meta for Developers Portal</a>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Phone number details */}
+                    {diagnostics.phone_number && !diagnostics.phone_number.error && (
+                      <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-medium text-slate-700">Phone Number Details</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-600">
+                          {diagnostics.phone_number.verified_name && <><span className="text-slate-400">Name:</span><span>{diagnostics.phone_number.verified_name}</span></>}
+                          {diagnostics.phone_number.display_phone_number && <><span className="text-slate-400">Number:</span><span>{diagnostics.phone_number.display_phone_number}</span></>}
+                          {diagnostics.phone_number.quality_rating && <><span className="text-slate-400">Quality:</span><span className={diagnostics.phone_number.quality_rating === "GREEN" ? "text-green-600" : "text-amber-600"}>{diagnostics.phone_number.quality_rating}</span></>}
+                          {diagnostics.phone_number.status && <><span className="text-slate-400">Status:</span><span>{diagnostics.phone_number.status}</span></>}
+                        </div>
+                      </div>
+                    )}
+                    {diagnostics.phone_number?.error && (
+                      <p className="text-xs text-red-600 bg-red-50 rounded p-2">
+                        Phone Number API error: {diagnostics.phone_number.error?.message || JSON.stringify(diagnostics.phone_number.error)}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              )}
             </Card>
 
             {/* Template Assignment */}
