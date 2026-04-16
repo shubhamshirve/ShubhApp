@@ -792,6 +792,8 @@ class WhatsAppTemplateCreate(SanitizedModel):
     language_code: str = "en"
     description: Optional[str] = None
     body_variables: Optional[List[str]] = []  # list of variable descriptions e.g. ["customer_name", "invoice_no"]
+    header_type: str = "none"   # none, text, image
+    header_variable: Optional[str] = None
     has_payment_button: bool = False
     is_active: bool = True
 
@@ -802,6 +804,8 @@ class WhatsAppTemplateUpdate(SanitizedModel):
     language_code: Optional[str] = None
     description: Optional[str] = None
     body_variables: Optional[List[str]] = None
+    header_type: Optional[str] = None
+    header_variable: Optional[str] = None
     has_payment_button: Optional[bool] = None
     is_active: Optional[bool] = None
 

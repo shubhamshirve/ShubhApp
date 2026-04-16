@@ -2,6 +2,16 @@
 
 ## 2026-04-15
 
+### V8.13: WhatsApp Template Header Support & Media Handling
+- **Dynamic Headers:** Added support for Text and Image headers in WhatsApp templates.
+- **Media Parameter Support:** The WhatsApp service now correctly handles header parameters for Image-type templates, preventing the "Format mismatch" error.
+- **Variable-to-Header Mapping:** Operators can now map variables like `Company Logo` directly to the template header.
+- **Absolute Media URLs:** Implemented automatic resolution of relative file paths (e.g., logos) to absolute URLs required by the WhatsApp API.
+
+### V8.12: WhatsApp Template Variable Resolver
+- **Dynamic Variable Mapping:** Implemented `resolve_template_variables` to automatically map placeholders like `{{1}}`, `{{2}}` to database fields (Customer Name, Invoice No, etc.).
+- **Admin Variable Selection:** Updated the WhatsApp Template management UI to allow selection of variables for body text.
+
 ### V8.11: UPI Payment Message Prefill & Invoice Enhancements
 - **UPI Transaction Note (`tn`):** Plan name and service tenure (start–end date) are now automatically prefilled as the payment note when a subscriber pays via any UPI app, giving the operator clear transaction context.
 - **Plan Description on Invoice:** The public invoice now shows the plan's description as an italicised sub-line below the service tenure in the line items table.

@@ -387,7 +387,12 @@ class CronJobService:
                 )
                 body_vars = (tmpl_doc or {}).get("body_variables") or []
                 if body_vars:
-                    variables = resolve_template_variables(body_vars, invoice, subscriber)
+                    res = await resolve_template_variables(
+                        self.db, body_vars, invoice, subscriber,
+                        header_variable=(tmpl_doc or {}).get("header_variable")
+                    )
+                    variables = res["body"]
+                    header_params = [res["header"]] if res["header"] else None
                     btn_params = None
                     if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                         btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -396,6 +401,8 @@ class CronJobService:
                         template_name=invoice_tpl_name,
                         language_code=(tmpl_doc or {}).get("language_code", "en"),
                         variables=variables,
+                        header_params=header_params,
+                        header_type=(tmpl_doc or {}).get("header_type", "text"),
                         button_params=btn_params,
                     )
                 else:
@@ -531,7 +538,12 @@ class CronJobService:
                             )
                             body_vars = (tmpl_doc or {}).get("body_variables") or []
                             if body_vars:
-                                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                                res = await resolve_template_variables(
+                                    self.db, body_vars, invoice, subscriber,
+                                    header_variable=(tmpl_doc or {}).get("header_variable")
+                                )
+                                variables = res["body"]
+                                header_params = [res["header"]] if res["header"] else None
                                 btn_params = None
                                 if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                                     btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -540,6 +552,8 @@ class CronJobService:
                                     template_name=reminder_tpl,
                                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                                     variables=variables,
+                                    header_params=header_params,
+                                    header_type=(tmpl_doc or {}).get("header_type", "text"),
                                     button_params=btn_params,
                                 )
                             else:
@@ -559,7 +573,12 @@ class CronJobService:
                             )
                             body_vars = (tmpl_doc or {}).get("body_variables") or []
                             if body_vars:
-                                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                                res = await resolve_template_variables(
+                                    self.db, body_vars, invoice, subscriber,
+                                    header_variable=(tmpl_doc or {}).get("header_variable")
+                                )
+                                variables = res["body"]
+                                header_params = [res["header"]] if res["header"] else None
                                 btn_params = None
                                 if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                                     btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -568,6 +587,8 @@ class CronJobService:
                                     template_name=invoice_tpl,
                                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                                     variables=variables,
+                                    header_params=header_params,
+                                    header_type=(tmpl_doc or {}).get("header_type", "text"),
                                     button_params=btn_params,
                                 )
                             else:

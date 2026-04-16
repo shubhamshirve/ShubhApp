@@ -57,6 +57,7 @@ const INVOICE_VARIABLE_OPTIONS = [
   { value: "amount",         label: "Amount" },
   { value: "due_date",       label: "Due Date" },
   { value: "payment_link",   label: "Payment Link" },
+  { value: "company_logo",   label: "Company Logo (Image)" },
 ];
 
 const defaultForm = {
@@ -66,6 +67,8 @@ const defaultForm = {
   language_code: "en",
   description: "",
   body_variables: [],
+  header_type: "none",
+  header_variable: "",
   has_payment_button: false,
   is_active: true,
 };
@@ -116,6 +119,8 @@ export default function WhatsAppTemplates() {
       language_code: tmpl.language_code || "en",
       description: tmpl.description || "",
       body_variables: tmpl.body_variables || [],
+      header_type: tmpl.header_type || "none",
+      header_variable: tmpl.header_variable || "",
       has_payment_button: tmpl.has_payment_button || false,
       is_active: tmpl.is_active !== false,
     });
@@ -279,7 +284,8 @@ export default function WhatsAppTemplates() {
                     <TableHead>Template Name (API)</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Language</TableHead>
-                    <TableHead>Variables</TableHead>
+                    <TableHead>Header</TableHead>
+                    <TableHead>Body Variables</TableHead>
                     <TableHead>Payment Btn</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -308,6 +314,18 @@ export default function WhatsAppTemplates() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-slate-600">{tmpl.language_code || "en"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`text-[10px] font-bold uppercase ${tmpl.header_type === 'none' ? 'text-slate-300' : 'text-blue-600'}`}>
+                            {tmpl.header_type || 'none'}
+                          </span>
+                          {tmpl.header_variable && (
+                            <span className="text-xs text-slate-500 truncate max-w-[100px]">
+                              {tmpl.header_variable}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {tmpl.body_variables && tmpl.body_variables.length > 0 ? (
@@ -446,6 +464,60 @@ export default function WhatsAppTemplates() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
+            </div>
+
+            {/* Header Settings */}
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+              <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                <Info className="w-3 h-3" /> Header Component
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                   <Label>Header Type</Label>
+                   <Select
+                     value={form.header_type}
+                     onValueChange={(v) => setForm({ ...form, header_type: v, header_variable: v === 'none' ? '' : form.header_variable })}
+                   >
+                     <SelectTrigger className="bg-white">
+                       <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="none">None (Body Only)</SelectItem>
+                       <SelectItem value="text">Text Header</SelectItem>
+                       <SelectItem value="image">Image Header</SelectItem>
+                     </SelectContent>
+                   </Select>
+                </div>
+                {form.header_type !== 'none' && (
+                  <div className="space-y-1.5">
+                     <Label>{form.header_type === 'image' ? 'Image Variable' : 'Text Variable'}</Label>
+                     {INVOICE_TYPE_TEMPLATES.includes(form.template_type) ? (
+                       <Select 
+                          value={form.header_variable} 
+                          onValueChange={(v) => setForm({ ...form, header_variable: v })}
+                       >
+                         <SelectTrigger className="bg-white">
+                           <SelectValue placeholder="Select variable..." />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {INVOICE_VARIABLE_OPTIONS.map((opt) => (
+                             <SelectItem key={opt.value} value={opt.value}>
+                               {opt.label}
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                     ) : (
+                       <Input
+                         placeholder="e.g. business_name"
+                         value={form.header_variable}
+                         onChange={(e) => setForm({ ...form, header_variable: e.target.value })}
+                         className="bg-white"
+                       />
+                     )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Body Variables */}

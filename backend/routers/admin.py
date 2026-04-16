@@ -1210,6 +1210,8 @@ async def create_whatsapp_template(data: WhatsAppTemplateCreate, current_user: d
         "language_code": data.language_code,
         "description": data.description or "",
         "body_variables": data.body_variables or [],
+        "header_type": data.header_type or "none",
+        "header_variable": data.header_variable,
         "has_payment_button": data.has_payment_button,
         "is_active": data.is_active,
         "created_by": current_user["id"],

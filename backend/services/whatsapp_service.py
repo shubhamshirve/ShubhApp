@@ -9,6 +9,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 from services.env_service import get_env_setting
+from services.global_settings_store import get_global_settings_doc
 
 # ─── Template Variable Resolver ───────────────────────────────────────────────
 
@@ -70,22 +71,43 @@ KNOWN_INVOICE_VARIABLES = {
 }
 
 
-def resolve_template_variables(
+async def resolve_template_variables(
+    db,
     body_variables: list,
     invoice: dict,
     subscriber: dict,
-) -> list:
+    header_variable: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Resolve an ordered list of variable keys to actual values.
+    Resolve both body variables and an optional header variable.
+    """
+    # Pre-fetch some data if needed (e.g. logo)
+    logo_url = ""
+    needed_variables = set(body_variables)
+    if header_variable:
+        needed_variables.add(header_variable)
+    
+    if "company_logo" in needed_variables:
+        settings = await db.invoice_settings.find_one(
+            {"operator_id": invoice.get("operator_id")}, {"_id": 0}
+        )
+        logo_url = (settings or {}).get("logo_url", "")
 
-    Recognized keys are mapped via KNOWN_INVOICE_VARIABLES.
-    Unrecognized keys are passed through as-is (literal string).
-    Returns values for {{1}}, {{2}}, ... in order.
-    """
-    return [
-        KNOWN_INVOICE_VARIABLES.get(key, lambda i, s, k=key: k)(invoice, subscriber)
-        for key in body_variables
-    ]
+    def _resolve(key):
+        if key == "company_logo":
+            return logo_url
+        return KNOWN_INVOICE_VARIABLES.get(key, lambda i, s, k=key: k)(invoice, subscriber)
+
+    resolved_body = [_resolve(key) for key in body_variables]
+    
+    resolved_header = None
+    if header_variable:
+        resolved_header = _resolve(header_variable)
+        
+    return {
+        "body": resolved_body,
+        "header": resolved_header
+    }
 
 
 class WhatsAppService:
@@ -131,7 +153,8 @@ class WhatsAppService:
         template_name: str,
         language_code: str = "en",
         variables: Optional[List[str]] = None,
-        header_params: Optional[List[str]] = None,
+        header_params: Optional[List[Any]] = None,
+        header_type: str = "text", # text, image, document, video
         button_params: Optional[List[Dict]] = None
     ) -> Dict[str, Any]:
         """
@@ -143,18 +166,32 @@ class WhatsAppService:
             language_code: Language code (e.g., 'en', 'hi')
             variables: Body text variables
             header_params: Header variables
+            header_type: Type of header component (text, image, etc.)
             button_params: Button variables
         """
         components = []
         
         # Header component
         if header_params:
-            components.append({
-                "type": "header",
-                "parameters": [
-                    {"type": "text", "text": str(p)} for p in header_params
-                ]
-            })
+            if header_type == "image":
+                # Ensure header_params[0] is an absolute URL
+                image_url = await self._ensure_absolute_url(str(header_params[0]))
+                components.append({
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "image",
+                            "image": {"link": image_url}
+                        }
+                    ]
+                })
+            else:
+                components.append({
+                    "type": "header",
+                    "parameters": [
+                        {"type": "text", "text": str(p)} for p in header_params
+                    ]
+                })
         
         # Body component
         if variables:
@@ -347,14 +384,24 @@ class WhatsAppService:
             
             return response.json()
     
-    def _normalize_phone(self, phone: str) -> str:
-        """Normalize phone number to E.164 format without +"""
-        # Remove common formatting
-        cleaned = ''.join(c for c in phone if c.isdigit())
-        # Add India country code if not present
-        if len(cleaned) == 10:
-            cleaned = "91" + cleaned
         return cleaned
+
+    async def _ensure_absolute_url(self, path: str) -> str:
+        """Convert relative path /uploads/... to absolute URL using app_url setting."""
+        if path.startswith("http"):
+            return path
+        
+        base_url = await get_env_setting("api_base_url")
+        if not base_url:
+            # Fallback to a common default or try to detect
+            # In a real prod env, api_base_url should be set in Env settings
+            base_url = "http://localhost:8000" 
+            
+        base_url = base_url.rstrip("/")
+        if not path.startswith("/"):
+            path = "/" + path
+            
+        return f"{base_url}{path}"
 
 
 def get_whatsapp_service(phone_number_id: str, access_token: str) -> Optional[WhatsAppService]:
