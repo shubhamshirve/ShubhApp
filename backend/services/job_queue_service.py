@@ -533,7 +533,8 @@ class JobQueueService:
     @staticmethod
     async def _run_bulk_notification(job: dict) -> dict:
         """Handler for bulk_notification."""
-        from services.whatsapp_service import WhatsAppService
+        from services.whatsapp_service import WhatsAppService, build_wa_send_params
+        from services.invoice_view_service import build_public_invoice_url_from_env
         from routers.operator import _get_platform_whatsapp_config, _get_whatsapp_template_settings
 
         payload = job["payload"]
@@ -544,13 +545,11 @@ class JobQueueService:
         if not wa_config:
             raise ValueError("WhatsApp not configured. Please contact admin.")
 
-        from services.whatsapp_service import resolve_template_variables
         template_settings = await _get_whatsapp_template_settings()
         invoice_template = template_settings.get("invoice_template") or "invoice_notification"
         tmpl_doc = await db.whatsapp_templates.find_one(
             {"template_name": invoice_template, "deleted_at": None}, {"_id": 0}
         )
-        body_vars = (tmpl_doc or {}).get("body_variables") or []
 
         results = {"sent": 0, "failed": 0, "errors": []}
         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
@@ -569,27 +568,18 @@ class JobQueueService:
                     {"_id": 0},
                 )
                 if invoice:
-                    # Always resolve variables (including header)
-                    res = await resolve_template_variables(
-                        db, body_vars, invoice, subscriber,
-                        header_variable=(tmpl_doc or {}).get("header_variable")
-                    )
-                    variables = res["body"]
-                    header_params = [res["header"]] if res["header"] else None
-                    header_type = (tmpl_doc or {}).get("header_type", "none")
+                    inv_public_url = await build_public_invoice_url_from_env(invoice)
+                    params = await build_wa_send_params(db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
 
-                    if body_vars:
-                        btn_params = None
-                        if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
-                            btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                    if params["body_vars"]:
                         await wa_service.send_template_message(
                             recipient_phone=subscriber["whatsapp_number"],
                             template_name=invoice_template,
-                            language_code=(tmpl_doc or {}).get("language_code", "en"),
-                            variables=variables,
-                            header_params=header_params,
-                            header_type=header_type,
-                            button_params=btn_params,
+                            language_code=params["language_code"],
+                            variables=params["variables"],
+                            header_params=params["header_params"],
+                            header_type=params["header_type"],
+                            button_params=params["btn_params"],
                         )
                     else:
                         await wa_service.send_invoice_notification(
@@ -600,7 +590,7 @@ class JobQueueService:
                             due_date=datetime.fromisoformat(
                                 invoice["due_date"].replace("Z", "+00:00")
                             ).strftime("%d %b %Y"),
-                            payment_link=invoice.get("payment_link"),
+                            payment_link=inv_public_url or invoice.get("payment_link"),
                             template_name_override=invoice_template,
                         )
                     results["sent"] += 1

@@ -62,6 +62,19 @@ def build_public_invoice_url(request: Optional[Request], invoice: Dict[str, Any]
     return f"{base_url}{build_public_invoice_path(invoice)}"
 
 
+async def build_public_invoice_url_from_env(invoice: Dict[str, Any]) -> Optional[str]:
+    """Build public invoice URL using api_base_url from env settings (for use in background jobs/cron)."""
+    try:
+        from services.env_service import get_env_setting
+        base_url = await get_env_setting("api_base_url")
+        if not base_url:
+            return None
+        base_url = base_url.rstrip("/")
+        return f"{base_url}{build_public_invoice_path(invoice)}"
+    except Exception:
+        return None
+
+
 async def resolve_invoice_reference(invoice_ref: str, operator_id: Optional[str] = None) -> Dict[str, Any]:
     query = {"deleted_at": None}
     if operator_id:

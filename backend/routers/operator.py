@@ -1590,21 +1590,42 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                     {"template_name": template_name, "deleted_at": None}, {"_id": 0}
                 )
                 body_vars = (tmpl_doc or {}).get("body_variables") or []
-                
-                # Always resolve variables (including header)
+
+                # Inject invoice_public_url so variable resolver can use it
+                invoice["invoice_public_url"] = public_invoice_url or ""
+
+                # Determine header params — skip entirely for static image headers
+                header_image_static = (tmpl_doc or {}).get("header_image_static", False)
+                if header_image_static:
+                    header_params = None
+                    header_type = "none"
+                else:
+                    # Always resolve variables (including header)
+                    res = await resolve_template_variables(
+                        db, body_vars, invoice, subscriber,
+                        header_variable=(tmpl_doc or {}).get("header_variable")
+                    )
+                    header_params = [res["header"]] if res.get("header") else None
+                    header_type = (tmpl_doc or {}).get("header_type", "none")
+
+                # Resolve body variables
                 res = await resolve_template_variables(
-                    db, body_vars, invoice, subscriber, 
-                    header_variable=(tmpl_doc or {}).get("header_variable")
+                    db, body_vars, invoice, subscriber,
+                    header_variable=None  # header already handled above
                 )
                 variables = res["body"]
-                header_params = [res["header"]] if res["header"] else None
-                header_type = (tmpl_doc or {}).get("header_type", "none")
 
                 if body_vars:
-                    invoice["payment_link"] = public_invoice_url
+                    # Determine button URL
+                    btn_url_var = (tmpl_doc or {}).get("button_url_variable", "invoice_public_url")
+                    if btn_url_var == "invoice_number":
+                        btn_url = invoice.get("invoice_number", "")
+                    else:
+                        btn_url = public_invoice_url or ""
+
                     btn_params = None
-                    if (tmpl_doc or {}).get("has_payment_button") and public_invoice_url:
-                        btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": public_invoice_url}]}]
+                    if (tmpl_doc or {}).get("has_payment_button") and btn_url:
+                        btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": btn_url}]}]
                     await wa_service.send_template_message(
                         recipient_phone=subscriber["whatsapp_number"],
                         template_name=template_name,
@@ -2146,8 +2167,9 @@ async def get_operator_audit_logs(
 # ─── WhatsApp Notifications (uses platform global WhatsApp config) ────────────
 
 @router.post("/send-notification")
-async def send_whatsapp_notification(data: SendNotificationRequest, current_user: dict = Depends(require_operator)):
+async def send_whatsapp_notification(data: SendNotificationRequest, request: Request, current_user: dict = Depends(require_operator)):
     from services.whatsapp_service import WhatsAppService, resolve_template_variables
+    from services.invoice_view_service import build_public_invoice_url
     wa_config = await _get_platform_whatsapp_config()
     if not wa_config:
         raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
@@ -2159,49 +2181,82 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
     subscriber = await db.subscribers.find_one({"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0})
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
+    if not subscriber.get("whatsapp_number"):
+        raise HTTPException(status_code=400, detail="Subscriber has no WhatsApp number configured.")
+
+    # Build public invoice URL from request origin
+    invoice_public_url = build_public_invoice_url(request, invoice) or ""
+    # Inject into invoice dict so variable resolver can access it
+    invoice["invoice_public_url"] = invoice_public_url
+
     try:
         template_settings = await _get_whatsapp_template_settings()
         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+        result = None
+
+        def _get_header_and_btn(tmpl_doc, body_vars):
+            """Return (header_params, header_type, btn_params) based on template config."""
+            header_image_static = (tmpl_doc or {}).get("header_image_static", False)
+            if header_image_static:
+                hdr_params, hdr_type = None, "none"
+            else:
+                hdr_type = (tmpl_doc or {}).get("header_type", "none")
+                hdr_params = None  # resolved after body below
+
+            # Button URL
+            btn_url_var = (tmpl_doc or {}).get("button_url_variable", "invoice_public_url")
+            if btn_url_var == "invoice_number":
+                btn_url = invoice.get("invoice_number", "")
+            else:
+                btn_url = invoice_public_url
+
+            btn_params = None
+            if (tmpl_doc or {}).get("has_payment_button") and btn_url:
+                btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": btn_url}]}]
+
+            return hdr_params, hdr_type, btn_params, header_image_static
+
         if data.notification_type == "reminder":
             template_name = template_settings.get("reminder_template") or "payment_reminder"
             tmpl_doc = await db.whatsapp_templates.find_one(
                 {"template_name": template_name, "deleted_at": None}, {"_id": 0}
             )
             body_vars = (tmpl_doc or {}).get("body_variables") or []
-            
-            # Always resolve variables (including header)
-            res = await resolve_template_variables(
-                db, body_vars, invoice, subscriber,
-                header_variable=(tmpl_doc or {}).get("header_variable")
-            )
+            hdr_params, hdr_type, btn_params, hdr_static = _get_header_and_btn(tmpl_doc, body_vars)
+
+            if not hdr_static and hdr_type not in ("none",):
+                res_hdr = await resolve_template_variables(
+                    db, [], invoice, subscriber,
+                    header_variable=(tmpl_doc or {}).get("header_variable")
+                )
+                hdr_params = [res_hdr["header"]] if res_hdr.get("header") else None
+
+            res = await resolve_template_variables(db, body_vars, invoice, subscriber)
             variables = res["body"]
-            header_params = [res["header"]] if res["header"] else None
-            header_type = (tmpl_doc or {}).get("header_type", "none")
 
             if body_vars:
-                btn_params = None
-                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
-                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
                 result = await wa_service.send_template_message(
                     recipient_phone=subscriber["whatsapp_number"],
                     template_name=template_name,
                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                     variables=variables,
-                    header_params=header_params,
-                    header_type=header_type,
+                    header_params=hdr_params,
+                    header_type=hdr_type,
                     button_params=btn_params,
                 )
             else:
                 due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
                 days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
                 result = await wa_service.send_payment_reminder(
-                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                    recipient_phone=subscriber["whatsapp_number"],
+                    customer_name=subscriber["name"],
                     invoice_number=invoice["invoice_number"],
-                    amount_due=f"₹{invoice['final_amount']:,.2f}", days_overdue=str(days_overdue),
-                    payment_link=invoice.get("payment_link"),
+                    amount_due=f"₹{invoice['final_amount']:,.2f}",
+                    days_overdue=str(days_overdue),
+                    payment_link=invoice_public_url or invoice.get("payment_link"),
                     template_name_override=template_name,
-                    header_params=header_params,
-                    header_type=header_type,
+                    header_params=hdr_params,
+                    header_type=hdr_type,
                 )
         else:
             template_name = template_settings.get("invoice_template") or "invoice_notification"
@@ -2209,41 +2264,45 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
                 {"template_name": template_name, "deleted_at": None}, {"_id": 0}
             )
             body_vars = (tmpl_doc or {}).get("body_variables") or []
-            
-            # Always resolve variables (including header)
-            res = await resolve_template_variables(
-                db, body_vars, invoice, subscriber,
-                header_variable=(tmpl_doc or {}).get("header_variable")
-            )
+            hdr_params, hdr_type, btn_params, hdr_static = _get_header_and_btn(tmpl_doc, body_vars)
+
+            if not hdr_static and hdr_type not in ("none",):
+                res_hdr = await resolve_template_variables(
+                    db, [], invoice, subscriber,
+                    header_variable=(tmpl_doc or {}).get("header_variable")
+                )
+                hdr_params = [res_hdr["header"]] if res_hdr.get("header") else None
+
+            res = await resolve_template_variables(db, body_vars, invoice, subscriber)
             variables = res["body"]
-            header_params = [res["header"]] if res["header"] else None
-            header_type = (tmpl_doc or {}).get("header_type", "none")
 
             if body_vars:
-                btn_params = None
-                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
-                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
-                await wa_service.send_template_message(
+                result = await wa_service.send_template_message(
                     recipient_phone=subscriber["whatsapp_number"],
                     template_name=template_name,
                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                     variables=variables,
-                    header_params=header_params,
-                    header_type=header_type,
+                    header_params=hdr_params,
+                    header_type=hdr_type,
                     button_params=btn_params,
                 )
             else:
-                await wa_service.send_invoice_notification(
-                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                result = await wa_service.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    customer_name=subscriber["name"],
                     invoice_number=invoice["invoice_number"],
                     amount=f"₹{invoice['final_amount']:,.2f}",
                     due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
-                    payment_link=invoice.get("payment_link"),
+                    payment_link=invoice_public_url or invoice.get("payment_link"),
                     template_name_override=template_name,
-                    header_params=header_params,
-                    header_type=header_type,
+                    header_params=hdr_params,
+                    header_type=hdr_type,
                 )
-        return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
+
+        msg_id = None
+        if result and "messages" in result and len(result["messages"]) > 0:
+            msg_id = result["messages"][0].get("id")
+        return {"success": True, "message_id": msg_id}
     except Exception as e:
         logger.error(f"WhatsApp notification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send notification: {e}")

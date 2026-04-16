@@ -58,16 +58,19 @@ def _compute_days_overdue(due_date_value) -> str:
 
 
 KNOWN_INVOICE_VARIABLES = {
-    "customer_name":  lambda inv, sub: sub.get("name", ""),
-    "invoice_number": lambda inv, sub: inv.get("invoice_number", ""),
-    "amount":         lambda inv, sub: f"₹{(inv.get('final_amount') or 0):,.2f}",
-    "due_date":       lambda inv, sub: _fmt_date(inv.get("due_date")),
-    "days_overdue":   lambda inv, sub: _compute_days_overdue(inv.get("due_date")),
-    "plan_name":      lambda inv, sub: ", ".join(
+    "customer_name":      lambda inv, sub: sub.get("name", ""),
+    "invoice_number":     lambda inv, sub: inv.get("invoice_number", ""),
+    "amount":             lambda inv, sub: f"₹{(inv.get('final_amount') or 0):,.2f}",
+    "due_date":           lambda inv, sub: _fmt_date(inv.get("due_date")),
+    "days_overdue":       lambda inv, sub: _compute_days_overdue(inv.get("due_date")),
+    "plan_name":          lambda inv, sub: ", ".join(
         li["plan_name"] for li in inv.get("line_items", []) if li.get("plan_name")
     ) or inv.get("plan_name", ""),
-    "tenure":         lambda inv, sub: _fmt_tenure(inv.get("line_items", [])),
-    "payment_link":   lambda inv, sub: inv.get("payment_link", "") or "",
+    "tenure":             lambda inv, sub: _fmt_tenure(inv.get("line_items", [])),
+    "payment_link":       lambda inv, sub: inv.get("payment_link", "") or "",
+    # invoice_public_url — full URL to the public invoice view page (e.g. https://site.com/invoice/INV-001)
+    # This is set on the invoice dict by the endpoint before calling resolve_template_variables
+    "invoice_public_url": lambda inv, sub: inv.get("invoice_public_url", "") or inv.get("payment_link", "") or "",
 }
 
 
@@ -172,28 +175,26 @@ class WhatsAppService:
         components = []
         
         # Header component
-        if header_params and header_type != "none":
+        if header_params and header_type not in ("none", "static_image"):
             if header_type == "image":
                 # Ensure header_params[0] is an absolute URL
                 image_url = str(header_params[0]) if header_params[0] else ""
                 image_url = await self._ensure_absolute_url(image_url)
                 
-                # IMPORTANT: If image_url refers to the base URL itself (empty path) 
-                # or is otherwise likely invalid, use a generic fallback image 
-                # to prevent 400 errors if the template MANDATES an image.
-                if not image_url or image_url.endswith("/uploads/") or image_url.endswith("/"):
-                    # Using a placeholder image that is known to work
-                    image_url = "https://raw.githubusercontent.com/shubhamshirve/ShubhApp/live/frontend/public/logo192.png"
-
-                components.append({
-                    "type": "header",
-                    "parameters": [
-                        {
-                            "type": "image",
-                            "image": {"link": image_url}
-                        }
-                    ]
-                })
+                if not image_url:
+                    # If no valid image URL, skip the header component
+                    # (do not inject a fallback image — that causes WhatsApp API errors)
+                    logger.warning("send_template_message: header_type=image but image_url is empty — skipping header component")
+                else:
+                    components.append({
+                        "type": "header",
+                        "parameters": [
+                            {
+                                "type": "image",
+                                "image": {"link": image_url}
+                            }
+                        ]
+                    })
             elif header_type == "text":
                 components.append({
                     "type": "header",
@@ -434,6 +435,7 @@ def get_whatsapp_service(phone_number_id: str, access_token: str) -> Optional[Wh
         return None
     return WhatsAppService(phone_number_id, access_token)
 
+
 async def get_whatsapp_service_async() -> Optional[WhatsAppService]:
     """Async factory that fetches credentials from DB/Env"""
     phone_id = await get_env_setting("whatsapp_phone_number_id")
@@ -442,3 +444,69 @@ async def get_whatsapp_service_async() -> Optional[WhatsAppService]:
     if not phone_id or not token:
         return None
     return WhatsAppService(phone_id, token)
+
+
+async def build_wa_send_params(
+    db,
+    tmpl_doc: Optional[dict],
+    invoice: dict,
+    subscriber: dict,
+    invoice_public_url: Optional[str] = None,
+) -> dict:
+    """
+    Build (variables, header_params, header_type, btn_params, language_code, template_name)
+    from a template document + invoice/subscriber.
+    
+    Call this before invoking send_template_message to get a consistent set of params
+    that correctly handles:
+      - static header images (header_image_static=True)
+      - dynamic header images/text
+      - button URL variable (invoice_public_url vs invoice_number)
+      - all known KNOWN_INVOICE_VARIABLES
+    
+    `invoice_public_url` should be set externally (from request or env setting).
+    It is injected into the invoice dict as "invoice_public_url" for variable resolution.
+    """
+    if invoice_public_url:
+        invoice = {**invoice, "invoice_public_url": invoice_public_url}
+
+    body_vars = (tmpl_doc or {}).get("body_variables") or []
+    header_image_static = (tmpl_doc or {}).get("header_image_static", False)
+    header_type = (tmpl_doc or {}).get("header_type", "none") if not header_image_static else "none"
+    language_code = (tmpl_doc or {}).get("language_code", "en")
+    template_name = (tmpl_doc or {}).get("template_name", "invoice_notification")
+
+    # Resolve body variables
+    res = await resolve_template_variables(db, body_vars, invoice, subscriber)
+    variables = res["body"]
+
+    # Resolve header (skip for static images)
+    header_params = None
+    if not header_image_static and header_type not in ("none",):
+        res_hdr = await resolve_template_variables(
+            db, [], invoice, subscriber,
+            header_variable=(tmpl_doc or {}).get("header_variable")
+        )
+        if res_hdr.get("header"):
+            header_params = [res_hdr["header"]]
+
+    # Build button params
+    btn_params = None
+    if (tmpl_doc or {}).get("has_payment_button"):
+        btn_url_var = (tmpl_doc or {}).get("button_url_variable", "invoice_public_url")
+        if btn_url_var == "invoice_number":
+            btn_url = invoice.get("invoice_number", "")
+        else:
+            btn_url = invoice_public_url or invoice.get("invoice_public_url", "") or ""
+        if btn_url:
+            btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": btn_url}]}]
+
+    return {
+        "variables": variables,
+        "header_params": header_params,
+        "header_type": header_type,
+        "btn_params": btn_params,
+        "language_code": language_code,
+        "template_name": template_name,
+        "body_vars": body_vars,
+    }

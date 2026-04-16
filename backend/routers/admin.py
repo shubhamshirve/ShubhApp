@@ -1212,7 +1212,9 @@ async def create_whatsapp_template(data: WhatsAppTemplateCreate, current_user: d
         "body_variables": data.body_variables or [],
         "header_type": data.header_type or "none",
         "header_variable": data.header_variable,
+        "header_image_static": data.header_image_static,
         "has_payment_button": data.has_payment_button,
+        "button_url_variable": data.button_url_variable or "invoice_public_url",
         "is_active": data.is_active,
         "created_by": current_user["id"],
         "created_at": now.isoformat(),
@@ -1254,7 +1256,13 @@ async def update_whatsapp_template(
     template = await db.whatsapp_templates.find_one({"id": template_id, "deleted_at": None}, {"_id": 0})
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    # Exclude None values BUT allow False (bool) and empty list (body_variables can be cleared)
+    raw = data.model_dump()
+    update_data = {}
+    for k, v in raw.items():
+        if v is None:
+            continue  # skip truly unset fields
+        update_data[k] = v
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
