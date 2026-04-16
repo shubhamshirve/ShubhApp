@@ -29,6 +29,7 @@ from dependencies import (
 from audit import log_audit
 from sanitization import sanitize_filename, sanitize_text
 from services.invoice_view_service import normalize_invoice_settings, build_public_invoice_url, build_public_invoice_path
+from routers.wallet import get_or_create_wallet, deduct_wallet
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
@@ -2170,6 +2171,18 @@ async def get_operator_audit_logs(
 async def send_whatsapp_notification(data: SendNotificationRequest, request: Request, current_user: dict = Depends(require_operator)):
     from services.whatsapp_service import WhatsAppService, resolve_template_variables
     from services.invoice_view_service import build_public_invoice_url
+    
+    # Check wallet balance before sending (Rs 0.5 per message)
+    WHATSAPP_SEND_COST = 0.5
+    wallet = await get_or_create_wallet(current_user["operator_id"])
+    current_balance = wallet.get("balance", 0)
+    
+    if current_balance < WHATSAPP_SEND_COST:
+        raise HTTPException(
+            status_code=402,  # Payment Required
+            detail=f"Insufficient wallet balance. Required: ₹{WHATSAPP_SEND_COST}, Available: ₹{current_balance:.2f}. Please top up your wallet."
+        )
+    
     wa_config = await _get_platform_whatsapp_config()
     if not wa_config:
         raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
@@ -2310,11 +2323,22 @@ async def send_whatsapp_notification(data: SendNotificationRequest, request: Req
             msg_id = result["messages"][0].get("id")
         if result and "contacts" in result and len(result["contacts"]) > 0:
             recipient_wa_id = result["contacts"][0].get("wa_id")
+        
+        # Deduct wallet balance after successful send
+        new_balance, became_suspended = await deduct_wallet(
+            current_user["operator_id"],
+            WHATSAPP_SEND_COST,
+            f"WhatsApp message sent to {subscriber['name']} (Invoice: {invoice['invoice_number']})",
+            reference_id=invoice["id"]
+        )
+        logger.info(f"Wallet deducted ₹{WHATSAPP_SEND_COST} for WhatsApp send. New balance: ₹{new_balance}")
+        
         return {
             "success": True,
             "message_id": msg_id,
             "recipient_wa_id": recipient_wa_id,
             "detail": f"Message sent to {recipient_wa_id or subscriber.get('whatsapp_number', '')}",
+            "wallet_balance": new_balance,
         }
     except Exception as e:
         logger.error(f"WhatsApp notification failed: {e}")

@@ -535,13 +535,27 @@ const OperatorInvoices = () => {
         invoice_id: invoiceId,
         notification_type: type
       });
-      const { message_id, recipient_wa_id } = res.data || {};
+      const { message_id, recipient_wa_id, wallet_balance } = res.data || {};
       const detail = recipient_wa_id
         ? `Sent to +${recipient_wa_id}${message_id ? ` (ID: ${message_id.slice(-8)})` : ""}`
         : "WhatsApp message sent!";
-      toast.success(detail, { duration: 6000 });
+      
+      // Show wallet balance in success message
+      const balanceMsg = wallet_balance !== undefined ? ` | Wallet: ₹${wallet_balance.toFixed(2)}` : "";
+      toast.success(detail + balanceMsg, { duration: 6000 });
+      
+      // Refresh dashboard to update wallet balance
+      fetchDashboard();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to send notification");
+      // Handle insufficient balance error (402)
+      if (error.response?.status === 402) {
+        toast.error(
+          error.response?.data?.detail || "Insufficient wallet balance. Please top up to send WhatsApp messages.",
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(error.response?.data?.detail || "Failed to send notification");
+      }
     }
   };
 
