@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 from services.whatsapp_service import resolve_template_variables
 
 def _make_invoice(**kwargs):
@@ -119,3 +119,15 @@ def test_empty_line_items_tenure():
     inv = _make_invoice(line_items=[])
     result = resolve_template_variables(["tenure"], inv, _make_subscriber())
     assert result == [""]
+
+
+def test_days_overdue_no_due_date():
+    inv = _make_invoice(due_date=None)
+    result = resolve_template_variables(["days_overdue"], inv, _make_subscriber())
+    assert result == ["0"]
+
+
+def test_amount_with_none_final_amount():
+    inv = _make_invoice(final_amount=None)
+    result = resolve_template_variables(["amount"], inv, _make_subscriber())
+    assert result == ["₹0.00"]

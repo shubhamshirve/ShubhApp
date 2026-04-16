@@ -40,11 +40,28 @@ def _fmt_tenure(line_items: list) -> str:
     return ", ".join(ranges)
 
 
+def _compute_days_overdue(due_date_value) -> str:
+    """Compute days overdue from due_date. Returns '0' if not overdue or date missing."""
+    if not due_date_value:
+        return "0"
+    try:
+        from datetime import timezone
+        if isinstance(due_date_value, datetime):
+            due = due_date_value.replace(tzinfo=timezone.utc) if due_date_value.tzinfo is None else due_date_value
+        else:
+            due = datetime.fromisoformat(str(due_date_value).replace("Z", "+00:00"))
+        delta = (datetime.now(timezone.utc) - due).days
+        return str(max(0, delta))
+    except (ValueError, TypeError):
+        return "0"
+
+
 KNOWN_INVOICE_VARIABLES = {
     "customer_name":  lambda inv, sub: sub.get("name", ""),
     "invoice_number": lambda inv, sub: inv.get("invoice_number", ""),
-    "amount":         lambda inv, sub: f"₹{inv.get('final_amount', 0):,.2f}",
+    "amount":         lambda inv, sub: f"₹{(inv.get('final_amount') or 0):,.2f}",
     "due_date":       lambda inv, sub: _fmt_date(inv.get("due_date")),
+    "days_overdue":   lambda inv, sub: _compute_days_overdue(inv.get("due_date")),
     "plan_name":      lambda inv, sub: ", ".join(
         li["plan_name"] for li in inv.get("line_items", []) if li.get("plan_name")
     ) or inv.get("plan_name", ""),
