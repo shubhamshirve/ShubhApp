@@ -384,6 +384,13 @@ class WhatsAppService:
             
             return response.json()
     
+    def _normalize_phone(self, phone: str) -> str:
+        """Normalize phone number to E.164 format without +"""
+        # Remove common formatting
+        cleaned = ''.join(c for c in phone if c.isdigit())
+        # Add India country code if not present
+        if len(cleaned) == 10:
+            cleaned = "91" + cleaned
         return cleaned
 
     async def _ensure_absolute_url(self, path: str) -> str:
