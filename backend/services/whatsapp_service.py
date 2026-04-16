@@ -58,19 +58,46 @@ def _compute_days_overdue(due_date_value) -> str:
 
 
 KNOWN_INVOICE_VARIABLES = {
-    "customer_name":      lambda inv, sub: sub.get("name", ""),
+    # ── Invoice fields ──────────────────────────────────────────────────────────
     "invoice_number":     lambda inv, sub: inv.get("invoice_number", ""),
     "amount":             lambda inv, sub: f"₹{(inv.get('final_amount') or 0):,.2f}",
+    "amount_raw":         lambda inv, sub: f"{(inv.get('final_amount') or 0):,.2f}",
     "due_date":           lambda inv, sub: _fmt_date(inv.get("due_date")),
     "days_overdue":       lambda inv, sub: _compute_days_overdue(inv.get("due_date")),
     "plan_name":          lambda inv, sub: ", ".join(
         li["plan_name"] for li in inv.get("line_items", []) if li.get("plan_name")
     ) or inv.get("plan_name", ""),
     "tenure":             lambda inv, sub: _fmt_tenure(inv.get("line_items", [])),
+    "invoice_date":       lambda inv, sub: _fmt_date(inv.get("created_at") or inv.get("invoice_date")),
     "payment_link":       lambda inv, sub: inv.get("payment_link", "") or "",
-    # invoice_public_url — full URL to the public invoice view page (e.g. https://site.com/invoice/INV-001)
-    # This is set on the invoice dict by the endpoint before calling resolve_template_variables
+    # Full public URL to the invoice view page (e.g. https://site.com/invoice/INV-001)
+    # Injected by the calling endpoint before resolving variables
     "invoice_public_url": lambda inv, sub: inv.get("invoice_public_url", "") or inv.get("payment_link", "") or "",
+    "invoice_status":     lambda inv, sub: (inv.get("status") or "").capitalize(),
+
+    # ── Customer / Subscriber fields ─────────────────────────────────────────
+    "customer_name":      lambda inv, sub: sub.get("name", ""),
+    "customer_email":     lambda inv, sub: sub.get("email", "") or "",
+    "customer_phone":     lambda inv, sub: sub.get("whatsapp_number", "") or "",
+    "customer_address":   lambda inv, sub: sub.get("address", "") or "",
+    "customer_plan":      lambda inv, sub: ", ".join(
+        (p.get("plan_name") or p.get("name") or "") for p in (sub.get("plans") or []) if p.get("status") == "active"
+    ) or "",
+
+    # ── Operator / Business fields ────────────────────────────────────────────
+    # These are injected into inv["_operator"] by resolve_template_variables
+    # before this lambda runs, so inv.get("_operator") is always safe to call.
+    "operator_name":          lambda inv, sub: (inv.get("_operator") or {}).get("company_name", ""),
+    "operator_phone":         lambda inv, sub: (inv.get("_operator") or {}).get("phone", "") or "",
+    "operator_email":         lambda inv, sub: (inv.get("_operator") or {}).get("email", "") or "",
+    "operator_owner":         lambda inv, sub: (inv.get("_operator") or {}).get("owner_name", "") or "",
+    "operator_address":       lambda inv, sub: (inv.get("_operator") or {}).get("address", "") or "",
+    "operator_gst":           lambda inv, sub: (inv.get("_operator") or {}).get("gst_number", "") or "",
+    "operator_upi_id":        lambda inv, sub: (inv.get("_operator") or {}).get("upi_id", "") or "",
+    "operator_bank_name":     lambda inv, sub: (inv.get("_operator") or {}).get("bank_name", "") or "",
+    "operator_bank_account":  lambda inv, sub: (inv.get("_operator") or {}).get("bank_account_number", "") or "",
+    "operator_ifsc":          lambda inv, sub: (inv.get("_operator") or {}).get("bank_ifsc", "") or "",
+    "operator_business_type": lambda inv, sub: (inv.get("_operator") or {}).get("business_type", "") or "",
 }
 
 
@@ -82,31 +109,45 @@ async def resolve_template_variables(
     header_variable: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Resolve both body variables and an optional header variable.
+    Resolve body variables + an optional header variable.
+    Automatically fetches operator data when any operator_* variable is used.
+    Injects operator doc into invoice["_operator"] so lambdas can access it.
     """
-    # Pre-fetch some data if needed (e.g. logo)
-    logo_url = ""
     needed_variables = set(body_variables)
     if header_variable:
         needed_variables.add(header_variable)
-    
+
+    # ── Fetch company logo if needed ──────────────────────────────────────────
+    logo_url = ""
     if "company_logo" in needed_variables:
         settings = await db.invoice_settings.find_one(
             {"operator_id": invoice.get("operator_id")}, {"_id": 0}
         )
         logo_url = (settings or {}).get("logo_url", "")
 
+    # ── Fetch operator data if any operator_* variable is used ───────────────
+    needs_operator = any(k.startswith("operator_") for k in needed_variables)
+    if needs_operator and not invoice.get("_operator"):
+        operator_id = invoice.get("operator_id")
+        if operator_id:
+            op = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+            # Attach to invoice dict (mutable copy to avoid polluting caller's dict)
+            invoice = {**invoice, "_operator": op or {}}
+
     def _resolve(key):
         if key == "company_logo":
             return logo_url
-        return KNOWN_INVOICE_VARIABLES.get(key, lambda i, s, k=key: k)(invoice, subscriber)
+        resolver = KNOWN_INVOICE_VARIABLES.get(key)
+        if resolver:
+            return resolver(invoice, subscriber)
+        return key   # fallback: return the variable name itself if unknown
 
     resolved_body = [_resolve(key) for key in body_variables]
-    
+
     resolved_header = None
     if header_variable:
         resolved_header = _resolve(header_variable)
-        
+
     return {
         "body": resolved_body,
         "header": resolved_header

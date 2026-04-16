@@ -53,16 +53,37 @@ const TYPE_COLORS = {
 const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_confirmation"];
 
 const INVOICE_VARIABLE_OPTIONS = [
-  { value: "customer_name",      label: "Customer Name ({{N}})" },
-  { value: "plan_name",          label: "Plan Name ({{N}})" },
-  { value: "tenure",             label: "Tenure / Date Range ({{N}})" },
-  { value: "amount",             label: "Amount ({{N}})" },
-  { value: "due_date",           label: "Due Date ({{N}})" },
-  { value: "invoice_number",     label: "Invoice Number ({{N}})" },
-  { value: "days_overdue",       label: "Days Overdue ({{N}})" },
-  { value: "invoice_public_url", label: "Invoice Public URL ({{N}}) — for body text" },
-  { value: "payment_link",       label: "Payment / Razorpay Link ({{N}})" },
-  { value: "company_logo",       label: "Company Logo URL ({{N}}) — image header" },
+  // ── Invoice ──
+  { value: "invoice_number",     label: "Invoice Number",              group: "Invoice" },
+  { value: "amount",             label: "Amount (₹ formatted)",        group: "Invoice" },
+  { value: "due_date",           label: "Due Date",                    group: "Invoice" },
+  { value: "invoice_date",       label: "Invoice Date",                group: "Invoice" },
+  { value: "days_overdue",       label: "Days Overdue",                group: "Invoice" },
+  { value: "plan_name",          label: "Plan Name",                   group: "Invoice" },
+  { value: "tenure",             label: "Service Period / Tenure",     group: "Invoice" },
+  { value: "invoice_status",     label: "Invoice Status",              group: "Invoice" },
+  { value: "invoice_public_url", label: "Invoice Public URL (link)",   group: "Invoice" },
+  { value: "payment_link",       label: "Payment Link (Razorpay etc)", group: "Invoice" },
+  // ── Customer ──
+  { value: "customer_name",      label: "Customer Name",               group: "Customer" },
+  { value: "customer_email",     label: "Customer Email",              group: "Customer" },
+  { value: "customer_phone",     label: "Customer Phone / WA Number",  group: "Customer" },
+  { value: "customer_address",   label: "Customer Address",            group: "Customer" },
+  { value: "customer_plan",      label: "Customer Active Plan(s)",     group: "Customer" },
+  // ── Operator / Business ──
+  { value: "operator_name",          label: "Business / Operator Name",   group: "Operator" },
+  { value: "operator_phone",         label: "Operator Phone",             group: "Operator" },
+  { value: "operator_email",         label: "Operator Email",             group: "Operator" },
+  { value: "operator_owner",         label: "Owner Name",                 group: "Operator" },
+  { value: "operator_address",       label: "Business Address",           group: "Operator" },
+  { value: "operator_gst",           label: "GST Number",                 group: "Operator" },
+  { value: "operator_upi_id",        label: "UPI ID",                     group: "Operator" },
+  { value: "operator_bank_name",     label: "Bank Name",                  group: "Operator" },
+  { value: "operator_bank_account",  label: "Bank Account Number",        group: "Operator" },
+  { value: "operator_ifsc",          label: "IFSC Code",                  group: "Operator" },
+  { value: "operator_business_type", label: "Business Type",              group: "Operator" },
+  // ── Image header variable ──
+  { value: "company_logo",       label: "Company Logo URL (image header only)", group: "Other" },
 ];
 
 // Quick-setup preset templates
@@ -709,9 +730,21 @@ export default function WhatsAppTemplates() {
                   <Select value={selectedVariable} onValueChange={setSelectedVariable}>
                     <SelectTrigger><SelectValue placeholder="Select a variable to add..." /></SelectTrigger>
                     <SelectContent>
-                      {INVOICE_VARIABLE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
+                      {["Invoice", "Customer", "Operator", "Other"].map(group => {
+                        const opts = INVOICE_VARIABLE_OPTIONS.filter(o => o.group === group);
+                        return (
+                          <div key={group}>
+                            <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b">
+                              {group}
+                            </div>
+                            {opts.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   <Button type="button" variant="outline" onClick={addSelectedVariable} className="shrink-0">
