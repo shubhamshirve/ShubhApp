@@ -108,11 +108,12 @@ const SearchableSubscriberSelect = ({ value, onSelect, authAxios }) => {
 
   // Debounced search
   useEffect(() => {
+    if (!open) return;
+    
     const timeoutId = setTimeout(() => {
-      if (searchQuery.trim() || open) {
-        searchSubscribers(searchQuery);
-      }
+      searchSubscribers(searchQuery);
     }, 300);
+    
     return () => clearTimeout(timeoutId);
   }, [searchQuery, open]);
 
