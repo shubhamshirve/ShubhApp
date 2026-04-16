@@ -793,8 +793,12 @@ class WhatsAppTemplateCreate(SanitizedModel):
     description: Optional[str] = None
     body_variables: Optional[List[str]] = []  # list of variable descriptions e.g. ["customer_name", "invoice_no"]
     header_type: str = "none"   # none, text, image
-    header_variable: Optional[str] = None
-    # When True: header image is static/fixed in Meta Business Manager — do NOT send header component in API call
+    # For image headers: use header_image_url for a fixed/static image URL (reused every message)
+    # OR use header_variable to resolve a per-invoice image URL dynamically.
+    # header_image_url takes precedence over header_variable when both are set.
+    header_image_url: Optional[str] = None    # Fixed image URL sent with every message (e.g. your logo hosted publicly)
+    header_variable: Optional[str] = None     # Per-invoice variable that resolves to an image URL (e.g. "company_logo")
+    # DEPRECATED: kept for backward compat, no longer used in send logic
     header_image_static: bool = False
     has_payment_button: bool = False
     # Variable to use for button URL: "invoice_public_url" (default) passes the full public invoice view URL
@@ -810,6 +814,7 @@ class WhatsAppTemplateUpdate(SanitizedModel):
     description: Optional[str] = None
     body_variables: Optional[List[str]] = None
     header_type: Optional[str] = None
+    header_image_url: Optional[str] = None
     header_variable: Optional[str] = None
     header_image_static: Optional[bool] = None
     has_payment_button: Optional[bool] = None

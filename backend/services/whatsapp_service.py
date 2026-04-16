@@ -175,16 +175,19 @@ class WhatsAppService:
         components = []
         
         # Header component
-        if header_params and header_type not in ("none", "static_image"):
+        # IMPORTANT: For image headers, WhatsApp API ALWAYS requires the header component
+        # with the image URL — even for "static/fixed" images. Omitting the header component
+        # causes: "header: Format mismatch, expected IMAGE, received UNKNOWN"
+        if header_type not in ("none",):
             if header_type == "image":
-                # Ensure header_params[0] is an absolute URL
-                image_url = str(header_params[0]) if header_params[0] else ""
+                image_url = str(header_params[0]) if (header_params and header_params[0]) else ""
                 image_url = await self._ensure_absolute_url(image_url)
-                
+
                 if not image_url:
-                    # If no valid image URL, skip the header component
-                    # (do not inject a fallback image — that causes WhatsApp API errors)
-                    logger.warning("send_template_message: header_type=image but image_url is empty — skipping header component")
+                    logger.warning(
+                        "send_template_message: header_type=image but image_url is empty — "
+                        "skipping header (this will cause a WhatsApp API error if template expects IMAGE header)"
+                    )
                 else:
                     components.append({
                         "type": "header",
@@ -196,12 +199,13 @@ class WhatsAppService:
                         ]
                     })
             elif header_type == "text":
-                components.append({
-                    "type": "header",
-                    "parameters": [
-                        {"type": "text", "text": str(p)} for p in header_params
-                    ]
-                })
+                if header_params:
+                    components.append({
+                        "type": "header",
+                        "parameters": [
+                            {"type": "text", "text": str(p)} for p in header_params
+                        ]
+                    })
         
         # Body component
         if variables:
@@ -471,8 +475,7 @@ async def build_wa_send_params(
         invoice = {**invoice, "invoice_public_url": invoice_public_url}
 
     body_vars = (tmpl_doc or {}).get("body_variables") or []
-    header_image_static = (tmpl_doc or {}).get("header_image_static", False)
-    header_type = (tmpl_doc or {}).get("header_type", "none") if not header_image_static else "none"
+    header_type = (tmpl_doc or {}).get("header_type", "none")
     language_code = (tmpl_doc or {}).get("language_code", "en")
     template_name = (tmpl_doc or {}).get("template_name", "invoice_notification")
 
@@ -480,15 +483,30 @@ async def build_wa_send_params(
     res = await resolve_template_variables(db, body_vars, invoice, subscriber)
     variables = res["body"]
 
-    # Resolve header (skip for static images)
+    # Resolve header params
+    # Priority: header_image_url (fixed/static URL stored in template) > header_variable (per-invoice dynamic)
     header_params = None
-    if not header_image_static and header_type not in ("none",):
-        res_hdr = await resolve_template_variables(
-            db, [], invoice, subscriber,
-            header_variable=(tmpl_doc or {}).get("header_variable")
-        )
-        if res_hdr.get("header"):
-            header_params = [res_hdr["header"]]
+    if header_type == "image":
+        header_image_url = (tmpl_doc or {}).get("header_image_url", "") or ""
+        if header_image_url:
+            # Use the fixed URL stored in the template settings
+            header_params = [header_image_url]
+        elif (tmpl_doc or {}).get("header_variable"):
+            # Resolve the per-invoice variable
+            res_hdr = await resolve_template_variables(
+                db, [], invoice, subscriber,
+                header_variable=(tmpl_doc or {}).get("header_variable")
+            )
+            if res_hdr.get("header"):
+                header_params = [res_hdr["header"]]
+    elif header_type == "text":
+        if (tmpl_doc or {}).get("header_variable"):
+            res_hdr = await resolve_template_variables(
+                db, [], invoice, subscriber,
+                header_variable=(tmpl_doc or {}).get("header_variable")
+            )
+            if res_hdr.get("header"):
+                header_params = [res_hdr["header"]]
 
     # Build button params
     btn_params = None

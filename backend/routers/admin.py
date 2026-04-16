@@ -1211,6 +1211,7 @@ async def create_whatsapp_template(data: WhatsAppTemplateCreate, current_user: d
         "description": data.description or "",
         "body_variables": data.body_variables or [],
         "header_type": data.header_type or "none",
+        "header_image_url": data.header_image_url or "",
         "header_variable": data.header_variable,
         "header_image_static": data.header_image_static,
         "has_payment_button": data.has_payment_button,

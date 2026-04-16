@@ -68,7 +68,7 @@ const INVOICE_VARIABLE_OPTIONS = [
 // Quick-setup preset templates
 const QUICK_TEMPLATES = [
   {
-    label: "Invoice Notification (with static image header + button)",
+    label: "Invoice Notification (image header + button)",
     template_name: "invoice_notification",
     display_name: "Invoice Notification",
     template_type: "invoice_notification",
@@ -76,8 +76,9 @@ const QUICK_TEMPLATES = [
     description: "Sends invoice details with a button to open the invoice",
     body_variables: ["customer_name", "plan_name", "tenure", "due_date", "amount"],
     header_type: "image",
+    header_image_url: "",   // fill in your image URL
     header_variable: "",
-    header_image_static: true,
+    header_image_static: false,
     has_payment_button: true,
     button_url_variable: "invoice_public_url",
     is_active: true,
@@ -91,6 +92,7 @@ const QUICK_TEMPLATES = [
     description: "Reminds subscribers about overdue payment",
     body_variables: ["customer_name", "invoice_number", "amount", "days_overdue"],
     header_type: "none",
+    header_image_url: "",
     header_variable: "",
     header_image_static: false,
     has_payment_button: true,
@@ -106,6 +108,7 @@ const QUICK_TEMPLATES = [
     description: "Confirms successful payment to subscriber",
     body_variables: ["customer_name", "invoice_number", "amount", "due_date"],
     header_type: "none",
+    header_image_url: "",
     header_variable: "",
     header_image_static: false,
     has_payment_button: false,
@@ -122,6 +125,7 @@ const defaultForm = {
   description: "",
   body_variables: [],
   header_type: "none",
+  header_image_url: "",
   header_variable: "",
   header_image_static: false,
   has_payment_button: false,
@@ -178,6 +182,7 @@ export default function WhatsAppTemplates() {
       description: tmpl.description || "",
       body_variables: tmpl.body_variables || [],
       header_type: tmpl.header_type || "none",
+      header_image_url: tmpl.header_image_url || "",
       header_variable: tmpl.header_variable || "",
       header_image_static: tmpl.header_image_static || false,
       has_payment_button: tmpl.has_payment_button || false,
@@ -279,8 +284,8 @@ export default function WhatsAppTemplates() {
     ? templates
     : templates.filter((t) => t.template_type === filterType);
 
-  // Derive whether the header config UI should show variable selector
-  const showHeaderVariableSelector = form.header_type !== "none" && !form.header_image_static;
+  // Show variable selector only for text headers or image headers when a variable URL is desired
+  const showHeaderVariableSelector = form.header_type === "text" || (form.header_type === "image" && !form.header_image_url);
 
   return (
     <AdminLayout title="WhatsApp Templates">
@@ -348,8 +353,8 @@ export default function WhatsAppTemplates() {
             <div className="mt-3 space-y-2 text-xs text-blue-700 border-t border-blue-200 pt-3">
               <p><strong>Template Name (API)</strong> — must exactly match the approved template name in Meta Business Manager (e.g. <code className="bg-blue-100 px-1 rounded">invoice_notification</code>).</p>
               <p><strong>Body Variables</strong> — add them in the exact order as in your Meta template. They become <code className="bg-blue-100 px-1 rounded">{"{{1}}"}</code>, <code className="bg-blue-100 px-1 rounded">{"{{2}}"}</code>, … in the message body.</p>
-              <p><strong>Static Header Image</strong> — if your template has a header image uploaded/fixed in Meta Business Manager, enable this option. The system will NOT pass any image URL — Meta handles it. Do NOT enable if your template has a dynamic (variable) header image.</p>
-              <p><strong>URL Button</strong> — enable "Has URL Button" if your template has a Visit Website / CTA button. The <strong>invoice public URL</strong> (e.g. <code className="bg-blue-100 px-1 rounded">https://yourdomain.com/invoice/INV-001</code>) is passed as the button's dynamic value. In Meta, the button URL should be configured as <code className="bg-blue-100 px-1 rounded">{"{{1}}"}</code> or contain <code className="bg-blue-100 px-1 rounded">{"{{1}}"}</code> at the end.</p>
+              <p><strong>Image Header URL</strong> — WhatsApp <strong>always requires</strong> the image URL to be passed in every API call, even when the image is fixed/set in Meta. Paste a public HTTPS URL of the image (e.g. your company logo). WhatsApp servers must be able to download it directly.</p>
+              <p><strong>URL Button</strong> — enable "Has URL Button" if your Meta template has a Visit Website / CTA button. The <strong>invoice public URL</strong> (e.g. <code className="bg-blue-100 px-1 rounded">https://yourdomain.com/invoice/INV-001</code>) is passed as the button's dynamic value <code className="bg-blue-100 px-1 rounded">{"{{1}}"}</code>.</p>
             </div>
           )}
         </div>
@@ -438,12 +443,22 @@ export default function WhatsAppTemplates() {
                         <div className="flex flex-col gap-0.5">
                           {tmpl.header_type === "none" || !tmpl.header_type ? (
                             <span className="text-[10px] text-slate-300 uppercase font-bold">None</span>
-                          ) : tmpl.header_image_static ? (
-                            <span className="text-[10px] text-purple-600 uppercase font-bold flex items-center gap-0.5">
-                              IMG (static)
-                            </span>
+                          ) : tmpl.header_type === "image" ? (
+                            <div className="flex items-center gap-1.5">
+                              {tmpl.header_image_url ? (
+                                <img
+                                  src={tmpl.header_image_url}
+                                  alt="header"
+                                  className="h-6 w-9 object-cover rounded border border-slate-200"
+                                  onError={(e) => { e.target.style.display = "none"; }}
+                                />
+                              ) : null}
+                              <span className="text-[10px] text-blue-600 uppercase font-bold">
+                                IMG{!tmpl.header_image_url && <span className="text-amber-500 normal-case font-normal ml-1">⚠ no URL</span>}
+                              </span>
+                            </div>
                           ) : (
-                            <span className={`text-[10px] font-bold uppercase ${tmpl.header_type === 'image' ? 'text-blue-600' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-bold uppercase text-slate-500`}>
                               {tmpl.header_type}
                               {tmpl.header_variable && <span className="ml-1 font-normal normal-case text-slate-400">({tmpl.header_variable})</span>}
                             </span>
@@ -601,8 +616,8 @@ export default function WhatsAppTemplates() {
                     onValueChange={(v) => setForm({
                       ...form,
                       header_type: v,
+                      header_image_url: v !== "image" ? "" : form.header_image_url,
                       header_variable: v === "none" ? "" : form.header_variable,
-                      header_image_static: v !== "image" ? false : form.header_image_static,
                     })}
                   >
                     <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
@@ -613,35 +628,53 @@ export default function WhatsAppTemplates() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {form.header_type === "image" && (
-                  <div className="space-y-1.5 self-end">
-                    <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 rounded-lg p-2.5">
-                      <input
-                        type="checkbox"
-                        checked={form.header_image_static}
-                        onChange={(e) => setForm({ ...form, header_image_static: e.target.checked, header_variable: e.target.checked ? "" : form.header_variable })}
-                        className="rounded accent-purple-600"
-                      />
-                      <div>
-                        <p className="text-sm font-medium text-slate-700">Static Image</p>
-                        <p className="text-[11px] text-slate-500">Image is fixed in Meta, no URL needed</p>
-                      </div>
-                    </label>
-                  </div>
-                )}
               </div>
 
-              {/* Dynamic image/text variable selector */}
+              {/* Image header URL (fixed) */}
+              {form.header_type === "image" && (
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1">
+                    Header Image URL <span className="text-red-500">*</span>
+                    <HelpCircle className="w-3 h-3 text-slate-400" title="Required: The publicly accessible HTTPS URL of the image to use in the header. WhatsApp must be able to download this image." />
+                  </Label>
+                  <Input
+                    placeholder="https://yoursite.com/images/logo.png"
+                    value={form.header_image_url || ""}
+                    onChange={(e) => setForm({ ...form, header_image_url: e.target.value })}
+                    className="bg-white"
+                  />
+                  <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded p-2.5 text-xs text-amber-800">
+                    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      WhatsApp <strong>always requires</strong> the image URL to be passed with each message, even if the image is fixed in Meta. Paste a public HTTPS image URL here (e.g., your company logo). It must be accessible by WhatsApp servers.
+                    </span>
+                  </div>
+                  {form.header_image_url && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <img
+                        src={form.header_image_url}
+                        alt="Header preview"
+                        className="h-10 w-16 object-cover rounded border border-slate-200"
+                        onError={(e) => { e.target.style.display = "none"; }}
+                      />
+                      <span className="text-xs text-slate-500">Preview</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dynamic image/text variable selector (for variable URL) */}
               {showHeaderVariableSelector && (
                 <div className="space-y-1.5">
-                  <Label>{form.header_type === "image" ? "Image URL Variable" : "Text Variable"}</Label>
+                  <Label className="flex items-center gap-1 text-slate-500">
+                    Per-Invoice Variable <span className="text-xs font-normal">(optional, used if URL above is empty)</span>
+                  </Label>
                   {INVOICE_TYPE_TEMPLATES.includes(form.template_type) ? (
                     <Select
                       value={form.header_variable}
                       onValueChange={(v) => setForm({ ...form, header_variable: v })}
                     >
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select variable..." /></SelectTrigger>
+                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select variable (optional)..." /></SelectTrigger>
                       <SelectContent>
                         {INVOICE_VARIABLE_OPTIONS.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -656,13 +689,6 @@ export default function WhatsAppTemplates() {
                       className="bg-white"
                     />
                   )}
-                </div>
-              )}
-
-              {form.header_type === "image" && form.header_image_static && (
-                <div className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded p-2.5 text-xs text-purple-700">
-                  <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>Static mode: The image uploaded in Meta Business Manager is used automatically. No image URL will be passed in the API call.</span>
                 </div>
               )}
             </div>
