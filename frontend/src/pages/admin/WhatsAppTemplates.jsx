@@ -47,6 +47,18 @@ const TYPE_COLORS = {
   custom: "bg-slate-100 text-slate-800",
 };
 
+const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_confirmation"];
+
+const INVOICE_VARIABLE_OPTIONS = [
+  { value: "customer_name",  label: "Customer Name" },
+  { value: "plan_name",      label: "Plan Name" },
+  { value: "tenure",         label: "Tenure (Date Range)" },
+  { value: "invoice_number", label: "Invoice Number" },
+  { value: "amount",         label: "Amount" },
+  { value: "due_date",       label: "Due Date" },
+  { value: "payment_link",   label: "Payment Link" },
+];
+
 const defaultForm = {
   template_name: "",
   display_name: "",
@@ -67,6 +79,7 @@ export default function WhatsAppTemplates() {
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
   const [variableInput, setVariableInput] = useState("");
+  const [selectedVariable, setSelectedVariable] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
@@ -90,6 +103,7 @@ export default function WhatsAppTemplates() {
     setEditTemplate(null);
     setForm(defaultForm);
     setVariableInput("");
+    setSelectedVariable("");
     setShowDialog(true);
   };
 
@@ -106,6 +120,7 @@ export default function WhatsAppTemplates() {
       is_active: tmpl.is_active !== false,
     });
     setVariableInput("");
+    setSelectedVariable("");
     setShowDialog(true);
   };
 
@@ -171,6 +186,16 @@ export default function WhatsAppTemplates() {
     }
     setForm({ ...form, body_variables: [...form.body_variables, v] });
     setVariableInput("");
+  };
+
+  const addSelectedVariable = () => {
+    if (!selectedVariable) return;
+    if (form.body_variables.includes(selectedVariable)) {
+      toast.error("Variable already added");
+      return;
+    }
+    setForm({ ...form, body_variables: [...form.body_variables, selectedVariable] });
+    setSelectedVariable("");
   };
 
   const removeVariable = (idx) => {
@@ -427,19 +452,39 @@ export default function WhatsAppTemplates() {
             <div className="space-y-2">
               <Label>Body Variables</Label>
               <p className="text-xs text-slate-500">
-                Add variable descriptions in order — these become <code className="bg-slate-100 px-1 rounded">{`{{1}}`}</code>, <code className="bg-slate-100 px-1 rounded">{`{{2}}`}</code>, etc. in the template.
+                Add variables in order — these become <code className="bg-slate-100 px-1 rounded">{`{{1}}`}</code>, <code className="bg-slate-100 px-1 rounded">{`{{2}}`}</code>, etc. in the template.
               </p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. customer_name"
-                  value={variableInput}
-                  onChange={(e) => setVariableInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addVariable(); } }}
-                />
-                <Button type="button" variant="outline" onClick={addVariable} className="shrink-0">
-                  Add
-                </Button>
-              </div>
+              {INVOICE_TYPE_TEMPLATES.includes(form.template_type) ? (
+                <div className="flex gap-2">
+                  <Select value={selectedVariable} onValueChange={setSelectedVariable}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a variable..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVOICE_VARIABLE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" onClick={addSelectedVariable} className="shrink-0">
+                    Add
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="e.g. promo_text"
+                    value={variableInput}
+                    onChange={(e) => setVariableInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addVariable(); } }}
+                  />
+                  <Button type="button" variant="outline" onClick={addVariable} className="shrink-0">
+                    Add
+                  </Button>
+                </div>
+              )}
               {form.body_variables.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {form.body_variables.map((v, i) => (
