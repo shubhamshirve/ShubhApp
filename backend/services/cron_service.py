@@ -374,18 +374,39 @@ class CronJobService:
             logger.warning(f"Wallet deduction failed for auto-invoice {invoice['id']}: {e}")
 
         # Send notification if WhatsApp is available
-        from services.whatsapp_service import get_whatsapp_service_async
+        from services.whatsapp_service import get_whatsapp_service_async, resolve_template_variables
         wa_service = await get_whatsapp_service_async()
         if wa_service:
             try:
-                await wa_service.send_invoice_notification(
-                    recipient_phone=subscriber["whatsapp_number"],
-                    customer_name=subscriber["name"],
-                    invoice_number=invoice_number,
-                    amount=f"INR {invoice['final_amount']:,.2f}",
-                    due_date=due_date.strftime("%d %b %Y"),
-                    payment_link=invoice.get("payment_link")
+                cron_template_settings = await self.db.global_settings.find_one(
+                    {"type": "whatsapp_template_settings"}, {"_id": 0}
+                ) or {}
+                invoice_tpl_name = cron_template_settings.get("invoice_template") or "invoice_notification"
+                tmpl_doc = await self.db.whatsapp_templates.find_one(
+                    {"template_name": invoice_tpl_name, "deleted_at": None}, {"_id": 0}
                 )
+                body_vars = (tmpl_doc or {}).get("body_variables") or []
+                if body_vars:
+                    variables = resolve_template_variables(body_vars, invoice, subscriber)
+                    btn_params = None
+                    if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
+                        btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                    await wa_service.send_template_message(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        template_name=invoice_tpl_name,
+                        language_code=(tmpl_doc or {}).get("language_code", "en"),
+                        variables=variables,
+                        button_params=btn_params,
+                    )
+                else:
+                    await wa_service.send_invoice_notification(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        customer_name=subscriber["name"],
+                        invoice_number=invoice_number,
+                        amount=f"INR {invoice['final_amount']:,.2f}",
+                        due_date=due_date.strftime("%d %b %Y"),
+                        payment_link=invoice.get("payment_link"),
+                    )
             except Exception as e:
                 logger.error(f"Failed to send invoice notification: {str(e)}")
         
