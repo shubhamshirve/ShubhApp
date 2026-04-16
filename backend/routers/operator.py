@@ -1584,17 +1584,34 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
             if wa_config:
                 template_settings = await _get_whatsapp_template_settings()
                 template_name = template_settings.get("invoice_template") or "invoice_notification"
-                from services.whatsapp_service import WhatsAppService
+                from services.whatsapp_service import WhatsAppService, resolve_template_variables
                 wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-                await wa_service.send_invoice_notification(
-                    recipient_phone=subscriber["whatsapp_number"],
-                    customer_name=subscriber["name"],
-                    invoice_number=invoice["invoice_number"],
-                    amount=f"₹{invoice['final_amount']:,.2f}",
-                    due_date=data.due_date.strftime("%d %b %Y"),
-                    payment_link=public_invoice_url,
-                    template_name_override=template_name
+                tmpl_doc = await db.whatsapp_templates.find_one(
+                    {"template_name": template_name, "deleted_at": None}, {"_id": 0}
                 )
+                body_vars = (tmpl_doc or {}).get("body_variables") or []
+                if body_vars:
+                    variables = resolve_template_variables(body_vars, invoice, subscriber)
+                    btn_params = None
+                    if (tmpl_doc or {}).get("has_payment_button") and public_invoice_url:
+                        btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": public_invoice_url}]}]
+                    await wa_service.send_template_message(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        template_name=template_name,
+                        language_code=(tmpl_doc or {}).get("language_code", "en"),
+                        variables=variables,
+                        button_params=btn_params,
+                    )
+                else:
+                    await wa_service.send_invoice_notification(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        customer_name=subscriber["name"],
+                        invoice_number=invoice["invoice_number"],
+                        amount=f"₹{invoice['final_amount']:,.2f}",
+                        due_date=data.due_date.strftime("%d %b %Y"),
+                        payment_link=public_invoice_url,
+                        template_name_override=template_name,
+                    )
                 auto_wa_sent = True
         except Exception as e:
             logger.warning(f"Auto WhatsApp send failed: {e}")
