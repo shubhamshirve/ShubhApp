@@ -522,29 +522,64 @@ class CronJobService:
                         if not subscriber:
                             continue
 
+                        from services.whatsapp_service import resolve_template_variables
                         if days_diff <= 0:
                             reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
                             days_overdue = max(0, abs(days_diff))
-                            await wa_service.send_payment_reminder(
-                                recipient_phone=subscriber["whatsapp_number"],
-                                customer_name=subscriber["name"],
-                                invoice_number=invoice["invoice_number"],
-                                amount_due=f"INR {invoice['final_amount']:,.2f}",
-                                days_overdue=str(days_overdue),
-                                payment_link=invoice.get("payment_link"),
-                                template_name_override=reminder_tpl,
+                            tmpl_doc = await self.db.whatsapp_templates.find_one(
+                                {"template_name": reminder_tpl, "deleted_at": None}, {"_id": 0}
                             )
+                            body_vars = (tmpl_doc or {}).get("body_variables") or []
+                            if body_vars:
+                                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                                btn_params = None
+                                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
+                                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                                await wa_service.send_template_message(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    template_name=reminder_tpl,
+                                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                                    variables=variables,
+                                    button_params=btn_params,
+                                )
+                            else:
+                                await wa_service.send_payment_reminder(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    customer_name=subscriber["name"],
+                                    invoice_number=invoice["invoice_number"],
+                                    amount_due=f"INR {invoice['final_amount']:,.2f}",
+                                    days_overdue=str(days_overdue),
+                                    payment_link=invoice.get("payment_link"),
+                                    template_name_override=reminder_tpl,
+                                )
                         else:
                             invoice_tpl = template_settings.get("invoice_template") or "invoice_notification"
-                            await wa_service.send_invoice_notification(
-                                recipient_phone=subscriber["whatsapp_number"],
-                                customer_name=subscriber["name"],
-                                invoice_number=invoice["invoice_number"],
-                                amount=f"INR {invoice['final_amount']:,.2f}",
-                                due_date=due_date.strftime("%d %b %Y"),
-                                payment_link=invoice.get("payment_link"),
-                                template_name_override=invoice_tpl,
+                            tmpl_doc = await self.db.whatsapp_templates.find_one(
+                                {"template_name": invoice_tpl, "deleted_at": None}, {"_id": 0}
                             )
+                            body_vars = (tmpl_doc or {}).get("body_variables") or []
+                            if body_vars:
+                                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                                btn_params = None
+                                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
+                                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                                await wa_service.send_template_message(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    template_name=invoice_tpl,
+                                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                                    variables=variables,
+                                    button_params=btn_params,
+                                )
+                            else:
+                                await wa_service.send_invoice_notification(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    customer_name=subscriber["name"],
+                                    invoice_number=invoice["invoice_number"],
+                                    amount=f"INR {invoice['final_amount']:,.2f}",
+                                    due_date=due_date.strftime("%d %b %Y"),
+                                    payment_link=invoice.get("payment_link"),
+                                    template_name_override=invoice_tpl,
+                                )
 
                         reminder_record = {
                             "reason": reason,
