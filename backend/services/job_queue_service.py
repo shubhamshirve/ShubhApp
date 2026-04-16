@@ -569,13 +569,16 @@ class JobQueueService:
                     {"_id": 0},
                 )
                 if invoice:
+                    # Always resolve variables (including header)
+                    res = await resolve_template_variables(
+                        db, body_vars, invoice, subscriber,
+                        header_variable=(tmpl_doc or {}).get("header_variable")
+                    )
+                    variables = res["body"]
+                    header_params = [res["header"]] if res["header"] else None
+                    header_type = (tmpl_doc or {}).get("header_type", "none")
+
                     if body_vars:
-                        res = await resolve_template_variables(
-                            db, body_vars, invoice, subscriber,
-                            header_variable=(tmpl_doc or {}).get("header_variable")
-                        )
-                        variables = res["body"]
-                        header_params = [res["header"]] if res["header"] else None
                         btn_params = None
                         if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                             btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -585,7 +588,7 @@ class JobQueueService:
                             language_code=(tmpl_doc or {}).get("language_code", "en"),
                             variables=variables,
                             header_params=header_params,
-                            header_type=(tmpl_doc or {}).get("header_type", "text"),
+                            header_type=header_type,
                             button_params=btn_params,
                         )
                     else:

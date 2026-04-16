@@ -172,10 +172,19 @@ class WhatsAppService:
         components = []
         
         # Header component
-        if header_params:
+        if header_params and header_type != "none":
             if header_type == "image":
                 # Ensure header_params[0] is an absolute URL
-                image_url = await self._ensure_absolute_url(str(header_params[0]))
+                image_url = str(header_params[0]) if header_params[0] else ""
+                image_url = await self._ensure_absolute_url(image_url)
+                
+                # IMPORTANT: If image_url refers to the base URL itself (empty path) 
+                # or is otherwise likely invalid, use a generic fallback image 
+                # to prevent 400 errors if the template MANDATES an image.
+                if not image_url or image_url.endswith("/uploads/") or image_url.endswith("/"):
+                    # Using a placeholder image that is known to work
+                    image_url = "https://raw.githubusercontent.com/shubhamshirve/ShubhApp/live/frontend/public/logo192.png"
+
                 components.append({
                     "type": "header",
                     "parameters": [
@@ -185,7 +194,7 @@ class WhatsAppService:
                         }
                     ]
                 })
-            else:
+            elif header_type == "text":
                 components.append({
                     "type": "header",
                     "parameters": [
@@ -235,7 +244,9 @@ class WhatsAppService:
         amount: str,
         due_date: str,
         payment_link: str = None,
-        template_name_override: str = None
+        template_name_override: str = None,
+        header_params: Optional[List[Any]] = None,
+        header_type: str = "text"
     ) -> Dict[str, Any]:
         """
         Send invoice notification template
@@ -260,6 +271,8 @@ class WhatsAppService:
             recipient_phone=recipient_phone,
             template_name=template_name_override or "invoice_notification",
             variables=variables,
+            header_params=header_params,
+            header_type=header_type,
             button_params=button_params
         )
     
@@ -271,7 +284,9 @@ class WhatsAppService:
         amount_due: str,
         days_overdue: str,
         payment_link: str = None,
-        template_name_override: str = None
+        template_name_override: str = None,
+        header_params: Optional[List[Any]] = None,
+        header_type: str = "text"
     ) -> Dict[str, Any]:
         """
         Send payment reminder template
@@ -295,6 +310,8 @@ class WhatsAppService:
             recipient_phone=recipient_phone,
             template_name=template_name_override or "payment_reminder",
             variables=variables,
+            header_params=header_params,
+            header_type=header_type,
             button_params=button_params
         )
     

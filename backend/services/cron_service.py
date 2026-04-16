@@ -386,13 +386,17 @@ class CronJobService:
                     {"template_name": invoice_tpl_name, "deleted_at": None}, {"_id": 0}
                 )
                 body_vars = (tmpl_doc or {}).get("body_variables") or []
+                
+                # Always resolve variables (including header)
+                res = await resolve_template_variables(
+                    self.db, body_vars, invoice, subscriber,
+                    header_variable=(tmpl_doc or {}).get("header_variable")
+                )
+                variables = res["body"]
+                header_params = [res["header"]] if res["header"] else None
+                header_type = (tmpl_doc or {}).get("header_type", "none")
+
                 if body_vars:
-                    res = await resolve_template_variables(
-                        self.db, body_vars, invoice, subscriber,
-                        header_variable=(tmpl_doc or {}).get("header_variable")
-                    )
-                    variables = res["body"]
-                    header_params = [res["header"]] if res["header"] else None
                     btn_params = None
                     if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                         btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -402,7 +406,7 @@ class CronJobService:
                         language_code=(tmpl_doc or {}).get("language_code", "en"),
                         variables=variables,
                         header_params=header_params,
-                        header_type=(tmpl_doc or {}).get("header_type", "text"),
+                        header_type=header_type,
                         button_params=btn_params,
                     )
                 else:
@@ -413,6 +417,8 @@ class CronJobService:
                         amount=f"INR {invoice['final_amount']:,.2f}",
                         due_date=due_date.strftime("%d %b %Y"),
                         payment_link=invoice.get("payment_link"),
+                        header_params=header_params,
+                        header_type=header_type,
                     )
             except Exception as e:
                 logger.error(f"Failed to send invoice notification: {str(e)}")
@@ -532,18 +538,21 @@ class CronJobService:
                         from services.whatsapp_service import resolve_template_variables
                         if days_diff <= 0:
                             reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
-                            days_overdue = max(0, abs(days_diff))
                             tmpl_doc = await self.db.whatsapp_templates.find_one(
                                 {"template_name": reminder_tpl, "deleted_at": None}, {"_id": 0}
                             )
                             body_vars = (tmpl_doc or {}).get("body_variables") or []
+                            
+                            # Always resolve variables (including header)
+                            res = await resolve_template_variables(
+                                self.db, body_vars, invoice, subscriber,
+                                header_variable=(tmpl_doc or {}).get("header_variable")
+                            )
+                            variables = res["body"]
+                            header_params = [res["header"]] if res["header"] else None
+                            header_type = (tmpl_doc or {}).get("header_type", "none")
+
                             if body_vars:
-                                res = await resolve_template_variables(
-                                    self.db, body_vars, invoice, subscriber,
-                                    header_variable=(tmpl_doc or {}).get("header_variable")
-                                )
-                                variables = res["body"]
-                                header_params = [res["header"]] if res["header"] else None
                                 btn_params = None
                                 if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                                     btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -553,7 +562,7 @@ class CronJobService:
                                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                                     variables=variables,
                                     header_params=header_params,
-                                    header_type=(tmpl_doc or {}).get("header_type", "text"),
+                                    header_type=header_type,
                                     button_params=btn_params,
                                 )
                             else:
@@ -562,9 +571,10 @@ class CronJobService:
                                     customer_name=subscriber["name"],
                                     invoice_number=invoice["invoice_number"],
                                     amount_due=f"INR {invoice['final_amount']:,.2f}",
-                                    days_overdue=str(days_overdue),
+                                    days_overdue=str(max(0, (datetime.now(timezone.utc) - datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))).days)),
                                     payment_link=invoice.get("payment_link"),
-                                    template_name_override=reminder_tpl,
+                                    header_params=header_params,
+                                    header_type=header_type,
                                 )
                         else:
                             invoice_tpl = template_settings.get("invoice_template") or "invoice_notification"
@@ -572,13 +582,17 @@ class CronJobService:
                                 {"template_name": invoice_tpl, "deleted_at": None}, {"_id": 0}
                             )
                             body_vars = (tmpl_doc or {}).get("body_variables") or []
+                            
+                            # Always resolve variables (including header)
+                            res = await resolve_template_variables(
+                                self.db, body_vars, invoice, subscriber,
+                                header_variable=(tmpl_doc or {}).get("header_variable")
+                            )
+                            variables = res["body"]
+                            header_params = [res["header"]] if res["header"] else None
+                            header_type = (tmpl_doc or {}).get("header_type", "none")
+
                             if body_vars:
-                                res = await resolve_template_variables(
-                                    self.db, body_vars, invoice, subscriber,
-                                    header_variable=(tmpl_doc or {}).get("header_variable")
-                                )
-                                variables = res["body"]
-                                header_params = [res["header"]] if res["header"] else None
                                 btn_params = None
                                 if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
                                     btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
@@ -588,7 +602,7 @@ class CronJobService:
                                     language_code=(tmpl_doc or {}).get("language_code", "en"),
                                     variables=variables,
                                     header_params=header_params,
-                                    header_type=(tmpl_doc or {}).get("header_type", "text"),
+                                    header_type=header_type,
                                     button_params=btn_params,
                                 )
                             else:
@@ -597,9 +611,10 @@ class CronJobService:
                                     customer_name=subscriber["name"],
                                     invoice_number=invoice["invoice_number"],
                                     amount=f"INR {invoice['final_amount']:,.2f}",
-                                    due_date=due_date.strftime("%d %b %Y"),
+                                    due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
                                     payment_link=invoice.get("payment_link"),
-                                    template_name_override=invoice_tpl,
+                                    header_params=header_params,
+                                    header_type=header_type,
                                 )
 
                         reminder_record = {

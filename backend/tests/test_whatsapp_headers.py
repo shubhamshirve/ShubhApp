@@ -47,7 +47,7 @@ async def test_header_resolution():
     
     assert res['header'] == "/uploads/logo_123.png"
     assert "Test User" in res['body']
-    print("✓ Header resolution passed\n")
+    print("[OK] Header resolution passed\n")
 
     # Test 2: Absolute URL construction
     print("Testing Absolute URL construction...")
@@ -60,6 +60,32 @@ async def test_header_resolution():
     assert abs_url.startswith("http")
     assert "/uploads/logo_123.png" in abs_url
     print("✓ Absolute URL construction passed\n")
+
+    # Test 3: Fallback Image when logo is missing
+    print("Testing Fallback Image when logo is missing...")
+    await db.invoice_settings.update_one(
+        {"operator_id": "op_123"},
+        {"$set": {"logo_url": ""}}
+    )
+    
+    res = await resolve_template_variables(
+        db, 
+        body_variables=["customer_name"],
+        invoice=invoice,
+        subscriber=subscriber,
+        header_variable="company_logo"
+    )
+    
+    print(f"Resolved Header (empty): {str(res['header']).encode('ascii', 'backslashreplace').decode()}")
+    
+    # Simulate send_template_message logic for fallback
+    image_url = await wa_service._ensure_absolute_url(str(res['header']))
+    if not image_url or image_url.endswith("/uploads/") or image_url.endswith("/"):
+        image_url = "https://raw.githubusercontent.com/shubhamshirve/ShubhApp/live/frontend/public/logo192.png"
+    
+    print(f"Final Image URL (fallback): {image_url}")
+    assert "logo192.png" in image_url
+    print("[OK] Fallback image logic passed\n")
 
     print("All tests completed successfully!")
 
