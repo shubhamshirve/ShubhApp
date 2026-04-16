@@ -1591,6 +1591,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                 )
                 body_vars = (tmpl_doc or {}).get("body_variables") or []
                 if body_vars:
+                    invoice["payment_link"] = public_invoice_url
                     variables = resolve_template_variables(body_vars, invoice, subscriber)
                     btn_params = None
                     if (tmpl_doc or {}).get("has_payment_button") and public_invoice_url:
