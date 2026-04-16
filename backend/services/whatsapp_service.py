@@ -10,6 +10,67 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 from services.env_service import get_env_setting
 
+# ─── Template Variable Resolver ───────────────────────────────────────────────
+
+def _fmt_date(value) -> str:
+    """Parse datetime, ISO string, or None → 'DD Mon YYYY'."""
+    if value is None:
+        return ""
+    try:
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.strftime("%d %b %Y")
+    except (ValueError, TypeError):
+        logger.warning(f"_fmt_date: could not parse '{value}'")
+        return ""
+
+
+def _fmt_tenure(line_items: list) -> str:
+    """Format line_items service date ranges → 'DD Mon YYYY – DD Mon YYYY' (comma-joined if multiple)."""
+    if not line_items:
+        return ""
+    ranges = []
+    for item in line_items:
+        start = _fmt_date(item.get("service_start_date"))
+        end = _fmt_date(item.get("service_end_date"))
+        if start and end:
+            ranges.append(f"{start} – {end}")
+    return ", ".join(ranges)
+
+
+KNOWN_INVOICE_VARIABLES = {
+    "customer_name":  lambda inv, sub: sub.get("name", ""),
+    "invoice_number": lambda inv, sub: inv.get("invoice_number", ""),
+    "amount":         lambda inv, sub: f"₹{inv.get('final_amount', 0):,.2f}",
+    "due_date":       lambda inv, sub: _fmt_date(inv.get("due_date")),
+    "plan_name":      lambda inv, sub: ", ".join(
+        li["plan_name"] for li in inv.get("line_items", []) if li.get("plan_name")
+    ) or inv.get("plan_name", ""),
+    "tenure":         lambda inv, sub: _fmt_tenure(inv.get("line_items", [])),
+    "payment_link":   lambda inv, sub: inv.get("payment_link", "") or "",
+}
+
+
+def resolve_template_variables(
+    body_variables: list,
+    invoice: dict,
+    subscriber: dict,
+) -> list:
+    """
+    Resolve an ordered list of variable keys to actual values.
+
+    Recognized keys are mapped via KNOWN_INVOICE_VARIABLES.
+    Unrecognized keys are passed through as-is (literal string).
+    Returns values for {{1}}, {{2}}, ... in order.
+    """
+    return [
+        KNOWN_INVOICE_VARIABLES.get(key, lambda i, s, k=key: k)(invoice, subscriber)
+        for key in body_variables
+    ]
+
+
 class WhatsAppService:
     """Service for WhatsApp Business API Cloud interactions"""
     
