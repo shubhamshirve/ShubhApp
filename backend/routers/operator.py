@@ -2147,29 +2147,64 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     try:
+        from services.whatsapp_service import resolve_template_variables
         template_settings = await _get_whatsapp_template_settings()
         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
         if data.notification_type == "reminder":
             template_name = template_settings.get("reminder_template") or "payment_reminder"
-            due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
-            days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
-            result = await wa_service.send_payment_reminder(
-                recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
-                invoice_number=invoice["invoice_number"],
-                amount_due=f"₹{invoice['final_amount']:,.2f}", days_overdue=str(days_overdue),
-                payment_link=invoice.get("payment_link"),
-                template_name_override=template_name
+            tmpl_doc = await db.whatsapp_templates.find_one(
+                {"template_name": template_name, "deleted_at": None}, {"_id": 0}
             )
+            body_vars = (tmpl_doc or {}).get("body_variables") or []
+            if body_vars:
+                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                btn_params = None
+                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
+                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                result = await wa_service.send_template_message(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    template_name=template_name,
+                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                    variables=variables,
+                    button_params=btn_params,
+                )
+            else:
+                due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
+                days_overdue = max(0, (datetime.now(timezone.utc) - due_date).days)
+                result = await wa_service.send_payment_reminder(
+                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                    invoice_number=invoice["invoice_number"],
+                    amount_due=f"₹{invoice['final_amount']:,.2f}", days_overdue=str(days_overdue),
+                    payment_link=invoice.get("payment_link"),
+                    template_name_override=template_name,
+                )
         else:
             template_name = template_settings.get("invoice_template") or "invoice_notification"
-            result = await wa_service.send_invoice_notification(
-                recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
-                invoice_number=invoice["invoice_number"],
-                amount=f"₹{invoice['final_amount']:,.2f}",
-                due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
-                payment_link=invoice.get("payment_link"),
-                template_name_override=template_name
+            tmpl_doc = await db.whatsapp_templates.find_one(
+                {"template_name": template_name, "deleted_at": None}, {"_id": 0}
             )
+            body_vars = (tmpl_doc or {}).get("body_variables") or []
+            if body_vars:
+                variables = resolve_template_variables(body_vars, invoice, subscriber)
+                btn_params = None
+                if (tmpl_doc or {}).get("has_payment_button") and invoice.get("payment_link"):
+                    btn_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": invoice["payment_link"]}]}]
+                result = await wa_service.send_template_message(
+                    recipient_phone=subscriber["whatsapp_number"],
+                    template_name=template_name,
+                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                    variables=variables,
+                    button_params=btn_params,
+                )
+            else:
+                result = await wa_service.send_invoice_notification(
+                    recipient_phone=subscriber["whatsapp_number"], customer_name=subscriber["name"],
+                    invoice_number=invoice["invoice_number"],
+                    amount=f"₹{invoice['final_amount']:,.2f}",
+                    due_date=datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y"),
+                    payment_link=invoice.get("payment_link"),
+                    template_name_override=template_name,
+                )
         return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
     except Exception as e:
         logger.error(f"WhatsApp notification failed: {e}")
