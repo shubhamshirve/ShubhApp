@@ -2134,7 +2134,7 @@ async def get_operator_audit_logs(
 
 @router.post("/send-notification")
 async def send_whatsapp_notification(data: SendNotificationRequest, current_user: dict = Depends(require_operator)):
-    from services.whatsapp_service import WhatsAppService
+    from services.whatsapp_service import WhatsAppService, resolve_template_variables
     wa_config = await _get_platform_whatsapp_config()
     if not wa_config:
         raise HTTPException(status_code=400, detail="WhatsApp not configured. Please contact admin.")
@@ -2147,7 +2147,6 @@ async def send_whatsapp_notification(data: SendNotificationRequest, current_user
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     try:
-        from services.whatsapp_service import resolve_template_variables
         template_settings = await _get_whatsapp_template_settings()
         wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
         if data.notification_type == "reminder":
