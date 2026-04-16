@@ -20,6 +20,14 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../../components/ui/command";
+import {
   Table,
   TableBody,
   TableCell,
@@ -62,6 +70,8 @@ import {
   XCircle,
   Loader2,
   Smartphone,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
 
 const PopoverDatePicker = ({ date, onSelect, label }) => {
@@ -84,6 +94,118 @@ const PopoverDatePicker = ({ date, onSelect, label }) => {
           }}
           initialFocus
         />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+const SearchableSubscriberSelect = ({ value, onSelect, authAxios }) => {
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedSubscriber, setSelectedSubscriber] = useState(null);
+
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery.trim() || open) {
+        searchSubscribers(searchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, open]);
+
+  // Load selected subscriber details when value changes
+  useEffect(() => {
+    if (value && !selectedSubscriber) {
+      authAxios.get(`/operator/subscribers/search?q=&limit=100`)
+        .then(res => {
+          const found = res.data.find(s => s.id === value);
+          if (found) setSelectedSubscriber(found);
+        })
+        .catch(err => console.error("Failed to load subscriber", err));
+    }
+  }, [value]);
+
+  const searchSubscribers = async (query) => {
+    setSearching(true);
+    try {
+      const response = await authAxios.get(`/operator/subscribers/search?q=${encodeURIComponent(query)}&limit=50`);
+      setSearchResults(response.data);
+    } catch (error) {
+      console.error("Failed to search subscribers", error);
+      toast.error("Failed to search subscribers");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelect = (subscriber) => {
+    setSelectedSubscriber(subscriber);
+    onSelect(subscriber.id);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between bg-white"
+          data-testid="invoice-subscriber-select"
+        >
+          {selectedSubscriber ? (
+            <span className="truncate">{selectedSubscriber.name} - {selectedSubscriber.whatsapp_number}</span>
+          ) : (
+            <span className="text-muted-foreground">Select subscriber...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0 z-[100]" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput 
+            placeholder="Search by name, phone, email..." 
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+          />
+          <CommandList>
+            {searching ? (
+              <div className="py-6 text-center text-sm">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+              </div>
+            ) : searchResults.length === 0 ? (
+              <CommandEmpty>No subscribers found.</CommandEmpty>
+            ) : (
+              <CommandGroup>
+                {searchResults.map((subscriber) => (
+                  <CommandItem
+                    key={subscriber.id}
+                    value={subscriber.id}
+                    onSelect={() => handleSelect(subscriber)}
+                    className="cursor-pointer"
+                  >
+                    <Check
+                      className={`mr-2 h-4 w-4 ${
+                        value === subscriber.id ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium">{subscriber.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {subscriber.whatsapp_number}
+                        {subscriber.email && ` • ${subscriber.email}`}
+                      </span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );
@@ -719,21 +841,11 @@ const OperatorInvoices = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-4">
                 <div className="space-y-2">
                   <Label>Subscriber *</Label>
-                  <Select 
-                    value={formData.subscriber_id} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, subscriber_id: value }))}
-                  >
-                    <SelectTrigger data-testid="invoice-subscriber-select">
-                      <SelectValue placeholder="Select subscriber" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {subscribers.map((sub) => (
-                        <SelectItem key={sub.id} value={sub.id}>
-                          {sub.name} - {sub.whatsapp_number}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSubscriberSelect
+                    value={formData.subscriber_id}
+                    onSelect={(id) => setFormData(prev => ({ ...prev, subscriber_id: id }))}
+                    authAxios={authAxios}
+                  />
                 </div>
 
                 <div className="space-y-2">

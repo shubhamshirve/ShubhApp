@@ -1212,6 +1212,35 @@ async def get_subscribers(
     return [SubscriberResponse(**{**s, "created_at": datetime.fromisoformat(s["created_at"])}) for s in subscribers]
 
 
+@router.get("/subscribers/search")
+async def search_subscribers(
+    q: str = Query("", description="Search query for name, phone, or email"),
+    limit: int = Query(50, ge=1, le=100, description="Max results to return"),
+    current_user: dict = Depends(require_operator)
+):
+    """Search subscribers with server-side filtering (for invoice dropdown, etc.)"""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator subscribers")
+    
+    query = {"operator_id": current_user["operator_id"], "deleted_at": None}
+    
+    # Add search filter if query provided
+    if q.strip():
+        search_pattern = {"$regex": q.strip(), "$options": "i"}
+        query["$or"] = [
+            {"name": search_pattern},
+            {"whatsapp_number": search_pattern},
+            {"email": search_pattern}
+        ]
+    
+    subscribers = await db.subscribers.find(
+        query, 
+        {"_id": 0, "id": 1, "name": 1, "whatsapp_number": 1, "email": 1}
+    ).sort("name", 1).to_list(limit)
+    
+    return subscribers
+
+
 # ─── Bulk Upload: Subscribers ─────────────────────────────────────────────────
 
 @router.get("/subscribers/sample-csv")
