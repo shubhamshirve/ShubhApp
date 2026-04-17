@@ -14,6 +14,7 @@ from models import (
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
+    WhatsAppTemplateTestRequest,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
     ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
@@ -850,6 +851,99 @@ async def send_whatsapp_test_message(data: WhatsAppTestMessage, current_user: di
         elif "does not exist" in error_str and "template" in error_str.lower():
             raise HTTPException(status_code=400, detail="The hello_world template is not available on your WhatsApp Business account. Please check your template configuration in Meta Business Suite.")
         raise HTTPException(status_code=500, detail=f"Failed to send test message: {error_str}")
+
+
+# ─── WhatsApp Template Test ───────────────────────────────────────────────────
+
+@router.post("/whatsapp-test-template")
+async def test_whatsapp_template(data: WhatsAppTemplateTestRequest, current_user: dict = Depends(require_admin)):
+    """Send a test message using a specific configured template to a test number."""
+    wa_config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
+    if not wa_config or not wa_config.get("access_token"):
+        raise HTTPException(status_code=400, detail="WhatsApp is not configured. Please save your WhatsApp config first.")
+
+    template = await db.whatsapp_templates.find_one({"id": data.template_id, "deleted_at": None}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found.")
+
+    from services.whatsapp_service import WhatsAppService
+
+    # Build body variables — use user-supplied values first, then sensible defaults for any gaps
+    body_var_names = template.get("body_variables") or []
+    _defaults = {
+        "customer_name": "Test Customer",
+        "invoice_number": "INV-TEST-001",
+        "amount": "₹999.00",
+        "due_date": "31 Jul 2025",
+        "plan_name": "Test Plan",
+        "tenure": "Monthly",
+        "days_overdue": "3",
+        "payment_link": "https://example.com/pay",
+        "business_name": "Test Business",
+        "invoice_public_url": "https://example.com/invoice/INV-TEST-001",
+        "start_date": "01 Jul 2025",
+        "end_date": "31 Jul 2025",
+    }
+    variables: list = list(data.test_variables or [])
+    for i in range(len(variables), len(body_var_names)):
+        var_name = body_var_names[i]
+        variables.append(_defaults.get(var_name, f"Test {var_name}"))
+
+    # Build header params
+    header_type = template.get("header_type", "none")
+    header_params = None
+    if header_type == "image":
+        img_url = data.header_image_url or template.get("header_image_url") or ""
+        header_params = [img_url] if img_url else None
+
+    # Build button params
+    button_params = None
+    if template.get("has_payment_button"):
+        test_url = data.button_url or "https://example.com/pay/test-invoice"
+        button_params = [{"type": "text", "text": test_url}]
+
+    wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+    try:
+        result = await wa_service.send_template_message(
+            recipient_phone=data.phone_number,
+            template_name=template["template_name"],
+            language_code=template.get("language_code", "en"),
+            variables=variables if variables else None,
+            header_params=header_params,
+            header_type=header_type,
+            button_params=button_params,
+        )
+        message_id = None
+        if result and result.get("messages"):
+            message_id = result["messages"][0].get("id")
+        return {
+            "success": True,
+            "message": f"Test message sent to {data.phone_number} using template '{template['display_name']}'",
+            "message_id": message_id,
+            "template_name": template["template_name"],
+            "variables_used": variables,
+        }
+    except Exception as e:
+        error_str = str(e)
+        from error_logger import log_error
+        await log_error(
+            error_type="whatsapp_error",
+            message=f"WhatsApp template test failed: {error_str}",
+            module="admin_whatsapp",
+            endpoint="/admin/whatsapp-test-template",
+            user_id=current_user["id"],
+            user_name=current_user.get("name", ""),
+            user_role="admin",
+            request_method="POST",
+            request_path="/api/admin/whatsapp-test-template",
+            status_code=400,
+            extra_data={"phone_number": data.phone_number, "template_id": data.template_id},
+        )
+        if "not in allowed list" in error_str:
+            raise HTTPException(status_code=400, detail="Phone not in WhatsApp allowed list (test mode). Add the number in Meta Business Manager first.")
+        if "does not exist" in error_str and "template" in error_str.lower():
+            raise HTTPException(status_code=400, detail=f"Template '{template['template_name']}' not found in Meta Business. Verify the template name and language code are correct.")
+        raise HTTPException(status_code=500, detail=f"Template test failed: {error_str}")
 
 
 # ─── Payment Gateways ────────────────────────────────────────────────────────

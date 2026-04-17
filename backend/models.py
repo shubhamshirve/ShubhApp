@@ -729,6 +729,19 @@ class WhatsAppTestMessage(SanitizedModel):
         return _normalize_phone(value, required=True)
 
 
+class WhatsAppTemplateTestRequest(SanitizedModel):
+    template_id: str
+    phone_number: str
+    test_variables: Optional[List[str]] = None
+    header_image_url: Optional[str] = None
+    button_url: Optional[str] = None
+
+    @field_validator("phone_number")
+    @classmethod
+    def normalize_phone_number(cls, value):
+        return _normalize_phone(value, required=True)
+
+
 class SendNotificationRequest(SanitizedModel):
     invoice_id: str
     notification_type: str = "invoice"  # invoice, reminder

@@ -31,7 +31,8 @@ import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, MessageSquare, ToggleLeft, ToggleRight,
-  Info, X, Zap, ChevronDown, ChevronUp, HelpCircle
+  Info, X, Zap, ChevronDown, ChevronUp, HelpCircle, FlaskConical,
+  CheckCircle2, XCircle, Send, Phone
 } from "lucide-react";
 
 const TEMPLATE_TYPES = [
@@ -187,6 +188,16 @@ export default function WhatsAppTemplates() {
   const [showQuickSetup, setShowQuickSetup] = useState(false);
   const [showHelpTips, setShowHelpTips] = useState(false);
 
+  // ── Test template state ──────────────────────────────────────────────────
+  const [testTemplate, setTestTemplate] = useState(null);
+  const [showTestDialog, setShowTestDialog] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testVariables, setTestVariables] = useState([]);
+  const [testHeaderUrl, setTestHeaderUrl] = useState("");
+  const [testButtonUrl, setTestButtonUrl] = useState("https://example.com/pay/test-invoice");
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState(null); // {success, message, message_id}
+
   useEffect(() => {
     fetchTemplates();
   }, []);
@@ -293,6 +304,56 @@ export default function WhatsAppTemplates() {
       fetchTemplates();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to delete template");
+    }
+  };
+
+  // ── Test Template Handlers ─────────────────────────────────────────────────
+  const openTestDialog = (tmpl) => {
+    const _defaults = {
+      customer_name: "Test Customer",
+      invoice_number: "INV-TEST-001",
+      amount: "₹999.00",
+      due_date: "31 Jul 2025",
+      plan_name: "Test Plan",
+      tenure: "Monthly",
+      days_overdue: "3",
+      payment_link: "https://example.com/pay",
+      business_name: "Test Business",
+      invoice_public_url: "https://example.com/invoice/INV-TEST-001",
+      start_date: "01 Jul 2025",
+      end_date: "31 Jul 2025",
+    };
+    const vars = (tmpl.body_variables || []).map((v) => _defaults[v] || `Test ${v}`);
+    setTestTemplate(tmpl);
+    setTestVariables(vars);
+    setTestHeaderUrl(tmpl.header_image_url || "");
+    setTestButtonUrl("https://example.com/pay/test-invoice");
+    setTestResult(null);
+    setShowTestDialog(true);
+  };
+
+  const handleSendTest = async () => {
+    if (!testPhone.trim()) {
+      toast.error("Please enter a test phone number"); return;
+    }
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const res = await authAxios.post("/admin/whatsapp-test-template", {
+        template_id: testTemplate.id,
+        phone_number: testPhone.trim(),
+        test_variables: testVariables,
+        header_image_url: testHeaderUrl || undefined,
+        button_url: testButtonUrl || undefined,
+      });
+      setTestResult({ success: true, message: res.data.message, message_id: res.data.message_id });
+      toast.success("Test message sent!");
+    } catch (e) {
+      const errMsg = e.response?.data?.detail || "Failed to send test message";
+      setTestResult({ success: false, message: errMsg });
+      toast.error(errMsg);
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -553,6 +614,14 @@ export default function WhatsAppTemplates() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost" size="sm"
+                            onClick={() => openTestDialog(tmpl)}
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600"
+                            title="Test this template"
+                          >
+                            <FlaskConical className="w-4 h-4" />
+                          </Button>
                           <Button variant="ghost" size="sm" onClick={() => openEdit(tmpl)} className="h-8 w-8 p-0 text-slate-600 hover:text-blue-600">
                             <Pencil className="w-4 h-4" />
                           </Button>
@@ -868,6 +937,146 @@ export default function WhatsAppTemplates() {
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)}>Delete</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Test Template Dialog ─────────────────────────────────────────── */}
+      <Dialog open={showTestDialog} onOpenChange={(v) => { setShowTestDialog(v); if (!v) setTestResult(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="w-5 h-5 text-emerald-600" />
+              Test Template
+            </DialogTitle>
+            <DialogDescription>
+              Send a test message to a phone number to verify this template works correctly.
+            </DialogDescription>
+          </DialogHeader>
+
+          {testTemplate && (
+            <div className="space-y-5 mt-1">
+              {/* Template info */}
+              <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[testTemplate.template_type] || "bg-slate-100 text-slate-700"}`}>
+                    {TEMPLATE_TYPES.find(t => t.value === testTemplate.template_type)?.label || testTemplate.template_type}
+                  </span>
+                  <code className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-mono">
+                    {testTemplate.template_name}
+                  </code>
+                  <span className="text-xs text-slate-500">lang: {testTemplate.language_code || "en"}</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">{testTemplate.description || "No description"}</p>
+              </div>
+
+              {/* Phone number */}
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" />
+                  Test Phone Number <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  placeholder="91XXXXXXXXXX (with country code)"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="font-mono"
+                />
+                <p className="text-xs text-slate-400">Enter in E.164 format (e.g. 919876543210 for India). Must be a WhatsApp-registered number.</p>
+              </div>
+
+              {/* Body variables */}
+              {testTemplate.body_variables && testTemplate.body_variables.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Body Variables</Label>
+                  <p className="text-xs text-slate-400">Edit test values for each variable. These will be sent as-is.</p>
+                  <div className="space-y-2">
+                    {testTemplate.body_variables.map((varName, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-28 flex-shrink-0 text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1.5 rounded truncate" title={varName}>
+                          {`{{${i + 1}}}`} <span className="text-slate-400">{varName}</span>
+                        </span>
+                        <Input
+                          value={testVariables[i] || ""}
+                          onChange={(e) => {
+                            const updated = [...testVariables];
+                            updated[i] = e.target.value;
+                            setTestVariables(updated);
+                          }}
+                          className="text-sm h-8"
+                          placeholder={`Value for {{${i + 1}}}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Header image URL (if image header) */}
+              {testTemplate.header_type === "image" && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Header Image URL</Label>
+                  <Input
+                    value={testHeaderUrl}
+                    onChange={(e) => setTestHeaderUrl(e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-slate-400">Public HTTPS image URL for the template header.</p>
+                </div>
+              )}
+
+              {/* Button URL (if has payment button) */}
+              {testTemplate.has_payment_button && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Test Button URL</Label>
+                  <Input
+                    value={testButtonUrl}
+                    onChange={(e) => setTestButtonUrl(e.target.value)}
+                    placeholder="https://example.com/pay/test"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-slate-400">URL that will be passed to the button parameter.</p>
+                </div>
+              )}
+
+              {/* Result */}
+              {testResult && (
+                <div className={`flex items-start gap-3 rounded-lg p-3 border ${testResult.success ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                  {testResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <p className={`text-sm font-medium ${testResult.success ? "text-green-700" : "text-red-700"}`}>
+                      {testResult.success ? "Success" : "Failed"}
+                    </p>
+                    <p className="text-xs mt-0.5 text-slate-600">{testResult.message}</p>
+                    {testResult.message_id && (
+                      <p className="text-xs mt-1 font-mono text-slate-400">
+                        Message ID: {testResult.message_id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2 border-t">
+                <Button variant="outline" onClick={() => setShowTestDialog(false)}>Close</Button>
+                <Button
+                  onClick={handleSendTest}
+                  disabled={testLoading || !testPhone.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 min-w-[140px]"
+                >
+                  {testLoading ? (
+                    <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" />Sending…</>
+                  ) : (
+                    <><Send className="w-3.5 h-3.5" />Send Test Message</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </AdminLayout>
