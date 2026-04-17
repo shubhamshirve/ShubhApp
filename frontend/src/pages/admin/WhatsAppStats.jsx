@@ -21,6 +21,12 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { Badge } from "../../components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { toast } from "sonner";
 import {
   MessageSquare,
@@ -38,6 +44,7 @@ import {
   Clock,
   Send,
   Filter,
+  Eye,
 } from "lucide-react";
 
 const CATEGORY_COLORS = {
@@ -169,6 +176,7 @@ export default function WhatsAppStats() {
   const [errorLogs, setErrorLogs] = useState([]);
   const [errorLogsLoading, setErrorLogsLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
+  const [selectedError, setSelectedError] = useState(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -656,6 +664,7 @@ export default function WhatsAppStats() {
                       <TableHead>Module</TableHead>
                       <TableHead>Message</TableHead>
                       <TableHead>User</TableHead>
+                      <TableHead className="w-16 text-center">View</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -675,17 +684,23 @@ export default function WhatsAppStats() {
                           </code>
                         </TableCell>
                         <TableCell>
-                          <p className="text-xs text-slate-700 max-w-sm truncate" title={err.message}>
+                          <p className="text-xs text-slate-700 max-w-xs truncate">
                             {err.message || "—"}
                           </p>
-                          {err.extra_data && Object.keys(err.extra_data).length > 0 && (
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {JSON.stringify(err.extra_data).slice(0, 80)}
-                            </p>
-                          )}
                         </TableCell>
                         <TableCell>
                           <span className="text-xs text-slate-500">{err.user_name || "System"}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedError(err)}
+                            className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600"
+                            title="View full error"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -696,6 +711,104 @@ export default function WhatsAppStats() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Error Detail Dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!selectedError} onOpenChange={(v) => !v && setSelectedError(null)}>
+        <DialogContent className="max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              Error Log Detail
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedError && (
+            <div className="space-y-4 mt-1 text-sm">
+              {/* Meta row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Date & Time</p>
+                  <p className="font-medium text-slate-700">{formatDate(selectedError.created_at)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Reported By</p>
+                  <p className="font-medium text-slate-700">{selectedError.user_name || "System"}</p>
+                  {selectedError.user_role && (
+                    <p className="text-xs text-slate-400">{selectedError.user_role}</p>
+                  )}
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Error Type</p>
+                  <Badge variant="destructive" className="text-xs mt-0.5">
+                    {selectedError.error_type || "error"}
+                  </Badge>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Module</p>
+                  <code className="text-xs bg-white border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded break-all">
+                    {selectedError.module || "—"}
+                  </code>
+                </div>
+              </div>
+
+              {/* Endpoint */}
+              {(selectedError.endpoint || selectedError.request_path) && (
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-1">Endpoint</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selectedError.request_method && (
+                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                        {selectedError.request_method}
+                      </span>
+                    )}
+                    <code className="text-xs text-slate-600 break-all">
+                      {selectedError.endpoint || selectedError.request_path}
+                    </code>
+                    {selectedError.status_code && (
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                        selectedError.status_code >= 500 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {selectedError.status_code}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                <p className="text-xs text-red-400 mb-1 font-medium">Error Message</p>
+                <p className="text-sm text-red-800 whitespace-pre-wrap break-words leading-relaxed">
+                  {selectedError.message || "—"}
+                </p>
+              </div>
+
+              {/* Stack trace / extra data */}
+              {selectedError.stack_trace && (
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-1">Stack Trace</p>
+                  <pre className="bg-slate-900 text-slate-200 text-xs rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-64 overflow-y-auto leading-relaxed">
+                    {selectedError.stack_trace}
+                  </pre>
+                </div>
+              )}
+
+              {selectedError.extra_data && Object.keys(selectedError.extra_data).length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-500 font-medium mb-1">Extra Data</p>
+                  <pre className="bg-slate-900 text-slate-200 text-xs rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-48 overflow-y-auto leading-relaxed">
+                    {JSON.stringify(selectedError.extra_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2 border-t">
+                <Button variant="outline" onClick={() => setSelectedError(null)}>Close</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
