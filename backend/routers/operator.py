@@ -2390,6 +2390,25 @@ async def send_whatsapp_notification(data: SendNotificationRequest, request: Req
         if result and "contacts" in result and len(result["contacts"]) > 0:
             recipient_wa_id = result["contacts"][0].get("wa_id")
         
+        # Log the message send
+        try:
+            from services.whatsapp_service import log_whatsapp_message
+            await log_whatsapp_message(
+                db,
+                operator_id=current_user["operator_id"],
+                template_name=template_name,
+                template_category=data.notification_type,
+                recipient_phone=subscriber["whatsapp_number"],
+                status="sent",
+                message_id=msg_id or "",
+                wa_id=recipient_wa_id or "",
+                invoice_id=invoice["id"],
+                invoice_number=invoice["invoice_number"],
+                trigger="manual",
+            )
+        except Exception as log_e:
+            logger.warning(f"WhatsApp message log failed: {log_e}")
+
         # Deduct wallet balance after successful send
         new_balance, became_suspended = await deduct_wallet(
             current_user["operator_id"],

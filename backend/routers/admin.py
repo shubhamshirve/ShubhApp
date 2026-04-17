@@ -765,13 +765,15 @@ async def get_whatsapp_template_settings(current_user: dict = Depends(require_ad
             "invoice_template": "",
             "reminder_template": "",
             "payment_confirmation_template": "",
-            "announcement_template": ""
+            "announcement_template": "",
+            "payment_due_reminder_template": "",
         }
     return {
         "invoice_template": settings.get("invoice_template", ""),
         "reminder_template": settings.get("reminder_template", ""),
         "payment_confirmation_template": settings.get("payment_confirmation_template", ""),
         "announcement_template": settings.get("announcement_template", ""),
+        "payment_due_reminder_template": settings.get("payment_due_reminder_template", ""),
     }
 
 
@@ -784,6 +786,7 @@ async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, curr
         "reminder_template": data.reminder_template or "",
         "payment_confirmation_template": data.payment_confirmation_template or "",
         "announcement_template": data.announcement_template or "",
+        "payment_due_reminder_template": data.payment_due_reminder_template or "",
         "updated_at": now.isoformat(),
         "updated_by": current_user["id"]
     }
@@ -795,6 +798,7 @@ async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, curr
                         "reminder": data.reminder_template,
                         "payment_confirmation": data.payment_confirmation_template,
                         "announcement": data.announcement_template,
+                        "payment_due_reminder": data.payment_due_reminder_template,
                     }},
                     ip_address=current_user.get("_ip_address"))
     return {"message": "Template settings updated successfully"}
@@ -1362,6 +1366,133 @@ async def toggle_whatsapp_template(template_id: str, current_user: dict = Depend
     new_state = not template.get("is_active", True)
     await db.whatsapp_templates.update_one({"id": template_id}, {"$set": {"is_active": new_state}})
     return {"message": f"Template {'activated' if new_state else 'deactivated'}", "is_active": new_state}
+
+
+# ─── WhatsApp Stats & Message Logs ────────────────────────────────────────────
+
+@router.get("/whatsapp-stats")
+async def get_whatsapp_stats(current_user: dict = Depends(require_admin)):
+    """Get aggregated WhatsApp message sending statistics."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%dT00:00:00")
+    month_str = now.strftime("%Y-%m-01T00:00:00")
+
+    total = await db.whatsapp_message_logs.count_documents({})
+    total_today = await db.whatsapp_message_logs.count_documents({"created_at": {"$gte": today_str}})
+    total_month = await db.whatsapp_message_logs.count_documents({"created_at": {"$gte": month_str}})
+    total_sent = await db.whatsapp_message_logs.count_documents({"status": "sent"})
+    total_failed = await db.whatsapp_message_logs.count_documents({"status": "failed"})
+
+    # By template name
+    templates_pipeline = [
+        {"$group": {"_id": "$template_name", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    templates_agg = await db.whatsapp_message_logs.aggregate(templates_pipeline).to_list(10)
+    by_template = {t["_id"]: t["count"] for t in templates_agg if t["_id"]}
+
+    # By category
+    categories_pipeline = [
+        {"$group": {"_id": "$template_category", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    categories_agg = await db.whatsapp_message_logs.aggregate(categories_pipeline).to_list(20)
+    by_category = {c["_id"]: c["count"] for c in categories_agg if c["_id"]}
+
+    # By trigger
+    trigger_pipeline = [
+        {"$group": {"_id": "$trigger", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    trigger_agg = await db.whatsapp_message_logs.aggregate(trigger_pipeline).to_list(10)
+    by_trigger = {t["_id"]: t["count"] for t in trigger_agg if t["_id"]}
+
+    # Last 7 days daily breakdown
+    seven_days_ago = (now - timedelta(days=6)).strftime("%Y-%m-%dT00:00:00")
+    recent_pipeline = [
+        {"$match": {"created_at": {"$gte": seven_days_ago}}},
+        {"$group": {
+            "_id": {"$substr": ["$created_at", 0, 10]},
+            "sent": {"$sum": {"$cond": [{"$eq": ["$status", "sent"]}, 1, 0]}},
+            "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}}
+        }},
+        {"$sort": {"_id": 1}}
+    ]
+    recent_agg = await db.whatsapp_message_logs.aggregate(recent_pipeline).to_list(7)
+    recent_7_days = [{"date": r["_id"], "sent": r["sent"], "failed": r["failed"]} for r in recent_agg]
+
+    return {
+        "total": total,
+        "today": total_today,
+        "this_month": total_month,
+        "sent": total_sent,
+        "failed": total_failed,
+        "success_rate": round(total_sent / total * 100, 1) if total > 0 else 0,
+        "by_template": by_template,
+        "by_category": by_category,
+        "by_trigger": by_trigger,
+        "recent_7_days": recent_7_days,
+    }
+
+
+@router.get("/whatsapp-message-logs")
+async def get_whatsapp_message_logs(
+    page: int = 1,
+    per_page: int = 50,
+    status: Optional[str] = None,
+    template: Optional[str] = None,
+    template_category: Optional[str] = None,
+    operator_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get paginated WhatsApp message logs with filters."""
+    query = {}
+    if status:
+        query["status"] = status
+    if template:
+        query["template_name"] = {"$regex": template, "$options": "i"}
+    if template_category:
+        query["template_category"] = template_category
+    if operator_id:
+        query["operator_id"] = operator_id
+    if search:
+        query["$or"] = [
+            {"recipient_phone": {"$regex": search, "$options": "i"}},
+            {"template_name": {"$regex": search, "$options": "i"}},
+            {"invoice_number": {"$regex": search, "$options": "i"}},
+            {"wa_id": {"$regex": search, "$options": "i"}},
+        ]
+    if date_from or date_to:
+        date_filter = {}
+        if date_from:
+            date_filter["$gte"] = date_from
+        if date_to:
+            date_filter["$lte"] = date_to + "T23:59:59"
+        query["created_at"] = date_filter
+
+    total = await db.whatsapp_message_logs.count_documents(query)
+    skip = (page - 1) * per_page
+    logs = await db.whatsapp_message_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+    }
+
+
+@router.delete("/whatsapp-message-logs")
+async def clear_whatsapp_message_logs(current_user: dict = Depends(require_admin)):
+    """Clear all WhatsApp message logs."""
+    result = await db.whatsapp_message_logs.delete_many({})
+    return {"message": f"Cleared {result.deleted_count} WhatsApp message logs"}
 
 
 # ─── Error Logs ───────────────────────────────────────────────────────────────

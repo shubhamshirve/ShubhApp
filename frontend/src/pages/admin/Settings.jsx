@@ -122,6 +122,7 @@ const AdminSettings = () => {
     reminder_template: "",
     payment_confirmation_template: "",
     announcement_template: "",
+    payment_due_reminder_template: "",
   });
   const [templateSettingsLoading, setTemplateSettingsLoading] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState([]);
@@ -318,6 +319,7 @@ const AdminSettings = () => {
         reminder_template: res.data.reminder_template || "",
         payment_confirmation_template: res.data.payment_confirmation_template || "",
         announcement_template: res.data.announcement_template || "",
+        payment_due_reminder_template: res.data.payment_due_reminder_template || "",
       });
     } catch { /* ignore */ }
   };
@@ -1140,7 +1142,8 @@ const AdminSettings = () => {
                 <div className="space-y-5 max-w-lg">
                   {[
                     { key: "invoice_template", label: "Invoice Sending", desc: "Template used when sending new invoices to subscribers" },
-                    { key: "reminder_template", label: "Payment Reminders", desc: "Template used for overdue payment reminders" },
+                    { key: "reminder_template", label: "Payment Reminders (Before / On Due Date)", desc: "Template used for reminders sent before or on the due date" },
+                    { key: "payment_due_reminder_template", label: "Payment Due Reminders (Overdue)", desc: "Template for overdue invoice reminders — sent after the due date has passed" },
                     { key: "payment_confirmation_template", label: "Payment Confirmation", desc: "Template used when a payment is confirmed" },
                     { key: "announcement_template", label: "Announcements", desc: "Template used for sending announcements" },
                   ].map(({ key, label, desc }) => (

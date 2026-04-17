@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timezone
 
 # Backend URL from environment
-BACKEND_URL = "https://invoice-notify-wa.preview.emergentagent.com/api"
+BACKEND_URL = "https://invoice-alert-hub-1.preview.emergentagent.com/api"
 
 class WhatsAppTemplateTestSuite:
     def __init__(self):

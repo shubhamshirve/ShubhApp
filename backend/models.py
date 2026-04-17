@@ -717,6 +717,7 @@ class WhatsAppTemplateSettings(SanitizedModel):
     reminder_template: Optional[str] = None
     payment_confirmation_template: Optional[str] = None
     announcement_template: Optional[str] = None
+    payment_due_reminder_template: Optional[str] = None  # Template for overdue invoice payment due reminders
 
 
 class WhatsAppTestMessage(SanitizedModel):

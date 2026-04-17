@@ -5,7 +5,7 @@ Handles sending templated messages for invoices, reminders, and notifications
 import httpx
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 from services.env_service import get_env_setting
@@ -519,6 +519,44 @@ async def get_whatsapp_service_async() -> Optional[WhatsAppService]:
     if not phone_id or not token:
         return None
     return WhatsAppService(phone_id, token)
+
+
+async def log_whatsapp_message(
+    db,
+    *,
+    operator_id: Optional[str] = None,
+    template_name: str = "",
+    template_category: str = "",
+    recipient_phone: str = "",
+    status: str,  # "sent" | "failed"
+    message_id: str = "",
+    wa_id: str = "",
+    error_message: str = "",
+    invoice_id: Optional[str] = None,
+    invoice_number: str = "",
+    trigger: str = "manual",  # "cron", "manual", "auto_invoice"
+) -> None:
+    """Log a WhatsApp message send attempt to the whatsapp_message_logs collection."""
+    try:
+        from utils import generate_id
+        log = {
+            "id": generate_id(),
+            "operator_id": operator_id,
+            "template_name": template_name,
+            "template_category": template_category,
+            "recipient_phone": recipient_phone,
+            "status": status,
+            "message_id": message_id,
+            "wa_id": wa_id,
+            "error_message": error_message,
+            "invoice_id": invoice_id,
+            "invoice_number": invoice_number,
+            "trigger": trigger,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.whatsapp_message_logs.insert_one(log)
+    except Exception as e:
+        logger.warning(f"Failed to log WhatsApp message to DB: {e}")
 
 
 async def build_wa_send_params(

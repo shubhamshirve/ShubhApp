@@ -19,7 +19,8 @@ import {
   Database,
   Tag,
   MessageSquare,
-  Wallet
+  Wallet,
+  Activity
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -38,6 +39,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     { href: "/admin/wallets", label: "Wallets", icon: Wallet },
     { href: "/admin/support", label: "Support", icon: MessageSquare },
     { href: "/admin/settings", label: "Settings", icon: Settings },
+    { href: "/admin/whatsapp-stats", label: "WA Stats", icon: Activity },
     { href: "/admin/error-logs", label: "Error Logs", icon: AlertTriangle },
     { href: "/admin/audit-logs", label: "Audit Logs", icon: ClipboardList },
   ];

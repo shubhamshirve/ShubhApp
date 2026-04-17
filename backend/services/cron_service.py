@@ -129,7 +129,7 @@ class CronJobService:
         
         results["total_overdue"] = len(overdue_invoices)
         
-        from services.whatsapp_service import get_whatsapp_service_async
+        from services.whatsapp_service import get_whatsapp_service_async, log_whatsapp_message
         wa_service = await get_whatsapp_service_async()
 
         for invoice in overdue_invoices:
@@ -148,7 +148,7 @@ class CronJobService:
                     due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00'))
                     days = (now - due_date).days
                     
-                    await wa_service.send_payment_reminder(
+                    wa_result = await wa_service.send_payment_reminder(
                         recipient_phone=subscriber["whatsapp_number"],
                         customer_name=subscriber["name"],
                         invoice_number=invoice["invoice_number"],
@@ -158,6 +158,26 @@ class CronJobService:
                     )
                     
                     results["reminders_sent"] += 1
+
+                    # Log the sent message
+                    try:
+                        wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                        wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                        await log_whatsapp_message(
+                            self.db,
+                            operator_id=invoice.get("operator_id"),
+                            template_name="payment_reminder",
+                            template_category="payment_due_reminder",
+                            recipient_phone=subscriber["whatsapp_number"],
+                            status="sent",
+                            message_id=wa_msg_id,
+                            wa_id=wa_wa_id,
+                            invoice_id=invoice["id"],
+                            invoice_number=invoice["invoice_number"],
+                            trigger="cron",
+                        )
+                    except Exception as log_e:
+                        logger.warning(f"WhatsApp message log failed: {log_e}")
                     
             except Exception as e:
                 error_msg = f"Error sending reminder for invoice {invoice['invoice_number']}: {str(e)}"
@@ -374,7 +394,7 @@ class CronJobService:
             logger.warning(f"Wallet deduction failed for auto-invoice {invoice['id']}: {e}")
 
         # Send notification if WhatsApp is available
-        from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params
+        from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
         from services.invoice_view_service import build_public_invoice_url_from_env
         wa_service = await get_whatsapp_service_async()
         if wa_service:
@@ -390,8 +410,9 @@ class CronJobService:
                 inv_public_url = await build_public_invoice_url_from_env(invoice)
                 params = await build_wa_send_params(self.db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
 
+                wa_result = None
                 if params["body_vars"]:
-                    await wa_service.send_template_message(
+                    wa_result = await wa_service.send_template_message(
                         recipient_phone=subscriber["whatsapp_number"],
                         template_name=invoice_tpl_name,
                         language_code=params["language_code"],
@@ -401,7 +422,7 @@ class CronJobService:
                         button_params=params["btn_params"],
                     )
                 else:
-                    await wa_service.send_invoice_notification(
+                    wa_result = await wa_service.send_invoice_notification(
                         recipient_phone=subscriber["whatsapp_number"],
                         customer_name=subscriber["name"],
                         invoice_number=invoice_number,
@@ -411,6 +432,26 @@ class CronJobService:
                         header_params=params["header_params"],
                         header_type=params["header_type"],
                     )
+
+                # Log the sent message
+                try:
+                    wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                    wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                    await log_whatsapp_message(
+                        self.db,
+                        operator_id=operator["id"],
+                        template_name=invoice_tpl_name,
+                        template_category="invoice_notification",
+                        recipient_phone=subscriber["whatsapp_number"],
+                        status="sent",
+                        message_id=wa_msg_id,
+                        wa_id=wa_wa_id,
+                        invoice_id=invoice["id"],
+                        invoice_number=invoice_number,
+                        trigger="auto_invoice",
+                    )
+                except Exception as log_e:
+                    logger.warning(f"WhatsApp message log failed: {log_e}")
             except Exception as e:
                 logger.error(f"Failed to send invoice notification: {str(e)}")
         
@@ -526,18 +567,29 @@ class CronJobService:
                         if not subscriber:
                             continue
 
-                        from services.whatsapp_service import resolve_template_variables, build_wa_send_params
+                        from services.whatsapp_service import resolve_template_variables, build_wa_send_params, log_whatsapp_message
                         from services.invoice_view_service import build_public_invoice_url_from_env
                         inv_public_url = await build_public_invoice_url_from_env(invoice)
-                        if days_diff <= 0:
-                            reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
+                        wa_send_result = None
+                        wa_template_used = ""
+                        wa_category_used = ""
+
+                        if days_diff < 0:
+                            # Overdue — use payment_due_reminder template if configured, else fall back to reminder_template
+                            reminder_tpl = (
+                                template_settings.get("payment_due_reminder_template") or
+                                template_settings.get("reminder_template") or
+                                "payment_reminder"
+                            )
+                            wa_template_used = reminder_tpl
+                            wa_category_used = "payment_due_reminder"
                             tmpl_doc = await self.db.whatsapp_templates.find_one(
                                 {"template_name": reminder_tpl, "deleted_at": None}, {"_id": 0}
                             )
                             params = await build_wa_send_params(self.db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
 
                             if params["body_vars"]:
-                                await wa_service.send_template_message(
+                                wa_send_result = await wa_service.send_template_message(
                                     recipient_phone=subscriber["whatsapp_number"],
                                     template_name=reminder_tpl,
                                     language_code=params["language_code"],
@@ -547,7 +599,7 @@ class CronJobService:
                                     button_params=params["btn_params"],
                                 )
                             else:
-                                await wa_service.send_payment_reminder(
+                                wa_send_result = await wa_service.send_payment_reminder(
                                     recipient_phone=subscriber["whatsapp_number"],
                                     customer_name=subscriber["name"],
                                     invoice_number=invoice["invoice_number"],
@@ -557,15 +609,49 @@ class CronJobService:
                                     header_params=params["header_params"],
                                     header_type=params["header_type"],
                                 )
+                        elif days_diff == 0:
+                            # On due date — use regular reminder template
+                            reminder_tpl = template_settings.get("reminder_template") or "payment_reminder"
+                            wa_template_used = reminder_tpl
+                            wa_category_used = "payment_reminder"
+                            tmpl_doc = await self.db.whatsapp_templates.find_one(
+                                {"template_name": reminder_tpl, "deleted_at": None}, {"_id": 0}
+                            )
+                            params = await build_wa_send_params(self.db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
+
+                            if params["body_vars"]:
+                                wa_send_result = await wa_service.send_template_message(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    template_name=reminder_tpl,
+                                    language_code=params["language_code"],
+                                    variables=params["variables"],
+                                    header_params=params["header_params"],
+                                    header_type=params["header_type"],
+                                    button_params=params["btn_params"],
+                                )
+                            else:
+                                wa_send_result = await wa_service.send_payment_reminder(
+                                    recipient_phone=subscriber["whatsapp_number"],
+                                    customer_name=subscriber["name"],
+                                    invoice_number=invoice["invoice_number"],
+                                    amount_due=f"INR {invoice['final_amount']:,.2f}",
+                                    days_overdue="0",
+                                    payment_link=inv_public_url or invoice.get("payment_link"),
+                                    header_params=params["header_params"],
+                                    header_type=params["header_type"],
+                                )
                         else:
+                            # Before due date — use invoice template
                             invoice_tpl = template_settings.get("invoice_template") or "invoice_notification"
+                            wa_template_used = invoice_tpl
+                            wa_category_used = "invoice_notification"
                             tmpl_doc = await self.db.whatsapp_templates.find_one(
                                 {"template_name": invoice_tpl, "deleted_at": None}, {"_id": 0}
                             )
                             params = await build_wa_send_params(self.db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
 
                             if params["body_vars"]:
-                                await wa_service.send_template_message(
+                                wa_send_result = await wa_service.send_template_message(
                                     recipient_phone=subscriber["whatsapp_number"],
                                     template_name=invoice_tpl,
                                     language_code=params["language_code"],
@@ -575,7 +661,7 @@ class CronJobService:
                                     button_params=params["btn_params"],
                                 )
                             else:
-                                await wa_service.send_invoice_notification(
+                                wa_send_result = await wa_service.send_invoice_notification(
                                     recipient_phone=subscriber["whatsapp_number"],
                                     customer_name=subscriber["name"],
                                     invoice_number=invoice["invoice_number"],
@@ -585,6 +671,26 @@ class CronJobService:
                                     header_params=params["header_params"],
                                     header_type=params["header_type"],
                                 )
+
+                        # ── Log successful send ──────────────────────────────────────
+                        try:
+                            wa_msg_id = (wa_send_result.get("messages") or [{}])[0].get("id", "") if wa_send_result else ""
+                            wa_wa_id = (wa_send_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_send_result else ""
+                            await log_whatsapp_message(
+                                self.db,
+                                operator_id=operator_id,
+                                template_name=wa_template_used,
+                                template_category=wa_category_used,
+                                recipient_phone=subscriber["whatsapp_number"],
+                                status="sent",
+                                message_id=wa_msg_id,
+                                wa_id=wa_wa_id,
+                                invoice_id=invoice["id"],
+                                invoice_number=invoice["invoice_number"],
+                                trigger="cron",
+                            )
+                        except Exception as log_e:
+                            logger.warning(f"WhatsApp message log failed: {log_e}")
 
                         reminder_record = {
                             "reason": reason,

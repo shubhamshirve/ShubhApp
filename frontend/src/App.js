@@ -26,6 +26,7 @@ import AdminBackup from "./pages/admin/Backup";
 import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
 import AdminWhatsAppTemplates from "./pages/admin/WhatsAppTemplates";
+import AdminWhatsAppStats from "./pages/admin/WhatsAppStats";
 import AdminErrorLogs from "./pages/admin/ErrorLogs";
 import AdminLandingPage from "./pages/admin/LandingPage";
 import AdminWallets from "./pages/admin/Wallets";
@@ -261,6 +262,11 @@ function App() {
           <Route path="/admin/whatsapp-templates" element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminWhatsAppTemplates />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/whatsapp-stats" element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminWhatsAppStats />
             </ProtectedRoute>
           } />
           <Route path="/admin/error-logs" element={

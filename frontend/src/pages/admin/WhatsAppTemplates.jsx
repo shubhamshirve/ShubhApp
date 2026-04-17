@@ -37,6 +37,7 @@ import {
 const TEMPLATE_TYPES = [
   { value: "invoice_notification", label: "Invoice Notification" },
   { value: "payment_reminder", label: "Payment Reminder" },
+  { value: "payment_due_reminder", label: "Payment Due Reminders" },
   { value: "payment_confirmation", label: "Payment Confirmation" },
   { value: "announcement", label: "Announcement" },
   { value: "custom", label: "Custom" },
@@ -45,12 +46,13 @@ const TEMPLATE_TYPES = [
 const TYPE_COLORS = {
   invoice_notification: "bg-blue-100 text-blue-800",
   payment_reminder: "bg-amber-100 text-amber-800",
+  payment_due_reminder: "bg-red-100 text-red-800",
   payment_confirmation: "bg-green-100 text-green-800",
   announcement: "bg-purple-100 text-purple-800",
   custom: "bg-slate-100 text-slate-800",
 };
 
-const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_confirmation"];
+const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_due_reminder", "payment_confirmation"];
 
 const INVOICE_VARIABLE_OPTIONS = [
   // ── Invoice ──
@@ -110,7 +112,23 @@ const QUICK_TEMPLATES = [
     display_name: "Payment Reminder",
     template_type: "payment_reminder",
     language_code: "en",
-    description: "Reminds subscribers about overdue payment",
+    description: "Reminds subscribers about upcoming payment",
+    body_variables: ["customer_name", "invoice_number", "amount", "due_date"],
+    header_type: "none",
+    header_image_url: "",
+    header_variable: "",
+    header_image_static: false,
+    has_payment_button: true,
+    button_url_variable: "invoice_public_url",
+    is_active: true,
+  },
+  {
+    label: "Payment Due Reminder (overdue invoices)",
+    template_name: "payment_due_reminder",
+    display_name: "Payment Due Reminder",
+    template_type: "payment_due_reminder",
+    language_code: "en",
+    description: "Sent for overdue invoices — payment is past due date",
     body_variables: ["customer_name", "invoice_number", "amount", "days_overdue"],
     header_type: "none",
     header_image_url: "",
