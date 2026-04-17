@@ -71,6 +71,7 @@ const TRIGGER_LABELS = {
   cron: "Scheduled",
   manual: "Manual",
   auto_invoice: "Auto Invoice",
+  payment_confirmation: "Payment Confirmed",
 };
 
 function StatCard({ title, value, subtitle, icon: Icon, color = "blue", trend = null }) {

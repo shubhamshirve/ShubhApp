@@ -1835,6 +1835,69 @@ async def update_invoice_status(
         updates["cancelled_by_role"] = None
 
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+
+    # ── Send WhatsApp payment confirmation ────────────────────────────────────
+    if status == "paid":
+        try:
+            from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
+            from services.invoice_view_service import build_public_invoice_url_from_env
+            wa_service = await get_whatsapp_service_async()
+            if wa_service:
+                subscriber = await db.subscribers.find_one(
+                    {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
+                )
+                if subscriber and subscriber.get("whatsapp_number"):
+                    template_settings = await db.global_settings.find_one(
+                        {"type": "whatsapp_template_settings"}, {"_id": 0}
+                    ) or {}
+                    confirmation_tpl = template_settings.get("payment_confirmation_template") or "payment_confirmation"
+                    tmpl_doc = await db.whatsapp_templates.find_one(
+                        {"template_name": confirmation_tpl, "deleted_at": None}, {"_id": 0}
+                    )
+                    inv_public_url = await build_public_invoice_url_from_env(invoice)
+                    params = await build_wa_send_params(db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
+
+                    wa_result = None
+                    if params["body_vars"]:
+                        wa_result = await wa_service.send_template_message(
+                            recipient_phone=subscriber["whatsapp_number"],
+                            template_name=confirmation_tpl,
+                            language_code=params["language_code"],
+                            variables=params["variables"],
+                            header_params=params["header_params"],
+                            header_type=params["header_type"],
+                            button_params=params["btn_params"],
+                        )
+                    else:
+                        paid_at = updates.get("paid_at", now.isoformat())
+                        payment_date_str = paid_at[:10] if paid_at else now.strftime("%Y-%m-%d")
+                        wa_result = await wa_service.send_payment_confirmation(
+                            recipient_phone=subscriber["whatsapp_number"],
+                            customer_name=subscriber["name"],
+                            invoice_number=invoice["invoice_number"],
+                            amount_paid=f"INR {invoice['final_amount']:,.2f}",
+                            payment_date=payment_date_str,
+                        )
+
+                    # Log the send
+                    wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                    wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                    await log_whatsapp_message(
+                        db,
+                        operator_id=operator_id,
+                        template_name=confirmation_tpl,
+                        template_category="payment_confirmation",
+                        recipient_phone=subscriber["whatsapp_number"],
+                        status="sent",
+                        message_id=wa_msg_id,
+                        wa_id=wa_wa_id,
+                        invoice_id=invoice["id"],
+                        invoice_number=invoice["invoice_number"],
+                        trigger="payment_confirmation",
+                    )
+        except Exception as wa_err:
+            logger.warning(f"WhatsApp payment confirmation failed for invoice {invoice_id}: {wa_err}")
+
     return {"message": f"Invoice marked as {status}"}
 
 
