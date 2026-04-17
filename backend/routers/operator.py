@@ -313,19 +313,85 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
     whatsapp_count = 0
     email_count = 0
     
+    # Get WhatsApp template settings for announcements
+    wa_config = await _get_platform_whatsapp_config()
+    template_settings = await _get_whatsapp_template_settings()
+    announcement_template = template_settings.get("announcement_template", "") if template_settings else ""
+    use_template = bool(wa_config and announcement_template)
+    
     # Send WhatsApp notifications if enabled
     if data.send_whatsapp:
-        for sub in subscribers:
-            if sub.get("whatsapp_number"):
-                notification = {
-                    "id": generate_id(), "operator_id": current_user["operator_id"],
-                    "subscriber_id": sub["id"], "notification_type": "announcement",
-                    "whatsapp_number": sub["whatsapp_number"],
-                    "message": f"*{data.title}*\n\n{data.message}",
-                    "status": "pending", "created_at": now.isoformat()
-                }
-                await db.notification_queue.insert_one(notification)
-                whatsapp_count += 1
+        if use_template:
+            # Use WhatsApp template for announcements
+            from services.whatsapp_service import WhatsAppService, resolve_template_variables
+            
+            # Get template details
+            tmpl_doc = await db.whatsapp_templates.find_one(
+                {"template_name": announcement_template, "deleted_at": None}, {"_id": 0}
+            )
+            
+            if tmpl_doc:
+                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                body_vars = tmpl_doc.get("body_variables", [])
+                hdr_type = tmpl_doc.get("header_type", "none")
+                hdr_params = None
+                
+                # Handle image header
+                if hdr_type == "image":
+                    fixed_url = tmpl_doc.get("header_image_url", "")
+                    if fixed_url:
+                        hdr_params = [fixed_url]
+                
+                # Send to each subscriber using template
+                operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+                
+                for sub in subscribers:
+                    if sub.get("whatsapp_number"):
+                        try:
+                            # Create announcement dict for variable resolution
+                            announcement_data = {
+                                "title": data.title,
+                                "message": data.message,
+                                "operator_id": current_user["operator_id"],
+                                "_operator": operator  # Inject operator for operator_* variables
+                            }
+                            
+                            # Resolve template variables
+                            res = await resolve_template_variables(db, body_vars, announcement_data, sub)
+                            variables = res["body"]
+                            
+                            # Send template message
+                            result = await wa_service.send_template_message(
+                                recipient_phone=sub["whatsapp_number"],
+                                template_name=announcement_template,
+                                language_code=tmpl_doc.get("language_code", "en"),
+                                variables=variables,
+                                header_params=hdr_params,
+                                header_type=hdr_type,
+                            )
+                            
+                            if result:
+                                whatsapp_count += 1
+                                logger.info(f"Sent announcement via template to {sub['whatsapp_number']}")
+                        except Exception as e:
+                            logger.error(f"Failed to send announcement template to {sub['whatsapp_number']}: {e}")
+            else:
+                logger.warning(f"Announcement template '{announcement_template}' not found, falling back to queue")
+                use_template = False
+        
+        # Fallback: Queue plain text messages (original behavior)
+        if not use_template:
+            for sub in subscribers:
+                if sub.get("whatsapp_number"):
+                    notification = {
+                        "id": generate_id(), "operator_id": current_user["operator_id"],
+                        "subscriber_id": sub["id"], "notification_type": "announcement",
+                        "whatsapp_number": sub["whatsapp_number"],
+                        "message": f"*{data.title}*\n\n{data.message}",
+                        "status": "pending", "created_at": now.isoformat()
+                    }
+                    await db.notification_queue.insert_one(notification)
+                    whatsapp_count += 1
     
     # Send emails if enabled
     if data.send_email:

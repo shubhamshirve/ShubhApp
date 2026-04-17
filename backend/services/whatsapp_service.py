@@ -98,6 +98,11 @@ KNOWN_INVOICE_VARIABLES = {
     "operator_bank_account":  lambda inv, sub: (inv.get("_operator") or {}).get("bank_account_number", "") or "",
     "operator_ifsc":          lambda inv, sub: (inv.get("_operator") or {}).get("bank_ifsc", "") or "",
     "operator_business_type": lambda inv, sub: (inv.get("_operator") or {}).get("business_type", "") or "",
+    
+    # ── Announcement fields ────────────────────────────────────────────────────
+    "announcement_title":     lambda inv, sub: inv.get("title", ""),
+    "announcement_text":      lambda inv, sub: inv.get("message", ""),
+    "announcement_message":   lambda inv, sub: inv.get("message", ""),  # alias for convenience
 }
 
 
