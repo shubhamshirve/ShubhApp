@@ -246,6 +246,8 @@ const OperatorInvoices = () => {
   const [bulkResult, setBulkResult] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [sendingWebJS, setSendingWebJS] = useState(null); // invoice id being sent via WebJS
+  const [invoiceSettings, setInvoiceSettings] = useState(null);
+  const [gatewayConfigured, setGatewayConfigured] = useState(false);
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     subscriber_id: "",
@@ -264,7 +266,23 @@ const OperatorInvoices = () => {
     fetchSubscribers();
     fetchPlans();
     fetchDashboard();
+    fetchInvoiceSettings();
   }, []);
+
+  const fetchInvoiceSettings = async () => {
+    try {
+      const [settingsRes, gatewayRes] = await Promise.all([
+        authAxios.get("/operator/invoice-settings").catch(() => ({ data: {} })),
+        authAxios.get("/operator/payment-gateway").catch(() => ({ data: { configured: false } })),
+      ]);
+      setInvoiceSettings(settingsRes.data);
+      setGatewayConfigured(
+        gatewayRes.data?.configured === true || gatewayRes.data?.is_active === true
+      );
+    } catch {
+      // non-critical, ignore
+    }
+  };
 
   const fetchDashboard = async () => {
     try {
@@ -765,7 +783,7 @@ const OperatorInvoices = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {invoice.status !== "paid" && !invoice.payment_link && features?.payment_gateway && (
+                            {invoice.status === "pending" && !invoice.payment_link && features?.payment_gateway && gatewayConfigured && invoiceSettings?.accept_payment_gateway && (
                               <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
                                 <Link2 className="w-4 h-4 mr-2 text-blue-600" />
                                 Generate Payment Link

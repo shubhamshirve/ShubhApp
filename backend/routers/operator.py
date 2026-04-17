@@ -1637,13 +1637,13 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
-    # Block invoice creation if wallet balance is below Rs.100
+    # Block invoice creation if wallet balance is below Rs.50
     from routers.wallet import get_or_create_wallet
     wallet = await get_or_create_wallet(current_user["operator_id"])
-    if wallet.get("balance", 0) < 100:
+    if wallet.get("balance", 0) < 50:
         raise HTTPException(
             status_code=402,
-            detail=f"Insufficient wallet balance (₹{wallet.get('balance', 0):.2f}). Minimum ₹100 required to generate invoices."
+            detail=f"Insufficient wallet balance (₹{wallet.get('balance', 0):.2f}). Minimum ₹50 required to generate invoices."
         )
 
     payload = await _build_invoice_payload(current_user["operator_id"], data)
