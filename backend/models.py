@@ -224,7 +224,7 @@ class OperatorResponse(SanitizedModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     company_name: str
-    owner_name: str
+    owner_name: Optional[str] = ""
     email: str
     phone: str
     business_type: Optional[str] = None
@@ -236,7 +236,7 @@ class OperatorResponse(SanitizedModel):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
-    status: str
+    status: Optional[str] = "active"
     saas_plan_id: Optional[str] = None
     saas_plan_name: Optional[str] = None
     trial_ends_at: Optional[datetime] = None

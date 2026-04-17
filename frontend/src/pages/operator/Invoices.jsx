@@ -61,6 +61,7 @@ import {
   Send,
   Bell,
   MessageCircle,
+  MessageSquare,
   ExternalLink,
   Pencil,
   Trash2,
@@ -798,9 +799,13 @@ const OperatorInvoices = () => {
                             {features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
                                 <Send className="w-4 h-4 mr-2 text-emerald-600" />
-                                Send via WhatsApp API
+                                Send via WhatsApp API (Rs 0.5)
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)}>
+                              <MessageSquare className="w-4 h-4 mr-2 text-green-600" />
+                              Send via WhatsApp Web
+                            </DropdownMenuItem>
                             {invoice.status === "overdue" && features?.whatsapp_notifications && (
                               <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
                                 <Bell className="w-4 h-4 mr-2 text-amber-600" />
