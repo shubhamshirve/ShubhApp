@@ -940,9 +940,8 @@ export default function WhatsAppTemplates() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Test Template Dialog ─────────────────────────────────────────── */}
       <Dialog open={showTestDialog} onOpenChange={(v) => { setShowTestDialog(v); if (!v) setTestResult(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FlaskConical className="w-5 h-5 text-emerald-600" />
@@ -954,14 +953,14 @@ export default function WhatsAppTemplates() {
           </DialogHeader>
 
           {testTemplate && (
-            <div className="space-y-5 mt-1">
+            <div className="space-y-4 mt-1 pb-1">
               {/* Template info */}
               <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[testTemplate.template_type] || "bg-slate-100 text-slate-700"}`}>
                     {TEMPLATE_TYPES.find(t => t.value === testTemplate.template_type)?.label || testTemplate.template_type}
                   </span>
-                  <code className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-mono">
+                  <code className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-mono break-all">
                     {testTemplate.template_name}
                   </code>
                   <span className="text-xs text-slate-500">lang: {testTemplate.language_code || "en"}</span>
@@ -981,19 +980,19 @@ export default function WhatsAppTemplates() {
                   onChange={(e) => setTestPhone(e.target.value)}
                   className="font-mono"
                 />
-                <p className="text-xs text-slate-400">Enter in E.164 format (e.g. 919876543210 for India). Must be a WhatsApp-registered number.</p>
+                <p className="text-xs text-slate-400">E.164 format — e.g. 919876543210 for India. Must be a WhatsApp-registered number.</p>
               </div>
 
               {/* Body variables */}
               {testTemplate.body_variables && testTemplate.body_variables.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Body Variables</Label>
-                  <p className="text-xs text-slate-400">Edit test values for each variable. These will be sent as-is.</p>
+                  <p className="text-xs text-slate-400">Edit test values for each placeholder.</p>
                   <div className="space-y-2">
                     {testTemplate.body_variables.map((varName, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <span className="w-28 flex-shrink-0 text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1.5 rounded truncate" title={varName}>
-                          {`{{${i + 1}}}`} <span className="text-slate-400">{varName}</span>
+                        <span className="w-24 flex-shrink-0 text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1.5 rounded truncate" title={varName}>
+                          {`{{${i + 1}}}`}
                         </span>
                         <Input
                           value={testVariables[i] || ""}
@@ -1002,8 +1001,8 @@ export default function WhatsAppTemplates() {
                             updated[i] = e.target.value;
                             setTestVariables(updated);
                           }}
-                          className="text-sm h-8"
-                          placeholder={`Value for {{${i + 1}}}`}
+                          className="text-sm h-8 min-w-0"
+                          placeholder={`Value for {{${i + 1}}} (${varName})`}
                         />
                       </div>
                     ))}
@@ -1011,7 +1010,7 @@ export default function WhatsAppTemplates() {
                 </div>
               )}
 
-              {/* Header image URL (if image header) */}
+              {/* Header image URL */}
               {testTemplate.header_type === "image" && (
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium">Header Image URL</Label>
@@ -1025,7 +1024,7 @@ export default function WhatsAppTemplates() {
                 </div>
               )}
 
-              {/* Button URL (if has payment button) */}
+              {/* Button URL */}
               {testTemplate.has_payment_button && (
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium">Test Button URL</Label>
@@ -1035,7 +1034,7 @@ export default function WhatsAppTemplates() {
                     placeholder="https://example.com/pay/test"
                     className="text-sm"
                   />
-                  <p className="text-xs text-slate-400">URL that will be passed to the button parameter.</p>
+                  <p className="text-xs text-slate-400">URL passed as the button dynamic parameter.</p>
                 </div>
               )}
 
@@ -1047,13 +1046,13 @@ export default function WhatsAppTemplates() {
                   ) : (
                     <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <p className={`text-sm font-medium ${testResult.success ? "text-green-700" : "text-red-700"}`}>
                       {testResult.success ? "Success" : "Failed"}
                     </p>
-                    <p className="text-xs mt-0.5 text-slate-600">{testResult.message}</p>
+                    <p className="text-xs mt-0.5 text-slate-600 break-words">{testResult.message}</p>
                     {testResult.message_id && (
-                      <p className="text-xs mt-1 font-mono text-slate-400">
+                      <p className="text-xs mt-1 font-mono text-slate-400 break-all">
                         Message ID: {testResult.message_id}
                       </p>
                     )}
@@ -1061,15 +1060,15 @@ export default function WhatsAppTemplates() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-2 border-t">
-                <Button variant="outline" onClick={() => setShowTestDialog(false)}>Close</Button>
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" onClick={() => setShowTestDialog(false)} className="w-full sm:w-auto">Close</Button>
                 <Button
                   onClick={handleSendTest}
                   disabled={testLoading || !testPhone.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 min-w-[140px]"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full sm:w-auto"
                 >
                   {testLoading ? (
-                    <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" />Sending…</>
+                    <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white inline-block" />Sending…</>
                   ) : (
                     <><Send className="w-3.5 h-3.5" />Send Test Message</>
                   )}

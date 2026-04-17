@@ -896,11 +896,11 @@ async def test_whatsapp_template(data: WhatsAppTemplateTestRequest, current_user
         img_url = data.header_image_url or template.get("header_image_url") or ""
         header_params = [img_url] if img_url else None
 
-    # Build button params
+    # Build button params (must match the structure expected by send_template_message)
     button_params = None
     if template.get("has_payment_button"):
         test_url = data.button_url or "https://example.com/pay/test-invoice"
-        button_params = [{"type": "text", "text": test_url}]
+        button_params = [{"sub_type": "url", "parameters": [{"type": "text", "text": test_url}]}]
 
     wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
     try:
