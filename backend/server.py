@@ -1,23 +1,33 @@
 """
-Multi-Tenant SaaS Billing Platform — FastAPI entry point.
+Multi-Tenant ISP/Cable Billing Platform — FastAPI entry point.
 
 Modules:
-  database.py       — MongoDB connection (db)
-  config.py         — JWT & other constants
-  models.py         — All Pydantic schemas
-  utils.py          — ID generation, password hashing, JWT helpers
-  dependencies.py   — FastAPI dependency functions (auth guards)
-  audit.py          — Audit-log helper
+  database.py              — MongoDB connection (db)
+  config.py                — JWT & app constants
+  models.py                — All Pydantic schemas
+  utils.py                 — ID generation, password hashing, JWT helpers
+  dependencies.py          — FastAPI dependency functions (auth guards)
+  audit.py                 — Audit-log helper
+  error_logger.py          — Centralized error logging to DB
   routers/
-    auth.py         — /api/auth/*
-    admin.py        — /api/admin/*
-    operator.py     — /api/operator/*
-    webhooks.py     — /api/webhooks/*
+    auth.py                — /api/auth/*
+    admin.py               — /api/admin/*
+    operator.py            — /api/operator/*
+    webhooks.py            — /api/webhooks/*
+    backup.py              — /api/backup/*
+    public.py              — /api/public/* (invoice view, payment)
+    wallet.py              — /api/admin/wallets & shared wallet helpers
+    support.py             — /api/support/*
   services/
-    razorpay_service.py
-    whatsapp_service.py
-    pdf_service.py
-    cron_service.py
+    cron_service.py        — Auto invoice, reminders, wallet checks
+    whatsapp_service.py    — WhatsApp Cloud API + message logging
+    email_service.py       — Resend + SMTP fallback
+    razorpay_service.py    — Razorpay payment links & webhooks
+    pdf_service.py         — Invoice PDF generation
+    invoice_view_service.py — Invoice rendering helpers
+    job_queue_service.py   — Background task queue
+    env_service.py         — DB-backed environment settings
+    scheduler_settings.py  — Cron schedule configuration
 """
 
 from fastapi import FastAPI, Request, HTTPException
@@ -40,11 +50,9 @@ from routers.support import router as support_router
 from services.global_settings_store import get_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 from services.job_queue_service import JobQueueService
-
-# ── Logging ────────────────────────────────────────────────────────────────
-import logging
 from config import LOG_LEVEL, IS_PRODUCTION, API_DOCS_ENABLED
 
+# ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
