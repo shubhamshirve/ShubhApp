@@ -78,6 +78,31 @@ export default function PublicInvoice() {
     fetchInvoice();
   }, [fetchInvoice]);
 
+  // Set dynamic page title once data is loaded
+  useEffect(() => {
+    if (data?.subscriber && data?.invoice) {
+      const customerName = data.subscriber.name || "Customer";
+      const startDate = data.invoice.service_start_date;
+      const endDate = data.invoice.service_end_date;
+      let tenure = "";
+      if (startDate && endDate) {
+        const fmt = (d) =>
+          new Date(d).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+        const s = fmt(startDate);
+        const e = fmt(endDate);
+        tenure = s === e ? s : `${s}-${e}`;
+      } else if (startDate) {
+        tenure = new Date(startDate).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+      } else {
+        tenure = data.invoice.invoice_number || "";
+      }
+      document.title = `EBILL-${customerName}-${tenure}`;
+    }
+    return () => {
+      document.title = "E-Bill";
+    };
+  }, [data]);
+
   useEffect(() => {
     if (data) {
       const urlParams = new URLSearchParams(window.location.search);
