@@ -316,7 +316,19 @@ export default function PublicInvoice() {
       {/* Main Content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Invoice Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+
+          {/* CANCELLED diagonal watermark overlay */}
+          {invoice.status === "cancelled" && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden">
+              <span
+                className="select-none font-black uppercase tracking-widest text-red-500 opacity-[0.12] rotate-[-35deg] whitespace-nowrap"
+                style={{ fontSize: "clamp(3.5rem, 14vw, 7rem)" }}
+              >
+                CANCELLED
+              </span>
+            </div>
+          )}
 
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 sm:px-8 py-6 sm:py-8">
@@ -689,6 +701,22 @@ export default function PublicInvoice() {
                 <p className="text-xs text-slate-500">Select an app installed on this device.</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Cancelled Notice */}
+        {invoice.status === "cancelled" && (
+          <div className="mt-8 bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8 text-center shadow-sm">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+              <XCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-800 mb-2">Invoice Cancelled</h3>
+            <p className="text-slate-500 font-medium">
+              This invoice has been cancelled and is no longer valid for payment.
+            </p>
+            <p className="text-slate-400 text-sm mt-2">
+              Please contact the service provider for more information.
+            </p>
           </div>
         )}
 
