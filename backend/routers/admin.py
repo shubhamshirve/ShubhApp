@@ -392,7 +392,7 @@ async def impersonate_operator(operator_id: str, current_user: dict = Depends(re
     }, expiration_hours=timeout)
     return {
         "access_token": token, "token_type": "bearer",
-        "operator": {"id": operator_id, "company_name": operator["company_name"], "owner_name": operator["owner_name"]}
+        "operator": {"id": operator_id, "company_name": operator["company_name"], "owner_name": operator.get("owner_name", "")}
     }
 
 
