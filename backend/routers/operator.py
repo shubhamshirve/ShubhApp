@@ -1006,6 +1006,7 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
     pending_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "pending", "deleted_at": None})
     overdue_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "overdue", "deleted_at": None})
     paid_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "paid", "deleted_at": None})
+    cancelled_invoices = await db.invoices.count_documents({"operator_id": operator_id, "status": "cancelled", "deleted_at": None})
     paid_invoice_list = await db.invoices.find(
         {"operator_id": operator_id, "status": "paid", "deleted_at": None}, {"_id": 0, "final_amount": 1}
     ).to_list(1000)
@@ -1066,6 +1067,7 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
         "total_subscribers": total_subscribers, "active_subscribers": active_subscribers,
         "total_invoices": total_invoices, "pending_invoices": pending_invoices,
         "overdue_invoices": overdue_invoices, "paid_invoices": paid_invoices,
+        "cancelled_invoices": cancelled_invoices,
         "total_revenue": total_revenue,
         "total_invoice_value_this_month": total_invoice_value_this_month,
         "total_value_received_this_month": total_value_received_this_month,

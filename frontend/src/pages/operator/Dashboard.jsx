@@ -10,6 +10,7 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
+  XCircle,
   TrendingUp
 } from "lucide-react";
 
@@ -84,6 +85,12 @@ const OperatorDashboard = () => {
       value: stats?.paid_invoices || 0,
       icon: CheckCircle,
       color: "bg-emerald-100 text-emerald-700"
+    },
+    {
+      title: "Cancelled",
+      value: stats?.cancelled_invoices || 0,
+      icon: XCircle,
+      color: "bg-slate-100 text-slate-600"
     }
   ];
 
