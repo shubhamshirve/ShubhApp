@@ -630,7 +630,7 @@ const OperatorSubscribers = () => {
                 
                 <div className="space-y-4">
                   {formData.plans.map((plan, index) => (
-                    <div key={index} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100">
+                    <div key={plan.plan_id || `plan-row-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100">
                       {formData.plans.length > 1 && (
                         <Button 
                           type="button" 
@@ -762,7 +762,7 @@ const OperatorSubscribers = () => {
                   </div>
                   {bulkResult.errors?.length > 0 && (
                     <div className="text-xs text-red-600 space-y-0.5 max-h-24 overflow-y-auto">
-                      {bulkResult.errors.map((e, i) => <div key={i}>Row {e.row}{e.name ? ` (${e.name})` : ""}: {e.reason}</div>)}
+                      {bulkResult.errors.map((e, i) => <div key={`sub-err-${e.row}-${i}`}>Row {e.row}{e.name ? ` (${e.name})` : ""}: {e.reason}</div>)}
                     </div>
                   )}
                 </div>

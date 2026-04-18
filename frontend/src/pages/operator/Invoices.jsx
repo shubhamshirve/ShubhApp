@@ -279,7 +279,8 @@ const OperatorInvoices = () => {
       setGatewayConfigured(
         gatewayRes.data?.configured === true || gatewayRes.data?.is_active === true
       );
-    } catch {
+    } catch (err) {
+      console.warn("Non-critical settings load failed:", err);
       // non-critical, ignore
     }
   };
@@ -906,7 +907,7 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-4">
                   {formData.line_items.map((item, index) => (
-                    <div key={index} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100 space-y-4">
+                    <div key={item.plan_id || `line-item-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100 space-y-4">
                       {formData.line_items.length > 1 && (
                         <Button 
                           type="button" 
@@ -1058,7 +1059,7 @@ const OperatorInvoices = () => {
                   </div>
                   {bulkResult.errors?.length > 0 && (
                     <div className="text-xs text-red-600 space-y-0.5 max-h-24 overflow-y-auto">
-                      {bulkResult.errors.map((e, i) => <div key={i}>Row {e.row}: {e.reason}</div>)}
+                      {bulkResult.errors.map((e, i) => <div key={`inv-err-${e.row}-${i}`}>Row {e.row}: {e.reason}</div>)}
                     </div>
                   )}
                 </div>

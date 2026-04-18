@@ -17,9 +17,8 @@ from models import (
     InvoiceCreate, InvoiceUpdate, InvoiceStatusUpdate, InvoiceResponse, PaymentLinkResponse,
     StaffCreate, StaffUpdate, StaffResponse, AuditLogResponse,
     PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
-    ReminderSettingsUpdate,
 )
-from utils import generate_id, hash_password, generate_invoice_number, generate_invoice_number_atomic
+from utils import generate_id, hash_password, generate_invoice_number_atomic
 from dependencies import (
     require_operator,
     require_operator_no_staff,
@@ -29,6 +28,11 @@ from dependencies import (
 from audit import log_audit
 from sanitization import sanitize_filename, sanitize_text
 from services.invoice_view_service import normalize_invoice_settings, build_public_invoice_url, build_public_invoice_path
+from services.invoice_helpers import (
+    get_platform_whatsapp_config as _get_platform_whatsapp_config,
+    get_whatsapp_template_settings as _get_whatsapp_template_settings,
+    build_invoice_payload as _build_invoice_payload,
+)
 from routers.wallet import get_or_create_wallet, deduct_wallet
 
 logger = logging.getLogger(__name__)
@@ -53,19 +57,6 @@ async def _has_addon(operator_id: str, addon_code: str) -> bool:
             return True
     return False
 
-
-async def _get_platform_whatsapp_config():
-    """Get the global platform WhatsApp config from admin settings."""
-    config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
-    if not config or not config.get("access_token"):
-        return None
-    return config
-
-
-async def _get_whatsapp_template_settings():
-    """Get template assignment settings from admin config."""
-    settings = await db.global_settings.find_one({"type": "whatsapp_template_settings"}, {"_id": 0})
-    return settings or {}
 
 
 
@@ -309,7 +300,6 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
     await db.announcements.insert_one(announcement)
     announcement.pop("_id", None)
 
-    sent_count = 0
     whatsapp_count = 0
     email_count = 0
     
@@ -1469,90 +1459,6 @@ async def activate_subscriber(subscriber_id: str, current_user: dict = Depends(r
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
 PAYMENT_MODES = {"cash", "own_upi", "bank_transfer", "cheque"}
-
-
-async def _build_invoice_payload(operator_id: str, data: InvoiceCreate | InvoiceUpdate):
-    subscriber = await db.subscribers.find_one(
-        {"id": data.subscriber_id, "operator_id": operator_id, "deleted_at": None}, {"_id": 0}
-    )
-    if not subscriber:
-        raise HTTPException(status_code=404, detail="Subscriber not found")
-
-    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
-    can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
-
-    total_base = 0
-    total_discount = 0
-    total_tax = 0
-    total_final = 0
-    line_items = []
-
-    for item in data.line_items:
-        plan = await db.operator_plans.find_one({"id": item.plan_id, "deleted_at": None}, {"_id": 0})
-        if not plan:
-            raise HTTPException(status_code=404, detail=f"Plan {item.plan_id} not found")
-
-        tax_amount = 0
-        if can_charge_gst and plan.get("tax_percentage", 0) > 0:
-            taxable = item.base_amount - item.discount
-            if plan.get("tax_type") == "exclusive":
-                tax_amount = taxable * (plan["tax_percentage"] / 100)
-            elif plan.get("tax_type") == "inclusive":
-                tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
-
-        final_amount = item.base_amount - item.discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
-
-        enriched_item = item.model_dump()
-        enriched_item["plan_name"] = plan["name"]
-        enriched_item["plan_description"] = plan.get("description")
-        enriched_item["tax_amount"] = round(tax_amount, 2)
-        enriched_item["final_amount"] = round(final_amount, 2)
-        enriched_item["service_start_date"] = item.service_start_date.isoformat()
-        enriched_item["service_end_date"] = item.service_end_date.isoformat()
-        line_items.append(enriched_item)
-
-        total_base += item.base_amount
-        total_discount += item.discount
-        total_tax += tax_amount
-        total_final += final_amount
-
-    return {
-        "subscriber": subscriber,
-        "line_items": line_items,
-        "base_amount": round(total_base, 2),
-        "discount": round(total_discount, 2),
-        "tax_amount": round(total_tax, 2),
-        "final_amount": round(total_final, 2),
-        "due_date": data.due_date.isoformat(),
-    }
-
-
-def _parse_bulk_invoice_date(value: str, field_name: str) -> datetime:
-    raw = (value or "").strip()
-    if not raw:
-        raise ValueError(f"{field_name} is required")
-
-    normalized = raw.replace("T", " ")
-    for fmt in (
-        "%Y-%m-%d",
-        "%Y-%m-%d %H:%M:%S",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%m/%d/%Y",
-    ):
-        try:
-            parsed = datetime.strptime(normalized, fmt)
-            return parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-
-    try:
-        parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed
-    except ValueError as exc:
-        raise ValueError(f"Invalid {field_name}. Use YYYY-MM-DD format") from exc
 
 
 @router.get("/invoices/sample-csv")

@@ -1,6 +1,9 @@
 """Application configuration constants."""
 import os
+import logging
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Environment Detection
@@ -17,6 +20,7 @@ if not JWT_SECRET:
     if IS_PRODUCTION:
         raise ValueError("JWT_SECRET is required in production!")
     JWT_SECRET = 'dev-key-change-in-production-2024'
+    logger.warning("JWT_SECRET not set — using insecure development fallback. Set JWT_SECRET in production.")
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
@@ -26,6 +30,7 @@ if not BACKUP_PASSWORD:
     if IS_PRODUCTION:
         raise ValueError("BACKUP_PASSWORD is required in production!")
     BACKUP_PASSWORD = 'dev-password'
+    logger.warning("BACKUP_PASSWORD not set — using insecure development fallback. Set BACKUP_PASSWORD in production.")
 
 # ============================================================================
 # Database Configuration

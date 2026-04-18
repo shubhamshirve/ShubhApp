@@ -4,7 +4,6 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import os
 import uuid
-import shutil
 
 from database import db
 from models import (
@@ -12,7 +11,6 @@ from models import (
     OperatorResponse, OperatorUpdate, AdminOperatorCreate, ExtendSubscriptionRequest,
     GlobalSettingsUpdate, AdminPaymentGatewayConfig,
     AddonCreate, AuditLogResponse,
-    UserResponse, TokenResponse,
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
     WhatsAppTemplateTestRequest, SystemResetOTPRequest,
     DiscountCodeCreate, DiscountCodeResponse,
@@ -24,7 +22,7 @@ from models import (
 from utils import generate_id, hash_password, create_token, generate_unique_referral_code
 from dependencies import require_admin, get_current_user
 from audit import log_audit
-from sanitization import SanitizedModel, sanitize_filename, sanitize_text
+from sanitization import SanitizedModel, sanitize_filename
 from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
 from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
 from services.email_service import EmailServiceError, get_email_providers_async
@@ -743,7 +741,6 @@ async def get_whatsapp_diagnostics(current_user: dict = Depends(require_admin)):
     # Meta's test/demo phone numbers use the US +1 555-xxx-xxxx range
     is_test_number = "555" in display_phone.replace(" ", "").replace("-", "")
 
-    is_development_mode = throughput not in ("STANDARD",) or is_test_number
     result["mode"] = "LIVE" if (throughput == "STANDARD" and not is_test_number) else "DEVELOPMENT"
     result["throughput_level"] = throughput
     result["is_test_number"] = is_test_number
@@ -1682,7 +1679,6 @@ async def get_error_logs(
 @router.get("/error-logs/stats")
 async def get_error_logs_stats(current_user: dict = Depends(require_admin)):
     """Get error log statistics."""
-    from datetime import timedelta
     now = datetime.now(timezone.utc)
     today_str = now.strftime("%Y-%m-%dT00:00:00")
 
@@ -1715,8 +1711,8 @@ async def clear_error_logs(current_user: dict = Depends(require_admin)):
 # ─── System Reset (Danger Zone) ───────────────────────────────────────────────
 
 def _generate_reset_otp() -> str:
-    import random
-    return str(random.randint(100000, 999999))
+    import secrets
+    return str(secrets.randbelow(900000) + 100000)
 
 
 @router.post("/reset/request-otp")

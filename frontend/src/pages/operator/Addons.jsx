@@ -35,7 +35,7 @@ const OperatorAddons = () => {
     try {
       const res = await authAxios.get("/operator/subscription");
       setSubscriptionStatus(res.data?.status);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("Failed to load subscription status:", err); /* silent */ }
   };
 
   const applyCoupon = async (base) => {

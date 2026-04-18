@@ -593,7 +593,7 @@ export default function WhatsAppTemplates() {
                         {tmpl.body_variables && tmpl.body_variables.length > 0 ? (
                           <div className="flex flex-wrap gap-1 max-w-40">
                             {tmpl.body_variables.slice(0, 3).map((v, i) => (
-                              <span key={i} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">
+                              <span key={`${tmpl.id}-var-${i}`} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">
                                 {`{{${i + 1}}}`} <span className="text-slate-400">{v}</span>
                               </span>
                             ))}
@@ -876,7 +876,7 @@ export default function WhatsAppTemplates() {
               {form.body_variables.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {form.body_variables.map((v, i) => (
-                    <span key={i} className="flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-1 rounded-full text-xs">
+                    <span key={`body-var-${v}-${i}`} className="flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-1 rounded-full text-xs">
                       <span className="text-blue-500 font-mono">{`{{${i + 1}}}`}</span>
                       <span className="text-slate-600">{v}</span>
                       <button type="button" onClick={() => removeVariable(i)} className="ml-1 text-slate-400 hover:text-red-500">
@@ -1014,7 +1014,7 @@ export default function WhatsAppTemplates() {
                   <p className="text-xs text-slate-400">Edit test values for each placeholder.</p>
                   <div className="space-y-2">
                     {testTemplate.body_variables.map((varName, i) => (
-                      <div key={i} className="flex items-center gap-2">
+                      <div key={`test-var-${varName}-${i}`} className="flex items-center gap-2">
                         <span className="w-24 flex-shrink-0 text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1.5 rounded truncate" title={varName}>
                           {`{{${i + 1}}}`}
                         </span>

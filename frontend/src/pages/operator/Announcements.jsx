@@ -58,14 +58,14 @@ const OperatorAnnouncements = () => {
         count: res.data.this_week_count || 0,
         remaining: res.data.remaining_this_week || 0
       });
-    } catch { /* ignore */ }
+    } catch (err) { console.warn("Failed to load announcements:", err); }
   };
 
   const fetchDashboard = async () => {
     try {
       const res = await authAxios.get("/operator/dashboard");
       setDashboardStats(res.data);
-    } catch { /* ignore */ }
+    } catch (err) { console.warn("Failed to load dashboard stats:", err); }
   };
 
   const handleSend = async (e) => {

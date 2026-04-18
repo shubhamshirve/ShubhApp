@@ -1,7 +1,7 @@
 """Auth router: register (with OTP), login, me."""
 from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import datetime, timezone, timedelta
-import random
+import secrets
 import logging
 
 from database import db
@@ -29,7 +29,8 @@ class OTPVerifyRequest(SanitizedModel):
 
 
 def _generate_otp() -> str:
-    return str(random.randint(10 ** (OTP_LENGTH - 1), (10 ** OTP_LENGTH) - 1))
+    """Generate a cryptographically secure numeric OTP."""
+    return str(secrets.randbelow(10 ** OTP_LENGTH - 10 ** (OTP_LENGTH - 1)) + 10 ** (OTP_LENGTH - 1))
 
 
 def _mask_email(email: str) -> str:

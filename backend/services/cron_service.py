@@ -1,15 +1,13 @@
 """
 Cron Job Services for Auto Invoice Generation and Reminders
 """
-import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 from services.global_settings_store import get_global_settings_doc
-from services.env_service import get_env_setting
 
 async def get_maintenance_state(db) -> Dict[str, Any]:
     settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
@@ -573,7 +571,7 @@ class CronJobService:
                         if not subscriber:
                             continue
 
-                        from services.whatsapp_service import resolve_template_variables, build_wa_send_params, log_whatsapp_message
+                        from services.whatsapp_service import build_wa_send_params, log_whatsapp_message
                         from services.invoice_view_service import build_public_invoice_url_from_env
                         inv_public_url = await build_public_invoice_url_from_env(invoice)
                         wa_send_result = None

@@ -73,7 +73,8 @@ const OperatorSubscription = () => {
       const res = await authAxios.get("/operator/subscription");
       setSubscription(res.data);
       if (res.data.saas_plan_id) setSelectedPlan(res.data.saas_plan_id);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load subscription:", err);
       toast.error("Failed to load subscription details");
     }
   }, [authAxios]);
@@ -82,8 +83,8 @@ const OperatorSubscription = () => {
     try {
       const res = await authAxios.get("/operator/addons/store");
       setAddons(res.data);
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("Failed to load addons store:", err);
     }
   }, [authAxios]);
 
@@ -91,8 +92,8 @@ const OperatorSubscription = () => {
     try {
       const res = await authAxios.get("/operator/payment-history");
       setPaymentHistory(res.data);
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("Failed to load payment history:", err);
     }
   }, [authAxios]);
 
@@ -101,7 +102,8 @@ const OperatorSubscription = () => {
     try {
       const res = await authAxios.get("/operator/wallet");
       setWallet(res.data);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load wallet:", err);
       toast.error("Failed to load wallet");
     } finally {
       setWalletLoading(false);
@@ -875,7 +877,7 @@ const OperatorSubscription = () => {
                     </thead>
                     <tbody>
                       {paymentHistory.map((p, i) => (
-                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors" data-testid={`history-row-${i}`}>
+                        <tr key={p.id || p.transaction_id || i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors" data-testid={`history-row-${i}`}>
                           <td className="px-4 py-3">
                             <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                               p.item_type === "subscription"

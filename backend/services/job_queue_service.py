@@ -6,13 +6,12 @@ Jobs are processed by APScheduler every 30 seconds.
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional
 import io
 import csv
 
 from database import db
 from utils import generate_id, generate_invoice_number_atomic
-from sanitization import sanitize_filename
 from audit import log_audit
 
 logger = logging.getLogger(__name__)
@@ -396,6 +395,8 @@ class JobQueueService:
     async def _run_bulk_invoices(job: dict) -> dict:
         """Handler for bulk_upload_invoices."""
         from routers.wallet import deduct_wallet_for_invoice
+        from services.invoice_helpers import parse_bulk_invoice_date, build_invoice_payload
+        from models import InvoiceCreate
 
         payload = job["payload"]
         operator_id = job["operator_id"]
@@ -454,12 +455,9 @@ class JobQueueService:
                 if not plan:
                     raise ValueError(f"Plan '{row.get('plan_name', '')}' not found")
 
-                from routers.operator import _parse_bulk_invoice_date, _build_invoice_payload
-                from models import InvoiceCreate
-
-                service_start_date = _parse_bulk_invoice_date(row.get("service_start_date", ""), "service_start_date")
-                service_end_date = _parse_bulk_invoice_date(row.get("service_end_date", ""), "service_end_date")
-                due_date = _parse_bulk_invoice_date(row.get("due_date", ""), "due_date")
+                service_start_date = parse_bulk_invoice_date(row.get("service_start_date", ""), "service_start_date")
+                service_end_date = parse_bulk_invoice_date(row.get("service_end_date", ""), "service_end_date")
+                due_date = parse_bulk_invoice_date(row.get("due_date", ""), "due_date")
 
                 if service_end_date <= service_start_date:
                     raise ValueError("service_end_date must be after service_start_date")
@@ -474,7 +472,7 @@ class JobQueueService:
                 if discount < 0 or discount > base_amount:
                     raise ValueError("discount must be between 0 and base_amount")
 
-                payload_data = await _build_invoice_payload(
+                payload_data = await build_invoice_payload(
                     operator_id,
                     InvoiceCreate(
                         subscriber_id=subscriber["id"],
@@ -535,17 +533,17 @@ class JobQueueService:
         """Handler for bulk_notification."""
         from services.whatsapp_service import WhatsAppService, build_wa_send_params
         from services.invoice_view_service import build_public_invoice_url_from_env
-        from routers.operator import _get_platform_whatsapp_config, _get_whatsapp_template_settings
+        from services.invoice_helpers import get_platform_whatsapp_config, get_whatsapp_template_settings
 
         payload = job["payload"]
         operator_id = job["operator_id"]
         subscriber_ids = payload.get("subscriber_ids", [])
 
-        wa_config = await _get_platform_whatsapp_config()
+        wa_config = await get_platform_whatsapp_config()
         if not wa_config:
             raise ValueError("WhatsApp not configured. Please contact admin.")
 
-        template_settings = await _get_whatsapp_template_settings()
+        template_settings = await get_whatsapp_template_settings()
         invoice_template = template_settings.get("invoice_template") or "invoice_notification"
         tmpl_doc = await db.whatsapp_templates.find_one(
             {"template_name": invoice_template, "deleted_at": None}, {"_id": 0}
