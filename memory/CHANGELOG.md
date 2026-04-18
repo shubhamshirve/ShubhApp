@@ -1,5 +1,35 @@
 # E-Bill Platform — CHANGELOG
 
+## 2026-04-18
+
+### V8.20: Welcome Modal, Operator WA Notifications, Invoice Limit Removal
+
+#### 1. Welcome Modal (Admin → Settings → General)
+- **Admin-configurable announcement popup** shown to users on first login (or when version is incremented)
+- Settings: `welcome_modal_enabled`, `welcome_modal_title`, `welcome_modal_content`, `welcome_modal_show_for` (all/operators/admins), `welcome_modal_version`
+- New endpoint: `GET /admin/welcome-modal` — accessible to all authenticated roles
+- Frontend: `WelcomeModal.jsx` component added to Admin and Operator dashboards
+- Version-tracked per user in localStorage — increment version to force re-show to all users
+
+#### 2. Cron & WhatsApp Analysis — Fixes
+- **Removed dead code:** `send_overdue_reminders` + `run_hourly_reminder_check` were defined but never scheduled; removed to avoid confusion
+- **Wallet check WA upgraded to template-based**: Previously used `send_text_message` (only works within 24h conversation window); now uses `operator_low_balance_template` if configured, falls back to text only if no template assigned
+- **Expiry check WA added**: `run_daily_expiry_check` now sends WA to operator when trial ends or subscription expires using `operator_account_expiry_template`
+- **Renewal reminders added**: 7, 3, 1 day before subscription expiry sends WA using `operator_renewal_template`
+
+#### 3. Remove Invoice Generation Wallet Limit
+- Removed the ₹50 minimum wallet balance requirement from manual invoice creation (`POST /operator/invoices`)
+- Removed the ₹50 minimum wallet balance check from auto-invoice cron (`generate_upcoming_invoices`)
+- Wallet deduction (₹10 per invoice) still happens; only the blocking minimum check is removed
+
+#### 4. Operator WhatsApp Notifications (New Template Categories)
+- **4 new WA template types** in `WhatsAppTemplates.jsx`: `operator_low_balance`, `operator_account_expiry`, `operator_renewal`, `operator_daily_report`
+- **Operator-specific variable options** in template editor: `operator_name`, `balance`, `expiry_date`, `days_to_expiry`, `report_date`, `total_invoices`, `collected_today`, `pending_count`, `overdue_count`
+- **4 new template assignment fields** in Admin Settings → WhatsApp tab (under "Operator Notifications" section)
+- **New cron job**: `daily_operator_report` (default 09:30 IST) — sends daily billing summary WA to each operator
+- **New cron time setting**: `cron_daily_report_time` (configurable in Admin Settings → General → Cron Schedule Times)
+- **`_resolve_operator_variables()`** helper function in cron_service.py maps template variable names to operator context data
+
 ## 2026-04-17
 
 ### V8.19: Code Review & Cleanup
