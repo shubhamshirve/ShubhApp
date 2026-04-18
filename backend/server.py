@@ -265,17 +265,23 @@ async def seed_data():
     # SaaS Plans — only seed if none exist
     if not await db.saas_plans.find_one({"deleted_at": None}):
         plans = [
-            {"id": generate_id(), "name": "Basic", "monthly_price": 500,
+            {"id": generate_id(), "name": "Basic", "monthly_price": 500, "per_invoice_price": 10.0,
              "max_subscribers": 200, "max_staff": 0, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
-            {"id": generate_id(), "name": "Pro", "monthly_price": 2500,
+            {"id": generate_id(), "name": "Pro", "monthly_price": 2500, "per_invoice_price": 10.0,
              "max_subscribers": 1000, "max_staff": 5, "trial_enabled": False, "trial_days": 0,
              "gst_applicable": True, "included_addons": [],
              "status": "active", "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None},
         ]
         await db.saas_plans.insert_many(plans)
         seeded.append("saas_plans")
+
+    # Migrate: Add per_invoice_price to existing plans that don't have it
+    await db.saas_plans.update_many(
+        {"per_invoice_price": {"$exists": False}},
+        {"$set": {"per_invoice_price": 10.0}}
+    )
 
     # Migrate: replace payment_reminder with whatsapp_notifications in all existing data
     # Update SaaS plans

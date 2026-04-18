@@ -225,12 +225,18 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
         await db.pending_registrations.delete_one({"id": data.registration_id})
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Find the lowest-priced plan for trial
-    lowest_plan = await db.saas_plans.find_one(
-        {"deleted_at": None},
-        {"_id": 0},
-        sort=[("monthly_price", 1)]
+    # Find the Pro plan for trial (fallback to any plan if Pro not found)
+    pro_plan = await db.saas_plans.find_one(
+        {"name": {"$regex": "^Pro", "$options": "i"}, "deleted_at": None},
+        {"_id": 0}
     )
+    if not pro_plan:
+        # Fallback to any active plan if Pro plan doesn't exist
+        pro_plan = await db.saas_plans.find_one(
+            {"deleted_at": None},
+            {"_id": 0},
+            sort=[("monthly_price", 1)]
+        )
 
     now = datetime.now(timezone.utc)
     operator_id = generate_id()
@@ -267,8 +273,8 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
         "bank_ifsc": pending.get("bank_ifsc"),
         "bank_name": pending.get("bank_name"),
         "status": "trial",
-        "saas_plan_id": lowest_plan["id"] if lowest_plan else None,
-        "saas_plan_name": lowest_plan["name"] if lowest_plan else None,
+        "saas_plan_id": pro_plan["id"] if pro_plan else None,
+        "saas_plan_name": pro_plan["name"] if pro_plan else None,
         "trial_ends_at": trial_end,
         "subscription_ends_at": trial_end,
         "is_read_only": False,
