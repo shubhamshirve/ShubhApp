@@ -1229,16 +1229,6 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         raise HTTPException(status_code=400, detail="Admin cannot create subscribers")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-    if operator:
-        plan = await db.saas_plans.find_one({"id": operator.get("saas_plan_id"), "deleted_at": None}, {"_id": 0})
-        if plan:
-            current_count = await db.subscribers.count_documents({"operator_id": current_user["operator_id"], "deleted_at": None})
-            if current_count >= plan["max_subscribers"]:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Subscriber limit reached ({current_count}/{plan['max_subscribers']}). Please upgrade your plan to add more subscribers."
-                )
 
     # Validate all plans exist and enrich names
     enriched_plans = []
@@ -1636,6 +1626,15 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         raise HTTPException(status_code=400, detail="Admin cannot create invoices")
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
+
+    # Block invoice creation if wallet balance is below ₹50
+    from routers.wallet import get_or_create_wallet
+    wallet = await get_or_create_wallet(current_user["operator_id"])
+    if wallet.get("balance", 0) < 50:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient wallet balance (₹{wallet.get('balance', 0):.2f}). Minimum ₹50 required to generate invoices."
+        )
 
     payload = await _build_invoice_payload(current_user["operator_id"], data)
     subscriber = payload["subscriber"]

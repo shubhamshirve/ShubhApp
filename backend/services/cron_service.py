@@ -51,6 +51,12 @@ class CronJobService:
         
         for operator in operators:
             try:
+                # Skip if operator wallet balance is below ₹50
+                op_wallet = await self.db.operator_wallets.find_one({"operator_id": operator["id"]}, {"_id": 0})
+                if (op_wallet or {}).get("balance", 0) < 50:
+                    logger.info(f"Skipping auto-invoice for {operator.get('company_name', operator['id'])}: wallet balance below ₹50")
+                    continue
+
                 subscribers = await self.db.subscribers.find({
                     "operator_id": operator["id"],
                     "status": "active",
