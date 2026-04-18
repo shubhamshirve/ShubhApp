@@ -305,6 +305,16 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
     }
     await db.users.insert_one(user)
 
+    # Create wallet and credit Rs. 100 trial bonus
+    from routers.wallet import credit_wallet
+    await credit_wallet(
+        operator_id=operator_id,
+        amount=100.0,
+        description="Trial bonus - Welcome credit",
+        reference_id=None,
+        tx_type="trial_bonus"
+    )
+
     # Clean up pending registration
     await db.pending_registrations.delete_one({"id": data.registration_id})
 
