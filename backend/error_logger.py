@@ -1,6 +1,5 @@
 """Error logging utility for storing application errors in MongoDB."""
 import logging
-import traceback
 from datetime import datetime, timezone
 from database import db
 from utils import generate_id

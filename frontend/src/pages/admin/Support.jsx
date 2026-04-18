@@ -101,7 +101,9 @@ export default function AdminSupport() {
     try {
       const res = await authAxios.get("/admin/support/tickets/stats");
       setStats(res.data || {});
-    } catch {}
+    } catch (err) {
+      console.warn("Failed to load support stats:", err);
+    }
   };
 
   const openTicket = async (ticket) => {

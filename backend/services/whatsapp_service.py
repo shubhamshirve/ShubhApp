@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 from services.env_service import get_env_setting
-from services.global_settings_store import get_global_settings_doc
 
 # ─── Template Variable Resolver ───────────────────────────────────────────────
 

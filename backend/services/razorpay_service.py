@@ -8,9 +8,7 @@ import io
 import base64
 import hmac
 import hashlib
-import os
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)

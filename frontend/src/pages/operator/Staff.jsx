@@ -53,6 +53,7 @@ const OperatorStaff = () => {
   useEffect(() => {
     fetchStaff();
     fetchDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDashboard = async () => {

@@ -169,7 +169,7 @@ const OperatorDashboard = () => {
             {monthlyValueCards.map((card, index) => {
               const Icon = card.icon;
               return (
-                <Card key={index} className="kpi-card card-hover">
+                <Card key={card.title} className="kpi-card card-hover">
                   <div className={`w-10 h-10 rounded-lg ${card.color} flex items-center justify-center mb-3`}>
                     <Icon className="w-5 h-5" />
                   </div>
@@ -188,7 +188,7 @@ const OperatorDashboard = () => {
             {subscriberCards.map((card, index) => {
               const Icon = card.icon;
               return (
-                <Card key={index} className="kpi-card card-hover" data-testid={`kpi-${card.title.toLowerCase().replace(/\s+/g, '-')}`}>
+                <Card key={card.title} className="kpi-card card-hover" data-testid={`kpi-${card.title.toLowerCase().replace(/\s+/g, '-')}`}>
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-lg ${card.color} flex items-center justify-center`}>
                       <Icon className="w-6 h-6" />
@@ -211,7 +211,7 @@ const OperatorDashboard = () => {
             {invoiceCards.map((card, index) => {
               const Icon = card.icon;
               return (
-                <Card key={index} className="kpi-card card-hover" data-testid={`invoice-${card.title.toLowerCase()}`}>
+                <Card key={card.title} className="kpi-card card-hover" data-testid={`invoice-${card.title.toLowerCase()}`}>
                   <div className={`w-10 h-10 rounded-lg ${card.color} flex items-center justify-center mb-3`}>
                     <Icon className="w-5 h-5" />
                   </div>

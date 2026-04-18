@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster, toast } from "sonner";
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useMemo } from "react";
 import axios from "axios";
 
 // Pages
@@ -172,8 +172,14 @@ const AuthProvider = ({ children }) => {
     }
   );
 
+  const contextValue = useMemo(
+    () => ({ user, token, loading, login, register, logout, authAxios, features, applyAccessToken, refreshCurrentUser, clearBrowserCache }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, token, loading, features]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, authAxios, features, applyAccessToken, refreshCurrentUser, clearBrowserCache }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

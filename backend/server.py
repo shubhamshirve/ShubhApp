@@ -33,7 +33,6 @@ Modules:
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
-import os
 import logging
 import traceback
 from pathlib import Path
@@ -48,9 +47,9 @@ from routers.public import router as public_router
 from routers.wallet import router as wallet_router
 from routers.support import router as support_router
 from services.global_settings_store import get_global_settings_doc
-from services.scheduler_settings import DEFAULT_CRON_SCHEDULES, merge_cron_schedule_settings, split_cron_time
+from services.scheduler_settings import merge_cron_schedule_settings, split_cron_time
 from services.job_queue_service import JobQueueService
-from config import LOG_LEVEL, IS_PRODUCTION, API_DOCS_ENABLED
+from config import LOG_LEVEL, IS_PRODUCTION
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(

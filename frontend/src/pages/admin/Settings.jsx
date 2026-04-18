@@ -1202,7 +1202,7 @@ const AdminSettings = () => {
                             <p className="font-semibold mb-1">How to fix:</p>
                             <ul className="space-y-1.5">
                               {diagnostics.fix_steps.map((step, i) => (
-                                <li key={i} className="flex gap-1.5">
+                                <li key={`fix-step-${i}`} className="flex gap-1.5">
                                   <span className="font-bold shrink-0">{i + 1}.</span>
                                   <span>{step}</span>
                                 </li>

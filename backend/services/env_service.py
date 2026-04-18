@@ -1,8 +1,10 @@
 import os
+import logging
 import secrets
-from typing import Optional, Dict, Any
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import Any
 from services.global_settings_store import get_global_settings_doc, save_global_settings_doc
+
+logger = logging.getLogger(__name__)
 
 async def get_env_setting(key: str, default: Any = None) -> Any:
     """

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -125,7 +125,7 @@ function MiniBarChart({ data }) {
         const sentH = (d.sent / (d.sent + d.failed || 1)) * totalH;
         const failedH = totalH - sentH;
         return (
-          <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
+          <div key={d.date || `bar-${i}`} className="flex-1 flex flex-col items-center gap-0.5 group relative">
             <div
               className="w-full rounded-t flex flex-col-reverse"
               style={{ height: `${Math.max(totalH, 2)}%` }}
@@ -261,6 +261,13 @@ export default function WhatsAppStats() {
     setFilterDateTo("");
   };
 
+  const sortedCategories = useMemo(() =>
+    stats?.by_category
+      ? Object.entries(stats.by_category).sort((a, b) => b[1] - a[1])
+      : [],
+    [stats]
+  );
+
   const formatDate = (isoStr) => {
     if (!isoStr) return "—";
     try {
@@ -307,7 +314,7 @@ export default function WhatsAppStats() {
         {statsLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
-              <Card key={i}>
+              <Card key={`skeleton-${i}`}>
                 <CardContent className="p-5">
                   <div className="animate-pulse space-y-2">
                     <div className="h-3 bg-slate-200 rounded w-24" />
@@ -376,7 +383,7 @@ export default function WhatsAppStats() {
                     </div>
                     <div className="mt-3 grid grid-cols-7 gap-1">
                       {stats.recent_7_days.map((d, i) => (
-                        <div key={i} className="text-center">
+                        <div key={d.date || `day-${i}`} className="text-center">
                           <p className="text-[10px] text-slate-400">{d.date?.slice(5)}</p>
                           <p className="text-xs font-medium text-green-600">{d.sent}</p>
                           {d.failed > 0 && <p className="text-xs text-red-500">-{d.failed}</p>}
@@ -403,7 +410,7 @@ export default function WhatsAppStats() {
               <CardContent>
                 {stats.by_category && Object.keys(stats.by_category).length > 0 ? (
                   <div className="space-y-2">
-                    {Object.entries(stats.by_category).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                    {sortedCategories.map(([cat, count]) => (
                       <div key={cat} className="flex items-center justify-between">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[cat] || "bg-slate-100 text-slate-700"}`}>
                           {CATEGORY_LABELS[cat] || cat}

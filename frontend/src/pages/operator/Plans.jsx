@@ -464,7 +464,7 @@ const OperatorPlans = () => {
                   {bulkResult.errors?.length > 0 && (
                     <div className="text-xs text-red-600 space-y-0.5 max-h-24 overflow-y-auto">
                       {bulkResult.errors.map((e, i) => (
-                        <div key={i}>Row {e.row}: {e.reason}</div>
+                        <div key={`plan-err-${e.row}-${i}`}>Row {e.row}: {e.reason}</div>
                       ))}
                     </div>
                   )}

@@ -8,7 +8,6 @@ from email.message import EmailMessage
 
 import httpx
 from services.global_settings_store import get_global_settings_doc
-from services.env_service import get_env_setting
 
 
 logger = logging.getLogger(__name__)

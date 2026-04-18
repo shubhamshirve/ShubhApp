@@ -1,7 +1,6 @@
 """FastAPI dependency functions for authentication and authorization."""
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from datetime import datetime, timezone
 from database import db
 from utils import decode_token
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
@@ -398,9 +398,12 @@ const AdminOperators = () => {
     }
   };
 
-  const filteredOperators = operators.filter(op => 
-    op.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    op.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredOperators = useMemo(() =>
+    operators.filter(op =>
+      op.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      op.email.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [operators, searchTerm]
   );
 
   const getStatusBadge = (status) => {

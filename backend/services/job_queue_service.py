@@ -289,31 +289,6 @@ class JobQueueService:
         ).to_list(500)
         plan_map = {p["name"].strip().lower(): p for p in op_plans}
 
-        # Pre-flight: check subscriber limit
-        operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
-        max_subscribers = None
-        if operator and operator.get("saas_plan_id"):
-            sp = await db.saas_plans.find_one({"id": operator["saas_plan_id"], "deleted_at": None}, {"_id": 0})
-            if sp:
-                max_subscribers = sp.get("max_subscribers")
-
-        if max_subscribers is not None:
-            current_count = await db.subscribers.count_documents(
-                {"operator_id": operator_id, "deleted_at": None}
-            )
-            valid_row_count = sum(
-                1 for r in rows
-                if r.get("name", "").strip() and r.get("whatsapp_number", "").strip()
-            )
-            available_slots = max_subscribers - current_count
-            if valid_row_count > available_slots:
-                raise ValueError(
-                    f"Upload exceeds subscriber limit. Your plan allows {max_subscribers} subscribers. "
-                    f"You currently have {current_count} and are trying to add {valid_row_count} more "
-                    f"(total would be {current_count + valid_row_count}). Available slots: {available_slots}. "
-                    f"Please upgrade your plan."
-                )
-
         now = datetime.now(timezone.utc)
         created, skipped, errors = [], [], []
 
