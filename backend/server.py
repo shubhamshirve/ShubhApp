@@ -326,6 +326,7 @@ async def startup_event():
         run_daily_reminder_processing,
         run_daily_expiry_check,
         run_daily_wallet_check,
+        run_daily_operator_report,
     )
 
     async def run_daily_backup_job():
@@ -345,6 +346,7 @@ async def startup_event():
     invoice_hour, invoice_minute = split_cron_time(schedule["cron_invoice_time"])
     wallet_hour, wallet_minute = split_cron_time(schedule["cron_wallet_time"])
     reminder_hour, reminder_minute = split_cron_time(schedule["cron_reminder_time"])
+    report_hour, report_minute = split_cron_time(schedule.get("cron_daily_report_time", "09:30"))
 
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     scheduler.add_listener(scheduler_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -416,6 +418,18 @@ async def startup_event():
         id="process_background_jobs",
         coalesce=True,
         misfire_grace_time=60,
+    )
+
+    # Daily operator report at 09:30 IST
+    scheduler.add_job(
+        run_daily_operator_report,
+        "cron",
+        hour=report_hour,
+        minute=report_minute,
+        id="daily_operator_report",
+        args=[db],
+        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     scheduler.start()

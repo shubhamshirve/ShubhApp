@@ -54,6 +54,12 @@ const DEFAULT_SETTINGS = {
   cron_invoice_time: "08:00",
   cron_wallet_time: "09:00",
   cron_reminder_time: "10:00",
+  cron_daily_report_time: "09:30",
+  welcome_modal_enabled: false,
+  welcome_modal_title: "Welcome to E-Bill",
+  welcome_modal_content: "",
+  welcome_modal_show_for: "all",
+  welcome_modal_version: 1,
 };
 
 const DEFAULT_EMAIL_CONFIG = {
@@ -76,6 +82,7 @@ const CRON_FIELDS = [
   { key: "cron_invoice_time", label: "Invoice Generation Time", help: "Creates upcoming invoices automatically." },
   { key: "cron_wallet_time", label: "Wallet Check Time", help: "Checks operator balances and applies suspension rules." },
   { key: "cron_reminder_time", label: "Reminder Processing Time", help: "Sends scheduled WhatsApp payment reminders." },
+  { key: "cron_daily_report_time", label: "Daily Operator Report Time", help: "Sends daily billing summary WhatsApp to each operator." },
 ];
 
 const AdminSettings = () => {
@@ -817,6 +824,67 @@ const AdminSettings = () => {
                     />
                   </div>
                 </div>
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-indigo-900">Welcome Modal</p>
+                      <p className="text-sm text-indigo-700">
+                        Show an announcement popup to users when they log in for the first time (or when version changes).
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!settings?.welcome_modal_enabled}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, welcome_modal_enabled: checked }))}
+                    />
+                  </div>
+                  {settings?.welcome_modal_enabled && (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Modal Title</Label>
+                        <Input
+                          value={settings?.welcome_modal_title || ""}
+                          onChange={(e) => setSettings(s => ({ ...s, welcome_modal_title: e.target.value }))}
+                          placeholder="Welcome to E-Bill"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Modal Content</Label>
+                        <Textarea
+                          value={settings?.welcome_modal_content || ""}
+                          onChange={(e) => setSettings(s => ({ ...s, welcome_modal_content: e.target.value }))}
+                          placeholder="Write your announcement or welcome message here. Supports plain text."
+                          rows={4}
+                        />
+                        <p className="text-xs text-slate-500">Tip: Increment Version below to force all users to see the modal again.</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Show For</Label>
+                          <Select
+                            value={settings?.welcome_modal_show_for || "all"}
+                            onValueChange={(v) => setSettings(s => ({ ...s, welcome_modal_show_for: v }))}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Users</SelectItem>
+                              <SelectItem value="operators">Operators &amp; Staff Only</SelectItem>
+                              <SelectItem value="admins">Admins Only</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Version (increment to re-show to all users)</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={settings?.welcome_modal_version || 1}
+                            onChange={(e) => setSettings(s => ({ ...s, welcome_modal_version: parseInt(e.target.value) || 1 }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <Button onClick={handleUpdateSettings}>Save Settings</Button>
               </CardContent>
             </Card>
@@ -1211,6 +1279,37 @@ const AdminSettings = () => {
                       <p className="text-xs text-slate-400">{desc}</p>
                     </div>
                   ))}
+
+                  <div className="pt-2 border-t border-slate-200">
+                    <p className="text-sm font-semibold text-slate-700 mb-3">Operator Notifications (sent to operator's phone)</p>
+                    {[
+                      { key: "operator_low_balance_template", label: "Operator Low Balance Alert", desc: "Sent to operator when wallet balance drops below ₹500" },
+                      { key: "operator_account_expiry_template", label: "Operator Account Expiry", desc: "Sent to operator when subscription expires or trial ends" },
+                      { key: "operator_renewal_template", label: "Operator Renewal Reminder", desc: "Sent to operator 7, 3, and 1 day(s) before subscription expires" },
+                      { key: "operator_daily_report_template", label: "Operator Daily Report", desc: "Daily billing summary sent to operator at the configured report time" },
+                    ].map(({ key, label, desc }) => (
+                      <div key={key} className="space-y-1.5 mb-4">
+                        <Label className="text-sm font-medium">{label}</Label>
+                        <Select
+                          value={templateSettings[key] || "_none_"}
+                          onValueChange={(v) => setTemplateSettings(prev => ({ ...prev, [key]: v === "_none_" ? "" : v }))}
+                        >
+                          <SelectTrigger data-testid={`tpl-${key}`}>
+                            <SelectValue placeholder="Select a template..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none_">— Not Assigned —</SelectItem>
+                            {availableTemplates.map(t => (
+                              <SelectItem key={t.id} value={t.template_name}>
+                                {t.display_name} ({t.template_name})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-slate-400">{desc}</p>
+                      </div>
+                    ))}
+                  </div>
 
                   <div className="pt-3 flex items-center gap-3">
                     <Button onClick={handleSaveTemplateSettings} disabled={templateSettingsLoading} data-testid="save-template-settings-btn">

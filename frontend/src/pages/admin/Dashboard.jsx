@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { toast } from "sonner";
+import WelcomeModal from "../../components/WelcomeModal";
 import {
   Building2,
   Users,
@@ -59,6 +60,7 @@ const AdminDashboard = () => {
 
   return (
     <AdminLayout title="Dashboard">
+      <WelcomeModal />
       <div className="space-y-8 animate-fade-in">
 
         {/* Operator Overview */}

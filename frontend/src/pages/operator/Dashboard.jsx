@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { toast } from "sonner";
+import WelcomeModal from "../../components/WelcomeModal";
 import {
   Users,
   FileText,
@@ -123,6 +124,7 @@ const OperatorDashboard = () => {
 
   return (
     <OperatorLayout title="Dashboard" isReadOnly={stats?.is_read_only}>
+      <WelcomeModal />
       <div className="space-y-8 animate-fade-in">
         {/* Subscription Status */}
         {stats?.status === "trial" && (

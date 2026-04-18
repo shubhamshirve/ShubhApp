@@ -51,12 +51,6 @@ class CronJobService:
         
         for operator in operators:
             try:
-                # Skip if operator wallet balance is below Rs.50
-                op_wallet = await self.db.operator_wallets.find_one({"operator_id": operator["id"]}, {"_id": 0})
-                if (op_wallet or {}).get("balance", 0) < 50:
-                    logger.info(f"Skipping auto-invoice for {operator.get('company_name', operator['id'])}: wallet balance below ₹50")
-                    continue
-
                 subscribers = await self.db.subscribers.find({
                     "operator_id": operator["id"],
                     "status": "active",
@@ -744,22 +738,6 @@ async def run_daily_reminder_processing(db):
     return results
 
 
-async def run_hourly_reminder_check(db):
-    """Hourly cron job for overdue reminders (legacy)"""
-    service = CronJobService(db)
-    results = await service.send_overdue_reminders(days_overdue=1)
-    logger.info(f"Hourly reminder check: {results}")
-    return results
-
-
-async def run_daily_expiry_check(db):
-    """Daily cron job for subscription expiry"""
-    service = CronJobService(db)
-    results = await service.check_subscription_expiry()
-    logger.info(f"Daily expiry check: {results}")
-    return results
-
-
 async def run_daily_wallet_check(db):
     """Daily cron: check operator wallet balances, send reminders, suspend if < 100."""
     now = datetime.now(timezone.utc)
@@ -772,8 +750,13 @@ async def run_daily_wallet_check(db):
         {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
     ).to_list(5000)
 
-    from services.whatsapp_service import get_whatsapp_service_async
+    from services.whatsapp_service import get_whatsapp_service_async, log_whatsapp_message
     wa_service = await get_whatsapp_service_async()
+
+    template_settings = await db.global_settings.find_one(
+        {"type": "whatsapp_template_settings"}, {"_id": 0}
+    ) or {}
+    low_balance_tpl = template_settings.get("operator_low_balance_template", "")
 
     for op in operators:
         try:
@@ -791,17 +774,47 @@ async def run_daily_wallet_check(db):
 
             elif balance < 500 and not op.get("wallet_suspended"):
                 results["reminders_sent"] += 1
-                if wa_service:
+                if wa_service and op.get("phone"):
                     try:
-                        await wa_service.send_text_message(
-                            recipient_phone=op.get("phone", ""),
-                            message=(
-                                f"Dear {op.get('company_name', 'Operator')},\n\n"
-                                f"Your E-Bill wallet balance is low (Rs.{balance:.2f}).\n"
-                                f"Please topup your wallet to keep services active.\n"
-                                f"Balance below Rs.100 will suspend your account.\n\nLogin to topup: E-Bill Dashboard"
+                        if low_balance_tpl:
+                            # Use configured template
+                            tmpl_doc = await db.whatsapp_templates.find_one(
+                                {"template_name": low_balance_tpl, "deleted_at": None}, {"_id": 0}
                             )
-                        )
+                            variables = _resolve_operator_variables(
+                                (tmpl_doc or {}).get("body_variables") or [],
+                                op, balance=balance
+                            )
+                            wa_result = await wa_service.send_template_message(
+                                recipient_phone=op["phone"],
+                                template_name=low_balance_tpl,
+                                language_code=(tmpl_doc or {}).get("language_code", "en"),
+                                variables=variables,
+                            )
+                            wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                            wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                            await log_whatsapp_message(
+                                db,
+                                operator_id=op["id"],
+                                template_name=low_balance_tpl,
+                                template_category="operator_low_balance",
+                                recipient_phone=op["phone"],
+                                status="sent",
+                                message_id=wa_msg_id,
+                                wa_id=wa_wa_id,
+                                trigger="cron",
+                            )
+                        else:
+                            # Fallback: plain text (works only within 24h window)
+                            await wa_service.send_text_message(
+                                recipient_phone=op["phone"],
+                                message_text=(
+                                    f"Dear {op.get('company_name', 'Operator')},\n\n"
+                                    f"Your E-Bill wallet balance is low (Rs.{balance:.2f}).\n"
+                                    f"Please top-up to keep services active.\n"
+                                    f"Balance below Rs.100 will suspend your account.\n\nLogin to top-up: E-Bill Dashboard"
+                                )
+                            )
                     except Exception as wa_err:
                         logger.warning(f"Wallet reminder WhatsApp failed for {op['id']}: {wa_err}")
 
@@ -809,4 +822,282 @@ async def run_daily_wallet_check(db):
             results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")
 
     logger.info(f"Daily wallet check: {results}")
+    return results
+
+
+def _resolve_operator_variables(body_variables: list, operator: dict, **kwargs) -> list:
+    """Resolve operator-context WA template variables into a list of string values."""
+    now = datetime.now(timezone.utc)
+    balance = kwargs.get("balance", 0)
+    days_to_expiry = kwargs.get("days_to_expiry", 0)
+    expiry_date = kwargs.get("expiry_date", "")
+    report_date = kwargs.get("report_date", now.strftime("%d %b %Y"))
+    total_invoices = str(kwargs.get("total_invoices", 0))
+    collected_today = str(kwargs.get("collected_today", "₹0"))
+    pending_count = str(kwargs.get("pending_count", 0))
+    overdue_count = str(kwargs.get("overdue_count", 0))
+
+    OPERATOR_VARS = {
+        "operator_name":     operator.get("company_name", ""),
+        "operator_phone":    operator.get("phone", ""),
+        "operator_email":    operator.get("email", ""),
+        "balance":           f"₹{balance:,.2f}",
+        "balance_raw":       f"{balance:,.2f}",
+        "expiry_date":       expiry_date,
+        "days_to_expiry":    str(days_to_expiry),
+        "report_date":       report_date,
+        "total_invoices":    total_invoices,
+        "collected_today":   collected_today,
+        "pending_count":     pending_count,
+        "overdue_count":     overdue_count,
+    }
+    return [OPERATOR_VARS.get(v, v) for v in body_variables]
+
+
+async def run_daily_expiry_check(db):
+    """Daily cron job for subscription expiry — also sends WA notifications to operators."""
+    now = datetime.now(timezone.utc)
+    results = {"checked": 0, "expired": 0, "set_read_only": 0, "renewal_reminders": 0, "errors": []}
+    maintenance = await get_maintenance_state(db)
+    if maintenance["maintenance_mode"]:
+        return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
+
+    from services.whatsapp_service import get_whatsapp_service_async, log_whatsapp_message
+    wa_service = await get_whatsapp_service_async()
+
+    template_settings = await db.global_settings.find_one(
+        {"type": "whatsapp_template_settings"}, {"_id": 0}
+    ) or {}
+    expiry_tpl = template_settings.get("operator_account_expiry_template", "")
+    renewal_tpl = template_settings.get("operator_renewal_template", "")
+
+    # ── 1. Trial operators past trial end ────────────────────────────────────
+    trial_operators = await db.operators.find({
+        "status": "trial",
+        "trial_ends_at": {"$lt": now.isoformat()},
+        "deleted_at": None
+    }, {"_id": 0}).to_list(1000)
+
+    for op in trial_operators:
+        await db.operators.update_one(
+            {"id": op["id"]},
+            {"$set": {"status": "expired", "is_read_only": True, "updated_at": now.isoformat()}}
+        )
+        results["expired"] += 1
+        # Send expiry WA
+        if wa_service and op.get("phone") and expiry_tpl:
+            try:
+                tmpl_doc = await db.whatsapp_templates.find_one(
+                    {"template_name": expiry_tpl, "deleted_at": None}, {"_id": 0}
+                )
+                variables = _resolve_operator_variables(
+                    (tmpl_doc or {}).get("body_variables") or [],
+                    op, expiry_date=str(op.get("trial_ends_at", ""))[:10]
+                )
+                wa_result = await wa_service.send_template_message(
+                    recipient_phone=op["phone"],
+                    template_name=expiry_tpl,
+                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                    variables=variables,
+                )
+                wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                await log_whatsapp_message(
+                    db, operator_id=op["id"], template_name=expiry_tpl,
+                    template_category="operator_account_expiry",
+                    recipient_phone=op["phone"], status="sent",
+                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                )
+            except Exception as wa_err:
+                logger.warning(f"Expiry WA failed for {op['id']}: {wa_err}")
+
+    # ── 2. Active operators past subscription end ─────────────────────────────
+    active_operators = await db.operators.find({
+        "status": "active",
+        "subscription_ends_at": {"$lt": now.isoformat()},
+        "deleted_at": None
+    }, {"_id": 0}).to_list(1000)
+
+    for op in active_operators:
+        await db.operators.update_one(
+            {"id": op["id"]},
+            {"$set": {"is_read_only": True, "updated_at": now.isoformat()}}
+        )
+        results["set_read_only"] += 1
+        # Send expiry WA
+        if wa_service and op.get("phone") and expiry_tpl:
+            try:
+                tmpl_doc = await db.whatsapp_templates.find_one(
+                    {"template_name": expiry_tpl, "deleted_at": None}, {"_id": 0}
+                )
+                variables = _resolve_operator_variables(
+                    (tmpl_doc or {}).get("body_variables") or [],
+                    op, expiry_date=str(op.get("subscription_ends_at", ""))[:10]
+                )
+                wa_result = await wa_service.send_template_message(
+                    recipient_phone=op["phone"],
+                    template_name=expiry_tpl,
+                    language_code=(tmpl_doc or {}).get("language_code", "en"),
+                    variables=variables,
+                )
+                wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                await log_whatsapp_message(
+                    db, operator_id=op["id"], template_name=expiry_tpl,
+                    template_category="operator_account_expiry",
+                    recipient_phone=op["phone"], status="sent",
+                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                )
+            except Exception as wa_err:
+                logger.warning(f"Expiry WA failed for {op['id']}: {wa_err}")
+
+    results["checked"] = len(trial_operators) + len(active_operators)
+
+    # ── 3. Renewal reminders — 7, 3, 1 days before expiry ────────────────────
+    if wa_service and renewal_tpl:
+        remind_days = [7, 3, 1]
+        for days_before in remind_days:
+            target_date = (now + timedelta(days=days_before)).date()
+            target_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc).isoformat()
+            target_end   = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc).isoformat()
+
+            expiring_ops = await db.operators.find({
+                "status": {"$in": ["active", "trial"]},
+                "deleted_at": None,
+                "$or": [
+                    {"subscription_ends_at": {"$gte": target_start, "$lte": target_end}},
+                    {"trial_ends_at": {"$gte": target_start, "$lte": target_end}},
+                ]
+            }, {"_id": 0}).to_list(500)
+
+            for op in expiring_ops:
+                try:
+                    expiry_str = op.get("subscription_ends_at") or op.get("trial_ends_at") or ""
+                    tmpl_doc = await db.whatsapp_templates.find_one(
+                        {"template_name": renewal_tpl, "deleted_at": None}, {"_id": 0}
+                    )
+                    variables = _resolve_operator_variables(
+                        (tmpl_doc or {}).get("body_variables") or [],
+                        op,
+                        expiry_date=expiry_str[:10],
+                        days_to_expiry=days_before,
+                    )
+                    wa_result = await wa_service.send_template_message(
+                        recipient_phone=op["phone"],
+                        template_name=renewal_tpl,
+                        language_code=(tmpl_doc or {}).get("language_code", "en"),
+                        variables=variables,
+                    )
+                    wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                    wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                    await log_whatsapp_message(
+                        db, operator_id=op["id"], template_name=renewal_tpl,
+                        template_category="operator_renewal",
+                        recipient_phone=op["phone"], status="sent",
+                        message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                    )
+                    results["renewal_reminders"] += 1
+                except Exception as wa_err:
+                    logger.warning(f"Renewal WA failed for {op.get('id')}: {wa_err}")
+
+    logger.info(f"Daily expiry check: {results}")
+    return results
+
+
+async def run_daily_operator_report(db):
+    """Daily cron: send billing summary WA report to each operator."""
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_str = today_start.date().strftime("%d %b %Y")
+
+    results = {"checked": 0, "sent": 0, "skipped": 0, "errors": []}
+    maintenance = await get_maintenance_state(db)
+    if maintenance["maintenance_mode"]:
+        return {**results, "skipped": 1, "reason": maintenance["maintenance_message"]}
+
+    from services.whatsapp_service import get_whatsapp_service_async, log_whatsapp_message
+    wa_service = await get_whatsapp_service_async()
+    if not wa_service:
+        return {**results, "skipped": 1, "reason": "WhatsApp not configured"}
+
+    template_settings = await db.global_settings.find_one(
+        {"type": "whatsapp_template_settings"}, {"_id": 0}
+    ) or {}
+    report_tpl = template_settings.get("operator_daily_report_template", "")
+    if not report_tpl:
+        return {**results, "skipped": 1, "reason": "operator_daily_report_template not assigned"}
+
+    operators = await db.operators.find(
+        {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
+    ).to_list(5000)
+
+    for op in operators:
+        try:
+            results["checked"] += 1
+            if not op.get("phone"):
+                results["skipped"] += 1
+                continue
+
+            op_id = op["id"]
+            # Count invoices created today
+            total_invoices = await db.invoices.count_documents({
+                "operator_id": op_id,
+                "created_at": {"$gte": today_start.isoformat()},
+                "deleted_at": None,
+            })
+            # Amount collected today (paid invoices)
+            paid_cursor = await db.invoices.find({
+                "operator_id": op_id,
+                "status": "paid",
+                "paid_at": {"$gte": today_start.isoformat()},
+                "deleted_at": None,
+            }, {"final_amount": 1, "_id": 0}).to_list(5000)
+            collected_today = sum(inv.get("final_amount", 0) for inv in paid_cursor)
+
+            # Pending & overdue counts
+            pending_count = await db.invoices.count_documents({
+                "operator_id": op_id, "status": "pending", "deleted_at": None
+            })
+            overdue_count = await db.invoices.count_documents({
+                "operator_id": op_id, "status": "overdue", "deleted_at": None
+            })
+
+            # Wallet balance
+            wallet = await db.operator_wallets.find_one({"operator_id": op_id}, {"_id": 0})
+            balance = (wallet or {}).get("balance", 0)
+
+            tmpl_doc = await db.whatsapp_templates.find_one(
+                {"template_name": report_tpl, "deleted_at": None}, {"_id": 0}
+            )
+            variables = _resolve_operator_variables(
+                (tmpl_doc or {}).get("body_variables") or [],
+                op,
+                balance=balance,
+                report_date=today_str,
+                total_invoices=total_invoices,
+                collected_today=f"₹{collected_today:,.2f}",
+                pending_count=pending_count,
+                overdue_count=overdue_count,
+            )
+
+            wa_result = await wa_service.send_template_message(
+                recipient_phone=op["phone"],
+                template_name=report_tpl,
+                language_code=(tmpl_doc or {}).get("language_code", "en"),
+                variables=variables,
+            )
+            wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+            wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+            await log_whatsapp_message(
+                db, operator_id=op_id, template_name=report_tpl,
+                template_category="operator_daily_report",
+                recipient_phone=op["phone"], status="sent",
+                message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+            )
+            results["sent"] += 1
+
+        except Exception as e:
+            results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")
+
+    logger.info(f"Daily operator report: {results}")
     return results

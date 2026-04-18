@@ -7,6 +7,7 @@ DEFAULT_CRON_SCHEDULES = {
     "cron_invoice_time": "08:00",
     "cron_wallet_time": "09:00",
     "cron_reminder_time": "10:00",
+    "cron_daily_report_time": "09:30",
 }
 
 

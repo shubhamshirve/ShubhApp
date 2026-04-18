@@ -58,10 +58,14 @@ def _reschedule_platform_jobs(scheduler, settings: dict):
         "daily_invoices": schedule["cron_invoice_time"],
         "daily_wallet_check": schedule["cron_wallet_time"],
         "daily_reminders": schedule["cron_reminder_time"],
+        "daily_operator_report": schedule.get("cron_daily_report_time", "09:30"),
     }
     for job_id, time_value in job_map.items():
         hour, minute = split_cron_time(time_value)
-        scheduler.reschedule_job(job_id, trigger="cron", hour=hour, minute=minute)
+        try:
+            scheduler.reschedule_job(job_id, trigger="cron", hour=hour, minute=minute)
+        except Exception:
+            pass  # Job may not be registered yet
 
 
 async def _send_email_settings_test(
@@ -572,9 +576,28 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
             "maintenance_mode": False,
             "maintenance_message": "The app is under maintenance. Updates and automation are temporarily paused.",
             "session_timeout_hours": 24.0,
+            "welcome_modal_enabled": False,
+            "welcome_modal_title": "Welcome to E-Bill",
+            "welcome_modal_content": None,
+            "welcome_modal_show_for": "all",
+            "welcome_modal_version": 1,
+            "cron_daily_report_time": "09:30",
             **DEFAULT_CRON_SCHEDULES,
         }
     return {**settings, **merge_cron_schedule_settings(settings)}
+
+
+@router.get("/welcome-modal")
+async def get_welcome_modal(current_user: dict = Depends(get_current_user)):
+    """Return welcome modal settings — accessible to all authenticated roles."""
+    settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
+    return {
+        "enabled": bool(settings.get("welcome_modal_enabled", False)),
+        "title": settings.get("welcome_modal_title") or "Welcome to E-Bill",
+        "content": settings.get("welcome_modal_content") or "",
+        "show_for": settings.get("welcome_modal_show_for") or "all",
+        "version": int(settings.get("welcome_modal_version") or 1),
+    }
 
 
 @router.put("/settings")

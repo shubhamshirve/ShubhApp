@@ -557,8 +557,18 @@ class GlobalSettingsUpdate(SanitizedModel):
     cron_invoice_time: str = "08:00"
     cron_wallet_time: str = "09:00"
     cron_reminder_time: str = "10:00"
+    cron_daily_report_time: str = "09:30"
+    # Welcome Modal settings
+    welcome_modal_enabled: bool = False
+    welcome_modal_title: Optional[str] = "Welcome to E-Bill"
+    welcome_modal_content: Optional[str] = None
+    welcome_modal_show_for: str = "all"  # all | operators | admins
+    welcome_modal_version: int = 1
 
-    @field_validator("cron_backup_time", "cron_expiry_time", "cron_invoice_time", "cron_wallet_time", "cron_reminder_time")
+    @field_validator(
+        "cron_backup_time", "cron_expiry_time", "cron_invoice_time",
+        "cron_wallet_time", "cron_reminder_time", "cron_daily_report_time"
+    )
     @classmethod
     def validate_cron_time(cls, value):
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value or ""):

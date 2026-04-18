@@ -42,6 +42,10 @@ const TEMPLATE_TYPES = [
   { value: "payment_confirmation", label: "Payment Confirmation" },
   { value: "announcement", label: "Announcement" },
   { value: "custom", label: "Custom" },
+  { value: "operator_low_balance", label: "Operator Low Balance Alert" },
+  { value: "operator_account_expiry", label: "Operator Account Expiry" },
+  { value: "operator_renewal", label: "Operator Renewal Reminder" },
+  { value: "operator_daily_report", label: "Operator Daily Report" },
 ];
 
 const TYPE_COLORS = {
@@ -51,9 +55,14 @@ const TYPE_COLORS = {
   payment_confirmation: "bg-green-100 text-green-800",
   announcement: "bg-purple-100 text-purple-800",
   custom: "bg-slate-100 text-slate-800",
+  operator_low_balance: "bg-orange-100 text-orange-800",
+  operator_account_expiry: "bg-rose-100 text-rose-800",
+  operator_renewal: "bg-cyan-100 text-cyan-800",
+  operator_daily_report: "bg-indigo-100 text-indigo-800",
 };
 
 const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_due_reminder", "payment_confirmation"];
+const OPERATOR_TYPE_TEMPLATES = ["operator_low_balance", "operator_account_expiry", "operator_renewal", "operator_daily_report"];
 
 const INVOICE_VARIABLE_OPTIONS = [
   // ── Invoice ──
@@ -87,6 +96,21 @@ const INVOICE_VARIABLE_OPTIONS = [
   { value: "operator_business_type", label: "Business Type",              group: "Operator" },
   // ── Image header variable ──
   { value: "company_logo",       label: "Company Logo URL (image header only)", group: "Other" },
+];
+
+const OPERATOR_VARIABLE_OPTIONS = [
+  { value: "operator_name",    label: "Operator / Company Name",  group: "Operator" },
+  { value: "operator_phone",   label: "Operator Phone",           group: "Operator" },
+  { value: "operator_email",   label: "Operator Email",           group: "Operator" },
+  { value: "balance",          label: "Wallet Balance (₹)",       group: "Wallet" },
+  { value: "balance_raw",      label: "Wallet Balance (plain)",   group: "Wallet" },
+  { value: "expiry_date",      label: "Subscription Expiry Date", group: "Subscription" },
+  { value: "days_to_expiry",   label: "Days Until Expiry",        group: "Subscription" },
+  { value: "report_date",      label: "Report Date",              group: "Report" },
+  { value: "total_invoices",   label: "Invoices Created Today",   group: "Report" },
+  { value: "collected_today",  label: "Amount Collected Today",   group: "Report" },
+  { value: "pending_count",    label: "Pending Invoices Count",   group: "Report" },
+  { value: "overdue_count",    label: "Overdue Invoices Count",   group: "Report" },
 ];
 
 // Quick-setup preset templates
@@ -777,7 +801,7 @@ export default function WhatsAppTemplates() {
                   <Label className="flex items-center gap-1 text-slate-500">
                     Per-Invoice Variable <span className="text-xs font-normal">(optional, used if URL above is empty)</span>
                   </Label>
-                  {INVOICE_TYPE_TEMPLATES.includes(form.template_type) ? (
+                  {(INVOICE_TYPE_TEMPLATES.includes(form.template_type) || OPERATOR_TYPE_TEMPLATES.includes(form.template_type)) ? (
                     <Select
                       value={form.header_variable}
                       onValueChange={(v) => setForm({ ...form, header_variable: v })}
@@ -812,13 +836,13 @@ export default function WhatsAppTemplates() {
                 <code className="bg-slate-100 px-1 rounded">{"{{1}}"}</code>,{" "}
                 <code className="bg-slate-100 px-1 rounded">{"{{2}}"}</code>, … in the message.
               </p>
-              {INVOICE_TYPE_TEMPLATES.includes(form.template_type) ? (
+              {(INVOICE_TYPE_TEMPLATES.includes(form.template_type) || OPERATOR_TYPE_TEMPLATES.includes(form.template_type)) ? (
                 <div className="flex gap-2">
                   <Select value={selectedVariable} onValueChange={setSelectedVariable}>
                     <SelectTrigger><SelectValue placeholder="Select a variable to add..." /></SelectTrigger>
                     <SelectContent>
-                      {["Invoice", "Customer", "Operator", "Other"].map(group => {
-                        const opts = INVOICE_VARIABLE_OPTIONS.filter(o => o.group === group);
+                      {(OPERATOR_TYPE_TEMPLATES.includes(form.template_type) ? ["Operator", "Wallet", "Subscription", "Report"] : ["Invoice", "Customer", "Operator", "Other"]).map(group => {
+                        const opts = (OPERATOR_TYPE_TEMPLATES.includes(form.template_type) ? OPERATOR_VARIABLE_OPTIONS : INVOICE_VARIABLE_OPTIONS).filter(o => o.group === group);
                         return (
                           <div key={group}>
                             <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b">
