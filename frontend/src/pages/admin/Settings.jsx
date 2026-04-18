@@ -97,6 +97,14 @@ const AdminSettings = () => {
   const [restorePassword, setRestorePassword] = useState("");
   const [restoring, setRestoring] = useState(false);
 
+  // ── Danger Zone (System Reset) ──
+  const [resetOtpSent, setResetOtpSent] = useState(false);
+  const [resetOtpInput, setResetOtpInput] = useState("");
+  const [resetOtpLoading, setResetOtpLoading] = useState(false);
+  const [resetExecuteLoading, setResetExecuteLoading] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
+
   // Change-password state
   const [adminProfileForm, setAdminProfileForm] = useState({ name: "" });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -600,6 +608,40 @@ const AdminSettings = () => {
     }
   };
 
+  // ── Danger Zone handlers ────────────────────────────────────────────────
+  const handleRequestResetOTP = async () => {
+    setResetOtpLoading(true);
+    try {
+      const res = await authAxios.post("/admin/reset/request-otp");
+      toast.success(res.data.message);
+      setResetOtpSent(true);
+      setResetOtpInput("");
+      setResetResult(null);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to send OTP");
+    } finally {
+      setResetOtpLoading(false);
+    }
+  };
+
+  const handleExecuteReset = async () => {
+    if (!resetOtpInput.trim()) { toast.error("Enter the OTP first"); return; }
+    setResetExecuteLoading(true);
+    try {
+      const res = await authAxios.post("/admin/reset/execute", { otp: resetOtpInput.trim() });
+      setResetResult({ success: true, message: res.data.message, summary: res.data.summary });
+      toast.success("System reset complete");
+      setShowResetConfirm(false);
+      setResetOtpSent(false);
+      setResetOtpInput("");
+    } catch (err) {
+      setResetResult({ success: false, message: err.response?.data?.detail || "Reset failed" });
+      toast.error(err.response?.data?.detail || "Reset failed");
+    } finally {
+      setResetExecuteLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <AdminLayout title="Settings">
@@ -622,6 +664,7 @@ const AdminSettings = () => {
             <TabsTrigger value="backup">Backup & Restore</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="email">Email API</TabsTrigger>
+            <TabsTrigger value="danger" className="text-red-600 data-[state=active]:text-red-700">Danger Zone</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -1684,7 +1727,214 @@ const AdminSettings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Danger Zone Tab */}
+          <TabsContent value="danger" className="mt-6">
+            <Card className="border-red-200">
+              <CardHeader className="bg-red-50">
+                <CardTitle className="flex items-center gap-2 text-red-700">
+                  <AlertTriangle className="w-5 h-5" />
+                  Danger Zone
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-6">
+                {/* System Reset Section */}
+                <div className="rounded-lg border-2 border-red-300 bg-red-50 p-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-red-800 flex items-center gap-2">
+                        <Database className="w-5 h-5" />
+                        Complete System Reset
+                      </h3>
+                      <p className="text-sm text-red-700 mt-2">
+                        This will permanently delete <strong>ALL data</strong> from the platform including:
+                      </p>
+                      <ul className="mt-2 ml-6 text-sm text-red-700 list-disc space-y-1">
+                        <li>All operators and their data</li>
+                        <li>All subscribers and subscriptions</li>
+                        <li>All invoices and payment records</li>
+                        <li>All wallet transactions</li>
+                        <li>All WhatsApp logs and templates</li>
+                        <li>All backup files</li>
+                      </ul>
+                      <p className="text-sm text-red-700 mt-3 font-medium">
+                        ⚠️ This action is <strong>IRREVERSIBLE</strong> and cannot be undone.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-white rounded-lg border border-red-200 p-4">
+                      <p className="text-sm text-slate-700 font-medium mb-2">Security Verification Required:</p>
+                      <p className="text-xs text-slate-600">
+                        To proceed, you'll need to verify your identity using a One-Time Password (OTP) sent to your registered admin email.
+                      </p>
+                    </div>
+
+                    <Button 
+                      variant="destructive" 
+                      className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
+                      onClick={() => setShowResetConfirm(true)}
+                      data-testid="reset-entire-system-btn"
+                    >
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      Reset Entire System
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Result Display */}
+                {resetResult && (
+                  <div className={`rounded-lg border-2 p-4 ${
+                    resetResult.success 
+                      ? 'border-green-300 bg-green-50' 
+                      : 'border-red-300 bg-red-50'
+                  }`}>
+                    <p className={`font-medium ${resetResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                      {resetResult.message}
+                    </p>
+                    {resetResult.summary && (
+                      <div className="mt-3 space-y-1 text-sm text-slate-700">
+                        <p><strong>Deleted:</strong></p>
+                        <ul className="ml-6 list-disc">
+                          <li>{resetResult.summary.operators || 0} operators</li>
+                          <li>{resetResult.summary.invoices || 0} invoices</li>
+                          <li>{resetResult.summary.subscribers || 0} subscribers</li>
+                          <li>{resetResult.summary.plans || 0} plans</li>
+                          <li>{resetResult.summary.users || 0} users</li>
+                          <li>{resetResult.summary.wallets || 0} wallets</li>
+                          <li>{resetResult.summary.wallet_transactions || 0} wallet transactions</li>
+                          <li>{resetResult.summary.wa_logs || 0} WhatsApp logs</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
+
+        {/* System Reset OTP Confirmation Dialog */}
+        <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-700">
+                <AlertTriangle className="w-5 h-5" />
+                Confirm System Reset
+              </DialogTitle>
+              <DialogDescription>
+                This will permanently delete <strong>ALL platform data</strong>. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 mt-4">
+              {/* Warning Box */}
+              <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800 font-medium flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Are you absolutely sure?
+                </p>
+                <p className="text-xs text-red-700 mt-2">
+                  All operators, subscribers, invoices, transactions, and backups will be permanently deleted.
+                </p>
+              </div>
+
+              {/* OTP Step */}
+              {!resetOtpSent ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-700">
+                    Click below to receive a One-Time Password (OTP) via email to verify this action.
+                  </p>
+                  <Button 
+                    onClick={handleRequestResetOTP}
+                    disabled={resetOtpLoading}
+                    className="w-full bg-red-600 hover:bg-red-700"
+                    data-testid="send-otp-btn"
+                  >
+                    {resetOtpLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Sending OTP...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4 mr-2" />
+                        Send OTP to Email
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-green-800 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      OTP sent to your registered email
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Enter OTP
+                    </Label>
+                    <Input 
+                      type="text" 
+                      placeholder="Enter 6-digit OTP"
+                      value={resetOtpInput}
+                      onChange={(e) => setResetOtpInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleExecuteReset()}
+                      maxLength={6}
+                      className="text-center text-lg tracking-widest"
+                      data-testid="reset-otp-input"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        setShowResetConfirm(false);
+                        setResetOtpSent(false);
+                        setResetOtpInput("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleExecuteReset}
+                      disabled={resetExecuteLoading || !resetOtpInput.trim()}
+                      className="flex-1 bg-red-600 hover:bg-red-700"
+                      data-testid="confirm-reset-btn"
+                    >
+                      {resetExecuteLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Resetting...
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-4 h-4 mr-2" />
+                          Confirm Reset
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={handleRequestResetOTP}
+                    disabled={resetOtpLoading}
+                    className="w-full text-xs"
+                  >
+                    Didn't receive OTP? Resend
+                  </Button>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
 
         {/* Add Gateway Dialog */}

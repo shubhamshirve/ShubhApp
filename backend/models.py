@@ -742,6 +742,10 @@ class WhatsAppTemplateTestRequest(SanitizedModel):
         return _normalize_phone(value, required=True)
 
 
+class SystemResetOTPRequest(SanitizedModel):
+    otp: str
+
+
 class SendNotificationRequest(SanitizedModel):
     invoice_id: str
     notification_type: str = "invoice"  # invoice, reminder

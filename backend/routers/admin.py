@@ -14,7 +14,7 @@ from models import (
     AddonCreate, AuditLogResponse,
     UserResponse, TokenResponse,
     WhatsAppConfig, WhatsAppTemplateSettings, WhatsAppTestMessage,
-    WhatsAppTemplateTestRequest,
+    WhatsAppTemplateTestRequest, SystemResetOTPRequest,
     DiscountCodeCreate, DiscountCodeResponse,
     WhatsAppTemplateCreate, WhatsAppTemplateUpdate,
     ReminderSettingsUpdate, EmailSettingsUpdate, EmailTestRequest,
@@ -318,11 +318,26 @@ async def delete_operator(operator_id: str, current_user: dict = Depends(require
         raise HTTPException(status_code=404, detail="Operator not found")
     now = datetime.now(timezone.utc)
     deleted_at = now.isoformat()
+
+    # ── Soft-delete relational records ─────────────────────────────────────
     await db.operators.update_one({"id": operator_id}, {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}})
     await db.users.update_many({"operator_id": operator_id, "deleted_at": None}, {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}})
     await db.subscribers.update_many({"operator_id": operator_id, "deleted_at": None}, {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}})
     await db.operator_plans.update_many({"operator_id": operator_id, "deleted_at": None}, {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}})
     await db.invoices.update_many({"operator_id": operator_id, "deleted_at": None}, {"$set": {"deleted_at": deleted_at, "updated_at": deleted_at}})
+
+    # ── Hard-delete config & wallet data ───────────────────────────────────
+    await db.operator_wallets.delete_many({"operator_id": operator_id})
+    await db.wallet_transactions.delete_many({"operator_id": operator_id})
+    await db.payment_gateways.delete_many({"operator_id": operator_id})
+    await db.invoice_settings.delete_many({"operator_id": operator_id})
+    await db.operator_theme.delete_many({"operator_id": operator_id})
+    await db.notification_queue.delete_many({"operator_id": operator_id})
+    await db.checkout_orders.delete_many({"operator_id": operator_id})
+    await db.whatsapp_message_logs.delete_many({"operator_id": operator_id})
+    await db.announcements.delete_many({"operator_id": operator_id})
+    await db.saas_payments.delete_many({"operator_id": operator_id})
+
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
         "delete", "operators",
@@ -1672,6 +1687,122 @@ async def clear_error_logs(current_user: dict = Depends(require_admin)):
     """Clear all error logs."""
     result = await db.error_logs.delete_many({})
     return {"message": f"Cleared {result.deleted_count} error logs"}
+
+
+# ─── System Reset (Danger Zone) ───────────────────────────────────────────────
+
+def _generate_reset_otp() -> str:
+    import random
+    return str(random.randint(100000, 999999))
+
+
+@router.post("/reset/request-otp")
+async def request_system_reset_otp(current_user: dict = Depends(require_admin)):
+    """Send a 6-digit OTP to admin email to authorize full data reset."""
+    from services.email_service import get_email_service
+    otp = _generate_reset_otp()
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(minutes=10)).isoformat()
+    await db.global_settings.update_one(
+        {"type": "admin_reset_otp"},
+        {"$set": {
+            "type": "admin_reset_otp",
+            "otp": otp,
+            "admin_id": current_user["id"],
+            "created_at": now.isoformat(),
+            "expires_at": expires_at,
+            "used": False,
+        }},
+        upsert=True
+    )
+    try:
+        email_service = await get_email_service()
+        await email_service.send_email(
+            to_email=current_user["email"],
+            subject="E-Bill Admin System Reset OTP",
+            html=(
+                "<p>A <strong>full system data reset</strong> has been requested for your E-Bill admin account.</p>"
+                f"<p>Your reset OTP is: <strong style='font-size:1.5em;letter-spacing:4px'>{otp}</strong></p>"
+                "<p>This code is valid for <strong>10 minutes</strong>.</p>"
+                "<p style='color:red;'><strong>WARNING:</strong> This will permanently delete all operator, subscriber, "
+                "invoice, wallet, and log data. Admin settings will NOT be affected.</p>"
+                "<p>If you did not request this reset, please ignore this email.</p>"
+            ),
+            text=(
+                f"Your E-Bill admin system reset OTP is: {otp}\n"
+                "Valid for 10 minutes.\n"
+                "WARNING: This will permanently delete all operator and related data.\n"
+                "Do NOT share this code."
+            ),
+        )
+    except Exception as e:
+        await db.global_settings.delete_one({"type": "admin_reset_otp"})
+        raise HTTPException(status_code=500, detail=f"Failed to send OTP email: {str(e)}")
+    return {"message": f"Reset OTP sent to {current_user['email']}. Valid for 10 minutes."}
+
+
+@router.post("/reset/execute")
+async def execute_system_reset(data: SystemResetOTPRequest, current_user: dict = Depends(require_admin)):
+    """Execute full data reset after OTP verification. Admin settings and accounts are preserved."""
+    now = datetime.now(timezone.utc)
+    otp_doc = await db.global_settings.find_one({"type": "admin_reset_otp"}, {"_id": 0})
+    if not otp_doc:
+        raise HTTPException(status_code=400, detail="No pending reset OTP. Request one first.")
+    if otp_doc.get("used"):
+        raise HTTPException(status_code=400, detail="OTP already used. Request a new one.")
+    if otp_doc.get("admin_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="OTP belongs to a different admin session.")
+    if now.isoformat() > otp_doc.get("expires_at", ""):
+        raise HTTPException(status_code=400, detail="OTP has expired. Request a new one.")
+    if otp_doc.get("otp") != data.otp.strip():
+        raise HTTPException(status_code=400, detail="Invalid OTP.")
+
+    await db.global_settings.update_one({"type": "admin_reset_otp"}, {"$set": {"used": True}})
+
+    deleted_at = now.isoformat()
+    reset_summary = {}
+
+    # Soft-delete operator-owned records
+    for col, filt, key in [
+        ("operators", {}, "operators"),
+        ("users", {"role": {"$in": ["operator", "staff"]}}, "users"),
+        ("subscribers", {}, "subscribers"),
+        ("operator_plans", {}, "plans"),
+        ("invoices", {}, "invoices"),
+    ]:
+        r = await db[col].update_many(filt, {"$set": {"deleted_at": deleted_at}})
+        reset_summary[key] = r.modified_count
+
+    # Hard-delete config, wallet, log data
+    for col, key in [
+        ("operator_wallets", "wallets"),
+        ("wallet_transactions", "wallet_transactions"),
+        ("payment_gateways", "payment_gateways"),
+        ("invoice_settings", "invoice_settings"),
+        ("operator_theme", "themes"),
+        ("notification_queue", "notifications"),
+        ("checkout_orders", "checkout_orders"),
+        ("whatsapp_message_logs", "wa_logs"),
+        ("announcements", "announcements"),
+        ("saas_payments", "saas_payments"),
+        ("audit_logs", "audit_logs"),
+        ("error_logs", "error_logs"),
+        ("support_tickets", "support_tickets"),
+    ]:
+        res = await db[col].delete_many({})
+        reset_summary[key] = res.deleted_count
+
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "delete", "system_reset",
+        None,
+        {"reset_summary": reset_summary},
+        ip_address=current_user.get("_ip_address")
+    )
+    return {
+        "message": "System reset complete. All operator data removed. Admin settings preserved.",
+        "summary": reset_summary,
+    }
 
 
 # ─── Landing Page Settings ────────────────────────────────────────────────────
