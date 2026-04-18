@@ -1747,18 +1747,20 @@ const AdminSettings = () => {
                         Complete System Reset
                       </h3>
                       <p className="text-sm text-red-700 mt-2">
-                        This will permanently delete <strong>ALL data</strong> from the platform including:
+                        This will permanently delete <strong>ALL operator data</strong> from the platform including:
                       </p>
                       <ul className="mt-2 ml-6 text-sm text-red-700 list-disc space-y-1">
                         <li>All operators and their data</li>
                         <li>All subscribers and subscriptions</li>
                         <li>All invoices and payment records</li>
                         <li>All wallet transactions</li>
-                        <li>All WhatsApp logs and templates</li>
-                        <li>All backup files</li>
+                        <li>All payment gateways and settings</li>
                       </ul>
                       <p className="text-sm text-red-700 mt-3 font-medium">
                         ⚠️ This action is <strong>IRREVERSIBLE</strong> and cannot be undone.
+                      </p>
+                      <p className="text-sm text-green-700 mt-2">
+                        ✓ Admin settings preserved: WhatsApp templates, backup files, platform settings
                       </p>
                     </div>
                     
@@ -1802,8 +1804,9 @@ const AdminSettings = () => {
                           <li>{resetResult.summary.users || 0} users</li>
                           <li>{resetResult.summary.wallets || 0} wallets</li>
                           <li>{resetResult.summary.wallet_transactions || 0} wallet transactions</li>
-                          <li>{resetResult.summary.wa_logs || 0} WhatsApp logs</li>
+                          <li>{resetResult.summary.payment_gateways || 0} payment gateways</li>
                         </ul>
+                        <p className="text-xs text-green-700 mt-2">✓ WhatsApp templates and backup files preserved</p>
                       </div>
                     )}
                   </div>
@@ -1822,7 +1825,7 @@ const AdminSettings = () => {
                 Confirm System Reset
               </DialogTitle>
               <DialogDescription>
-                This will permanently delete <strong>ALL platform data</strong>. This action cannot be undone.
+                This will permanently delete <strong>ALL operator data</strong>. Admin settings will be preserved.
               </DialogDescription>
             </DialogHeader>
 
@@ -1834,7 +1837,10 @@ const AdminSettings = () => {
                   Are you absolutely sure?
                 </p>
                 <p className="text-xs text-red-700 mt-2">
-                  All operators, subscribers, invoices, transactions, and backups will be permanently deleted.
+                  All operators, subscribers, invoices, and transactions will be permanently deleted.
+                </p>
+                <p className="text-xs text-green-700 mt-1">
+                  WhatsApp templates and backup files will be preserved.
                 </p>
               </div>
 

@@ -1774,6 +1774,7 @@ async def execute_system_reset(data: SystemResetOTPRequest, current_user: dict =
         reset_summary[key] = r.modified_count
 
     # Hard-delete config, wallet, log data
+    # Note: WhatsApp logs/templates and backup files are preserved (admin-level settings)
     for col, key in [
         ("operator_wallets", "wallets"),
         ("wallet_transactions", "wallet_transactions"),
@@ -1782,7 +1783,6 @@ async def execute_system_reset(data: SystemResetOTPRequest, current_user: dict =
         ("operator_theme", "themes"),
         ("notification_queue", "notifications"),
         ("checkout_orders", "checkout_orders"),
-        ("whatsapp_message_logs", "wa_logs"),
         ("announcements", "announcements"),
         ("saas_payments", "saas_payments"),
         ("audit_logs", "audit_logs"),
