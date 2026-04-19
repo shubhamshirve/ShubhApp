@@ -1,6 +1,32 @@
 # E-Bill Platform — CHANGELOG
 
-## 2026-04-18
+## 2026-04-19
+
+### V8.23: GST Control Settings for SAAS Plans & Wallet Topups
+
+#### New Feature: Configurable GST Charges
+- **Admin Settings:** Added toggle controls to enable/disable GST charges independently for:
+  - SAAS Plan subscriptions (purchases and renewals)
+  - Wallet topups
+- **Default Behavior:** Both GST toggles enabled by default (maintains existing behavior)
+- **Backend Logic:** Checkout and topup endpoints now check GST enablement settings before calculating GST
+- **Flexibility:** Admin can disable GST for specific transaction types while keeping it enabled for others
+
+**Changes:**
+- `frontend/src/pages/admin/Settings.jsx`: Added two Switch controls under Platform Settings
+  - "Apply GST on SAAS Plans" toggle
+  - "Apply GST on Wallet Topups" toggle
+- `backend/routers/wallet.py`: Wallet topup endpoint checks `gst_enabled_on_wallet_topup` setting
+- `backend/routers/operator.py`: Checkout endpoint checks `gst_enabled_on_saas_plans` setting
+- Both settings stored in `global_settings.platform` document
+
+**Use Cases:**
+- Disable GST for international operators
+- Promotional periods without GST
+- Regional tax compliance variations
+- Testing without tax calculations
+
+---
 
 ### V8.22: Critical Security Enhancement - HttpOnly Cookie Authentication
 

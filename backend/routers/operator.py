@@ -626,8 +626,10 @@ async def create_checkout_order(
                 applied_coupon = coupon_code.upper()
     discounted_base = round(base_amount - discount_amount - referral_discount_amount, 2)
 
-    # Calculate GST on the discounted base amount for all SaaS checkout items
-    gst_amount = round(discounted_base * gst_rate / 100, 2)
+    # Calculate GST on the discounted base amount for all SaaS checkout items (if enabled)
+    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    gst_enabled_on_saas = platform_settings.get("gst_enabled_on_saas_plans", True)
+    gst_amount = round(discounted_base * gst_rate / 100, 2) if gst_enabled_on_saas else 0
     exact_total = discounted_base + gst_amount
     import math
     rounded_total = math.floor(exact_total + 0.5)          # standard half-up rounding → int

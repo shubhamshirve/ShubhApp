@@ -257,9 +257,14 @@ async def create_topup_order(
     from services.razorpay_service import RazorpayService
     rz = RazorpayService(razorpay_key, razorpay_secret)
     order_id = generate_id()
-    gst_rate = await get_platform_gst_rate()
+    
+    # Get GST settings from platform settings
+    platform_settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0}) or {}
+    gst_enabled = platform_settings.get("gst_enabled_on_wallet_topup", True)
+    gst_rate = await get_platform_gst_rate() if gst_enabled else 0
+    
     base_amount = round(amount, 2)
-    gst_amount = round(base_amount * gst_rate / 100, 2)
+    gst_amount = round(base_amount * gst_rate / 100, 2) if gst_enabled else 0
     exact_total = round(base_amount + gst_amount, 2)
     rounded_amount = math.floor(exact_total + 0.5)
     rounding_diff = round(rounded_amount - exact_total, 2)

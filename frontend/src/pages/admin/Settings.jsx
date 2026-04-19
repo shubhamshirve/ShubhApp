@@ -41,6 +41,8 @@ const DEFAULT_SETTINGS = {
   active_payment_gateway: "razorpay",
   auto_invoice_days_before: 3,
   gst_rate: 18,
+  gst_enabled_on_saas_plans: true,
+  gst_enabled_on_wallet_topup: true,
   late_fee_percentage: 0,
   referral_discount_percent: 10,
   referral_discount_max_amount: 500,
@@ -714,6 +716,34 @@ const AdminSettings = () => {
                       value={settings?.gst_rate || 18}
                       onChange={(e) => setSettings(s => ({ ...s, gst_rate: parseFloat(e.target.value) }))}
                     />
+                  </div>
+
+                  <div className="space-y-4 border-t pt-4 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Apply GST on SAAS Plans</Label>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Enable GST charges when operators purchase or renew SAAS subscription plans
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings?.gst_enabled_on_saas_plans ?? true}
+                        onCheckedChange={(checked) => setSettings(s => ({ ...s, gst_enabled_on_saas_plans: checked }))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Apply GST on Wallet Topups</Label>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Enable GST charges when operators add funds to their wallet
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings?.gst_enabled_on_wallet_topup ?? true}
+                        onCheckedChange={(checked) => setSettings(s => ({ ...s, gst_enabled_on_wallet_topup: checked }))}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Late Fee Percentage (%)</Label>
