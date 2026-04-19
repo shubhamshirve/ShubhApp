@@ -718,17 +718,18 @@ const OperatorSubscription = () => {
           </Card>
         )}
 
-        {/* Add-ons Store */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Puzzle className="w-5 h-5" />
-              Add-ons
-            </CardTitle>
-            <p className="text-sm text-slate-500 mt-1">
-              Enhance your platform with powerful add-ons
-            </p>
-          </CardHeader>
+        {/* Add-ons Store — hidden per business decision; feature retained for future use */}
+        {false && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Puzzle className="w-5 h-5" />
+                Add-ons
+              </CardTitle>
+              <p className="text-sm text-slate-500 mt-1">
+                Enhance your platform with powerful add-ons
+              </p>
+            </CardHeader>
           <CardContent>
             {isTrial && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
@@ -843,6 +844,7 @@ const OperatorSubscription = () => {
             )}
           </CardContent>
         </Card>
+        )}
         </>
         )}
 
@@ -965,7 +967,8 @@ const OperatorSubscription = () => {
               </div>
             )}
 
-            {/* New add-ons bundling section */}
+            {/* New add-ons bundling section — hidden per business decision; feature retained for future use */}
+            {false && (
             <div className="space-y-2">
               <Label>Add New Add-ons (optional)</Label>
               {purchasableAddons.length === 0 ? (
@@ -992,6 +995,7 @@ const OperatorSubscription = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Discount Code */}
             <div className="space-y-2">

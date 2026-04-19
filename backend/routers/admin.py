@@ -1793,11 +1793,10 @@ async def execute_system_reset(data: SystemResetOTPRequest, current_user: dict =
         reset_summary[key] = r.modified_count
 
     # Hard-delete config, wallet, log data
-    # Note: WhatsApp logs/templates and backup files are preserved (admin-level settings)
+    # Note: WhatsApp logs/templates, backup files, and payment gateway settings are preserved (admin-level settings)
     for col, key in [
         ("operator_wallets", "wallets"),
         ("wallet_transactions", "wallet_transactions"),
-        ("payment_gateways", "payment_gateways"),
         ("invoice_settings", "invoice_settings"),
         ("operator_theme", "themes"),
         ("notification_queue", "notifications"),
@@ -1810,6 +1809,10 @@ async def execute_system_reset(data: SystemResetOTPRequest, current_user: dict =
     ]:
         res = await db[col].delete_many({})
         reset_summary[key] = res.deleted_count
+
+    # Only delete operator-specific payment gateway configs, preserve platform-level gateways
+    pg_result = await db.payment_gateways.delete_many({"operator_id": {"$exists": True, "$ne": None}})
+    reset_summary["payment_gateways"] = pg_result.deleted_count
 
     await log_audit(
         current_user["id"], current_user["name"], current_user["role"],
