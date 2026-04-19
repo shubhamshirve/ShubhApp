@@ -2,6 +2,46 @@
 
 ## 2026-04-18
 
+### V8.22: Critical Security Enhancement - HttpOnly Cookie Authentication
+
+#### 🔒 Security Fix: localStorage to HttpOnly Cookies Migration
+- **CRITICAL SECURITY UPGRADE:** Migrated authentication from localStorage to secure httpOnly cookies
+- **XSS Protection:** Auth tokens no longer accessible via JavaScript, preventing XSS token theft
+- **CSRF Protection:** Implemented SameSite=lax cookie policy
+- **Secure Transport:** Cookies marked as secure (HTTPS-only)
+
+**Backend Changes:**
+- `backend/routers/auth.py`:
+  - `/auth/login` endpoint now sets httpOnly cookie instead of returning token in body
+  - `/auth/verify-otp` (registration) endpoint sets httpOnly cookie
+  - Added `/auth/logout` endpoint to properly clear cookies
+  - Cookie settings: httpOnly, secure, samesite=lax, 24-hour expiry
+- `backend/dependencies.py`:
+  - `get_current_user()` now reads from cookie first, fallback to Authorization header
+  - Maintains backward compatibility during migration period
+
+**Frontend Changes:**
+- `frontend/src/App.js`:
+  - Removed all `localStorage.getItem("token")` and `localStorage.setItem("token")` calls
+  - Removed token state management
+  - All axios requests now use `withCredentials: true` to send cookies
+  - Login/register flows updated to work with cookies
+  - Logout now calls `/auth/logout` endpoint to clear server-side session
+
+**Security Improvements:**
+- ✅ Tokens no longer stored in localStorage (XSS-proof)
+- ✅ HttpOnly flag prevents JavaScript access to auth tokens
+- ✅ Secure flag ensures cookies only sent over HTTPS
+- ✅ SameSite=lax provides CSRF protection
+- ✅ Server-side session invalidation on logout
+
+**Migration Notes:**
+- Existing users will be logged out once (cookies replace localStorage)
+- No action required from end users
+- Backend maintains compatibility with Authorization header for API clients
+
+---
+
 ### V8.21: Wallet Suspension Threshold Adjustment
 
 #### UI Standardization: Date Pickers

@@ -50,34 +50,27 @@ export const useAuth = () => useContext(AuthContext);
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem("token"));
   const [features, setFeatures] = useState({});
 
-  const refreshCurrentUser = async (accessToken = token) => {
-    if (!accessToken) {
+  const refreshCurrentUser = async () => {
+    try {
+      const response = await axios.get(`${API}/auth/me`, {
+        withCredentials: true  // Send cookies with request
+      });
+      setUser(response.data);
+      await loadFeatures(response.data.role);
+      return response.data;
+    } catch (error) {
+      setUser(null);
       return null;
     }
-
-    const response = await axios.get(`${API}/auth/me`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    setUser(response.data);
-    await loadFeatures(accessToken, response.data.role);
-    return response.data;
   };
 
-  const applyAccessToken = async (accessToken) => {
-    await clearBrowserCache();
-    localStorage.setItem("token", accessToken);
-    setToken(accessToken);
-    return await refreshCurrentUser(accessToken);
-  };
-
-  const loadFeatures = async (tkn, role) => {
+  const loadFeatures = async (role) => {
     if (role === "operator" || role === "staff") {
       try {
         const res = await axios.get(`${API}/operator/features`, {
-          headers: { Authorization: `Bearer ${tkn}` }
+          withCredentials: true
         });
         setFeatures(res.data);
       } catch { setFeatures({}); }
@@ -88,20 +81,10 @@ const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      const storedToken = localStorage.getItem("token");
-      if (storedToken) {
-        try {
-          const response = await axios.get(`${API}/auth/me`, {
-            headers: { Authorization: `Bearer ${storedToken}` }
-          });
-          setToken(storedToken);
-          setUser(response.data);
-          await loadFeatures(storedToken, response.data.role);
-        } catch (error) {
-          localStorage.removeItem("token");
-          setToken(null);
-          setUser(null);
-        }
+      try {
+        await refreshCurrentUser();
+      } catch (error) {
+        // No valid session
       }
       setLoading(false);
     };
@@ -109,14 +92,11 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (!token) return undefined;
+    if (!user) return undefined;
 
     const verifySession = async () => {
       try {
-        const response = await axios.get(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setUser(response.data);
+        await refreshCurrentUser();
       } catch (error) {
         if (error.response?.status === 401) {
           toast.error("Session expired. Please log in again.");
@@ -133,49 +113,82 @@ const AuthProvider = ({ children }) => {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [token]);
+  }, [user]);
 
   const login = async (email, password) => {
-    const response = await axios.post(`${API}/auth/login`, { email, password });
-    const { access_token, user: userData } = response.data;
-    await applyAccessToken(access_token);
+    const response = await axios.post(
+      `${API}/auth/login`, 
+      { email, password },
+      { withCredentials: true }  // Allow cookies to be set
+    );
+    const { user: userData } = response.data;
+    await clearBrowserCache();
+    setUser(userData);
+    await loadFeatures(userData.role);
     return userData;
   };
 
   const register = async (data) => {
-    const response = await axios.post(`${API}/auth/register`, data);
-    const { access_token, user: userData } = response.data;
-    await applyAccessToken(access_token);
+    const response = await axios.post(
+      `${API}/auth/register`, 
+      data,
+      { withCredentials: true }
+    );
+    const { user: userData } = response.data;
+    await clearBrowserCache();
+    setUser(userData);
+    await loadFeatures(userData.role);
     return userData;
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
+  const logout = async () => {
+    try {
+      await axios.post(
+        `${API}/auth/logout`,
+        {},
+        { withCredentials: true }
+      );
+    } catch (error) {
+      // Ignore errors on logout
+    }
     setUser(null);
     setFeatures({});
   };
 
-  const authAxios = axios.create({
-    baseURL: API,
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
+  // Create axios instance with credentials
+  const authAxios = useMemo(() => {
+    const instance = axios.create({
+      baseURL: API,
+      withCredentials: true  // Always send cookies
+    });
 
-  authAxios.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401 && token) {
-        toast.error("Session expired. Please log in again.");
-        logout();
+    instance.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 && user) {
+          toast.error("Session expired. Please log in again.");
+          logout();
+        }
+        return Promise.reject(error);
       }
-      return Promise.reject(error);
-    }
-  );
+    );
+
+    return instance;
+  }, [user]);
 
   const contextValue = useMemo(
-    () => ({ user, token, loading, login, register, logout, authAxios, features, applyAccessToken, refreshCurrentUser, clearBrowserCache }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, token, loading, features]
+    () => ({ 
+      user, 
+      loading, 
+      login, 
+      register, 
+      logout, 
+      authAxios, 
+      features, 
+      refreshCurrentUser, 
+      clearBrowserCache 
+    }),
+    [user, loading, features, authAxios]
   );
 
   return (
