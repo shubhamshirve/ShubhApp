@@ -1,19 +1,30 @@
 """FastAPI dependency functions for authentication and authorization."""
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional
 from database import db
 from utils import decode_token
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # Make it optional to support cookies
 
 DEFAULT_MAINTENANCE_MESSAGE = "The app is under maintenance. Updates and automation are temporarily paused."
 
 
 async def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    access_token: Optional[str] = Cookie(default=None)
 ) -> dict:
-    token = credentials.credentials
+    # Try to get token from cookie first, then fallback to Authorization header
+    token = None
+    if access_token:
+        token = access_token
+    elif credentials:
+        token = credentials.credentials
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     payload = decode_token(token)
     user = await db.users.find_one({"id": payload["sub"], "deleted_at": None}, {"_id": 0})
     if not user:

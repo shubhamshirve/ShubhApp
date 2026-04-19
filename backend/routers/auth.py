@@ -1,5 +1,5 @@
 """Auth router: register (with OTP), login, me."""
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from datetime import datetime, timezone, timedelta
 import secrets
 import logging
@@ -194,7 +194,7 @@ async def register_init(data: OperatorCreate):
 
 
 @router.post("/verify-otp", response_model=TokenResponse)
-async def verify_otp_and_register(data: OTPVerifyRequest):
+async def verify_otp_and_register(data: OTPVerifyRequest, response: Response):
     """Step 2: Verify OTP and complete registration."""
     pending = await db.pending_registrations.find_one({"id": data.registration_id}, {"_id": 0})
     if not pending:
@@ -330,6 +330,17 @@ async def verify_otp_and_register(data: OTPVerifyRequest):
             "session_id": session_id,
         },
         expiration_hours=timeout,
+    )
+
+    # Set httpOnly cookie for security
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=int(timeout * 3600),  # Convert hours to seconds
+        path="/"
     )
 
     return TokenResponse(
@@ -499,7 +510,7 @@ async def register_operator(data: OperatorCreate):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: UserLogin, request: Request):
+async def login(data: UserLogin, request: Request, response: Response):
     """Login for all users."""
     ip_address = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
 
@@ -514,6 +525,17 @@ async def login(data: UserLogin, request: Request):
         raise HTTPException(status_code=401, detail="Account is not active")
 
     token = await _issue_user_session(user)
+
+    # Set httpOnly cookie for security
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,  # Only send over HTTPS
+        samesite="lax",  # CSRF protection
+        max_age=86400,  # 24 hours (in seconds)
+        path="/"
+    )
 
     await log_audit(
         user_id=user["id"],
@@ -548,6 +570,21 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         impersonated_by=current_user.get("impersonated_by"),
         created_at=datetime.fromisoformat(current_user["created_at"])
     )
+
+
+@router.post("/logout")
+async def logout(response: Response, current_user: dict = Depends(get_current_user)):
+    """Logout user and clear httpOnly cookie."""
+    # Clear the httpOnly cookie
+    response.delete_cookie(key="access_token", path="/")
+    
+    # Invalidate session in database
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"active_session_id": None}}
+    )
+    
+    return {"message": "Logged out successfully"}
 
 
 class ChangePasswordRequest(SanitizedModel):
