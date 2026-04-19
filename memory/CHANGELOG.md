@@ -4,6 +4,12 @@
 
 ### V8.21: Wallet Suspension Threshold Adjustment
 
+#### UI Enhancement: Login Page Logo
+- **Desktop view:** Logo now has a white rounded square background (10% larger than logo size)
+- Improves visibility of logo against blue gradient background
+- Mobile view unchanged
+- File: `frontend/src/pages/Login.jsx`
+
 #### Wallet Balance Thresholds Updated
 - **Suspension threshold reduced:** ₹100 → ₹50
   - Operators now suspended when wallet balance drops below ₹50 (was ₹100)

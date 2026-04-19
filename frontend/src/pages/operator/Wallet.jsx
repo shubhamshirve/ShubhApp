@@ -161,8 +161,8 @@ export default function WalletPage() {
   }
 
   const balance = wallet?.balance ?? 0;
-  const isLow = balance < 500;
-  const isCritical = balance < 100;
+  const isLow = balance < 100;
+  const isCritical = balance < 50;
   const isMaintenance = !!wallet?.maintenance_mode;
 
   return (
@@ -177,7 +177,7 @@ export default function WalletPage() {
               <p className="font-semibold text-red-800">Account Suspended — Low Wallet Balance</p>
               <p className="text-sm text-red-700 mt-1">
                 Your wallet balance is critically low. All automation has been stopped and your account is in read-only mode.
-                Topup at least Rs.100 to resume service.
+                Topup at least Rs.50 to resume service.
               </p>
             </div>
           </div>
@@ -188,9 +188,9 @@ export default function WalletPage() {
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3" data-testid="wallet-critical-banner">
             <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
             <div>
-              <p className="font-semibold text-red-800">Critical: Wallet Balance Below Rs.100</p>
+              <p className="font-semibold text-red-800">Critical: Wallet Balance Below Rs.50</p>
               <p className="text-sm text-red-700 mt-1">
-                Your balance is critically low. Please topup immediately — once balance reaches Rs.100, your account will be suspended and all automation will stop.
+                Your balance is critically low. Please topup immediately — once balance reaches Rs.50, your account will be suspended and all automation will stop.
               </p>
             </div>
           </div>
@@ -203,8 +203,8 @@ export default function WalletPage() {
             <div>
               <p className="font-semibold text-amber-800">Low Wallet Balance</p>
               <p className="text-sm text-amber-700 mt-1">
-                Your wallet balance is below Rs.500. Please topup to keep services active.
-                If balance drops below Rs.100, your account will be automatically suspended.
+                Your wallet balance is below Rs.100. Please topup to keep services active.
+                If balance drops below Rs.50, your account will be automatically suspended.
               </p>
             </div>
           </div>
@@ -227,8 +227,8 @@ export default function WalletPage() {
               </div>
               <div className="text-xs text-slate-500 space-y-1">
                 <p>• Per-invoice charges follow your active subscription plan</p>
-                <p className={balance < 500 ? "text-amber-600 font-medium" : ""}>• Reminder when balance &lt; Rs.500</p>
-                <p className={balance < 100 ? "text-red-600 font-medium" : ""}>• Account suspended when balance &lt; Rs.100</p>
+                <p className={balance < 100 ? "text-amber-600 font-medium" : ""}>• Reminder when balance &lt; Rs.100</p>
+                <p className={balance < 50 ? "text-red-600 font-medium" : ""}>• Account suspended when balance &lt; Rs.50</p>
               </div>
             </CardContent>
           </Card>
