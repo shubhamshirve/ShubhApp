@@ -29,12 +29,14 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Search } from "lucide-react";
 
 const OperatorPlans = () => {
   const { authAxios, user } = useAuth();
   const isStaff = user?.role === "staff";
   const [plans, setPlans] = useState([]);
+  const [filteredPlans, setFilteredPlans] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
