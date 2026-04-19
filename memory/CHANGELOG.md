@@ -4,6 +4,14 @@
 
 ### V8.21: Wallet Suspension Threshold Adjustment
 
+#### Bug Fix: System Reset Email Service
+- **Issue:** System reset OTP emails failed with "No email delivery provider is configured" even when email settings were configured in Admin UI
+- **Root Cause:** `request_system_reset_otp` endpoint was using `get_email_service()` (sync) which only reads from environment variables, ignoring database configuration
+- **Fix:** Changed to `get_email_service_async()` which properly loads email settings from database (Admin Settings UI)
+- **Impact:** System reset OTP, password reset, and all transactional emails now work with database-configured email settings
+- **File:** `backend/routers/admin.py` (Line 1738)
+- **Note:** Users must configure email settings in Admin → Settings → Email Settings (SMTP or Resend)
+
 #### UI Enhancement: Login Page Logo
 - **Desktop view:** Logo now has a white rounded square background (10% larger than logo size)
 - Improves visibility of logo against blue gradient background

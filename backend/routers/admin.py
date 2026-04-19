@@ -1718,7 +1718,7 @@ def _generate_reset_otp() -> str:
 @router.post("/reset/request-otp")
 async def request_system_reset_otp(current_user: dict = Depends(require_admin)):
     """Send a 6-digit OTP to admin email to authorize full data reset."""
-    from services.email_service import get_email_service
+    from services.email_service import get_email_service_async
     otp = _generate_reset_otp()
     now = datetime.now(timezone.utc)
     expires_at = (now + timedelta(minutes=10)).isoformat()
@@ -1735,7 +1735,7 @@ async def request_system_reset_otp(current_user: dict = Depends(require_admin)):
         upsert=True
     )
     try:
-        email_service = await get_email_service()
+        email_service = await get_email_service_async()
         await email_service.send_email(
             to_email=current_user["email"],
             subject="E-Bill Admin System Reset OTP",
