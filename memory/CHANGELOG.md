@@ -2,6 +2,24 @@
 
 ## 2026-04-18
 
+### V8.21: Wallet Suspension Threshold Adjustment
+
+#### Wallet Balance Thresholds Updated
+- **Suspension threshold reduced:** ₹100 → ₹50
+  - Operators now suspended when wallet balance drops below ₹50 (was ₹100)
+  - Auto-unsuspend when balance reaches ₹50 or above
+- **Low balance warning threshold reduced:** ₹500 → ₹100
+  - Daily cron now sends WhatsApp low-balance warnings when balance < ₹100 (was < ₹500)
+- **Files modified:** 
+  - `backend/routers/wallet.py` — suspension/unsuspension logic in `deduct_wallet()`, topup handlers, admin credit endpoints
+  - `backend/services/cron_service.py` — daily wallet check cron job, warning message text updated
+
+**New Threshold Summary:**
+```
+₹50   → Suspension threshold (account read-only mode)
+₹100  → Low balance warning (WhatsApp notification sent)
+```
+
 ### V8.20: Welcome Modal, Operator WA Notifications, Invoice Limit Removal
 
 #### 1. Welcome Modal (Admin → Settings → General)

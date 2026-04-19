@@ -87,9 +87,9 @@ async def deduct_wallet(
         "created_at": now.isoformat(),
     })
 
-    # Suspend operator if balance drops below 100
+    # Suspend operator if balance drops below 50
     became_suspended = False
-    if new_balance < 100:
+    if new_balance < 50:
         operator = await db.operators.find_one(
             {"id": operator_id, "deleted_at": None}, {"_id": 0}
         )
@@ -355,7 +355,7 @@ async def verify_topup_payment(
 
     # Resume if wallet was suspended
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
-    if operator and operator.get("wallet_suspended") and new_balance >= 100:
+    if operator and operator.get("wallet_suspended") and new_balance >= 50:
         await db.operators.update_one(
             {"id": operator_id},
             {"$set": {"wallet_suspended": False, "is_read_only": False, "updated_at": now.isoformat()}},
@@ -436,9 +436,9 @@ async def admin_credit_wallet(
         tx_type="admin_credit",
     )
 
-    # Auto-unsuspend if wallet was suspended and balance now ≥ 100
+    # Auto-unsuspend if wallet was suspended and balance now ≥ 50
     now = datetime.now(timezone.utc)
-    if operator.get("wallet_suspended") and new_balance >= 100:
+    if operator.get("wallet_suspended") and new_balance >= 50:
         await db.operators.update_one(
             {"id": operator_id},
             {"$set": {"wallet_suspended": False, "is_read_only": False, "updated_at": now.isoformat()}},
@@ -456,7 +456,7 @@ async def admin_credit_wallet(
     return {
         "message": f"Wallet credited ₹{data.amount:.2f}. New balance: ₹{new_balance:.2f}",
         "new_balance": new_balance,
-        "auto_unsuspended": operator.get("wallet_suspended", False) and new_balance >= 100,
+        "auto_unsuspended": operator.get("wallet_suspended", False) and new_balance >= 50,
     }
 
 

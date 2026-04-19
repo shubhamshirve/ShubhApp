@@ -768,7 +768,7 @@ async def run_daily_wallet_check(db):
             balance = (wallet or {}).get("balance", 0)
             results["checked"] += 1
 
-            if balance < 100 and not op.get("wallet_suspended"):
+            if balance < 50 and not op.get("wallet_suspended"):
                 await db.operators.update_one(
                     {"id": op["id"]},
                     {"$set": {"wallet_suspended": True, "is_read_only": True, "updated_at": now.isoformat()}}
@@ -776,7 +776,7 @@ async def run_daily_wallet_check(db):
                 results["suspended"] += 1
                 logger.warning(f"Operator {op['company_name']} suspended due to low wallet balance: Rs.{balance}")
 
-            elif balance < 500 and not op.get("wallet_suspended"):
+            elif balance < 100 and not op.get("wallet_suspended"):
                 results["reminders_sent"] += 1
                 if wa_service and op.get("phone"):
                     try:
@@ -816,7 +816,7 @@ async def run_daily_wallet_check(db):
                                     f"Dear {op.get('company_name', 'Operator')},\n\n"
                                     f"Your E-Bill wallet balance is low (Rs.{balance:.2f}).\n"
                                     f"Please top-up to keep services active.\n"
-                                    f"Balance below Rs.100 will suspend your account.\n\nLogin to top-up: E-Bill Dashboard"
+                                    f"Balance below Rs.50 will suspend your account.\n\nLogin to top-up: E-Bill Dashboard"
                                 )
                             )
                     except Exception as wa_err:
