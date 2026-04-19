@@ -42,7 +42,6 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Calendar } from "../../components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { 
@@ -74,31 +73,6 @@ import {
   ChevronsUpDown,
   Check,
 } from "lucide-react";
-
-const PopoverDatePicker = ({ date, onSelect, label }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className="w-full justify-start text-left font-normal bg-white">
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : label}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 z-[100]" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d) => {
-            if (d) onSelect(d);
-            setOpen(false);
-          }}
-          initialFocus
-        />
-      </PopoverContent>
-    </Popover>
-  );
-};
 
 const SearchableSubscriberSelect = ({ value, onSelect, authAxios }) => {
   const [open, setOpen] = useState(false);
@@ -889,10 +863,11 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-2">
                   <Label>Due Date *</Label>
-                  <PopoverDatePicker 
-                    date={formData.due_date} 
-                    onSelect={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-                    label="Select Due Date"
+                  <Input
+                    type="date"
+                    value={formData.due_date ? format(formData.due_date, "yyyy-MM-dd") : ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value ? new Date(e.target.value) : null }))}
+                    required
                   />
                 </div>
               </div>
@@ -965,19 +940,21 @@ const OperatorInvoices = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Service Period Start *</Label>
-                          <PopoverDatePicker 
-                            date={item.service_start_date}
-                            onSelect={(date) => updateLineItem(index, "service_start_date", date)}
-                            label="Start Date"
+                          <Input
+                            type="date"
+                            value={item.service_start_date ? format(item.service_start_date, "yyyy-MM-dd") : ""}
+                            onChange={(e) => updateLineItem(index, "service_start_date", e.target.value ? new Date(e.target.value) : null)}
+                            required
                           />
                         </div>
 
                         <div className="space-y-2">
                           <Label>Service Period End *</Label>
-                          <PopoverDatePicker 
-                            date={item.service_end_date}
-                            onSelect={(date) => updateLineItem(index, "service_end_date", date)}
-                            label="End Date"
+                          <Input
+                            type="date"
+                            value={item.service_end_date ? format(item.service_end_date, "yyyy-MM-dd") : ""}
+                            onChange={(e) => updateLineItem(index, "service_end_date", e.target.value ? new Date(e.target.value) : null)}
+                            required
                           />
                         </div>
                       </div>
@@ -1111,10 +1088,11 @@ const OperatorInvoices = () => {
 
               <div className="space-y-2">
                 <Label>Payment Date *</Label>
-                <PopoverDatePicker
-                  date={paymentForm.payment_date}
-                  onSelect={(date) => setPaymentForm(prev => ({ ...prev, payment_date: date }))}
-                  label="Select payment date"
+                <Input
+                  type="date"
+                  value={paymentForm.payment_date ? format(paymentForm.payment_date, "yyyy-MM-dd") : ""}
+                  onChange={(e) => setPaymentForm(prev => ({ ...prev, payment_date: e.target.value ? new Date(e.target.value) : null }))}
+                  required
                 />
               </div>
 

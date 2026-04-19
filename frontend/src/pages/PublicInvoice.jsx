@@ -742,6 +742,12 @@ export default function PublicInvoice() {
                       <p className="font-mono text-slate-800 bg-slate-50 px-3 py-2 rounded-md text-sm border">{invoice.payment_id}</p>
                     </div>
                   )}
+                  {invoice.payment_mode && (
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Payment Mode</p>
+                      <p className="text-slate-800 font-medium capitalize">{invoice.payment_mode.replace(/_/g, ' ')}</p>
+                    </div>
+                  )}
                   {invoice.paid_at && (
                     <div>
                       <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Date Paid</p>

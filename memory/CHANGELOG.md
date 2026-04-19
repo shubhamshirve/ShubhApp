@@ -4,6 +4,22 @@
 
 ### V8.21: Wallet Suspension Threshold Adjustment
 
+#### UI Standardization: Date Pickers
+- **Standardized date pickers** across the entire application
+- Replaced custom PopoverDatePicker (calendar popup) with standard HTML5 `<Input type="date">`
+- **Affected locations:**
+  - Operator Invoices page: Due date, service start/end dates, payment confirmation date
+  - Now matches the date picker style used in Admin Payment Reports page
+- **Benefits:** Consistent UX, better mobile support, native browser date picker
+- **Files:** `frontend/src/pages/operator/Invoices.jsx`
+
+#### Enhancement: Payment Mode on Invoice Receipt
+- **Added payment mode** display to public invoice receipts
+- Shows in "Payment Details" section for paid invoices
+- **Display format:** Capitalizes and formats payment mode (e.g., "Bank Transfer", "Cash", "Own Upi")
+- **Visible only when:** Invoice status is "paid" and payment_mode exists
+- **File:** `frontend/src/pages/PublicInvoice.jsx`
+
 #### Bug Fix: System Reset Email Service
 - **Issue:** System reset OTP emails failed with "No email delivery provider is configured" even when email settings were configured in Admin UI
 - **Root Cause:** `request_system_reset_otp` endpoint was using `get_email_service()` (sync) which only reads from environment variables, ignoring database configuration
