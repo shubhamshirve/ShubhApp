@@ -80,7 +80,7 @@ const BUSINESS_TYPES = [
 ];
 
 const AdminOperators = () => {
-  const { authAxios, applyAccessToken } = useAuth();
+  const { authAxios, refreshCurrentUser } = useAuth();
   const navigate = useNavigate();
   const [operators, setOperators] = useState([]);
   const [plans, setPlans] = useState([]);

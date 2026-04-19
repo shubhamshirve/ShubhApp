@@ -300,7 +300,7 @@ export const AdminLayout = ({ children, title }) => {
 
 export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, authAxios, applyAccessToken } = useAuth();
+  const { user, authAxios, refreshCurrentUser, logout } = useAuth();
   const navigate = useNavigate();
   const isImpersonating = !!user?.impersonated_by;
   const [appState, setAppState] = useState({ maintenance_mode: false, maintenance_message: "", is_read_only: false });
