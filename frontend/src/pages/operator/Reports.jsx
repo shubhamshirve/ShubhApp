@@ -5,8 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { Calendar } from "../../components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { toast } from "sonner";
@@ -218,40 +216,20 @@ const OperatorReports = () => {
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <Label>Start Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateRange.start, "PP")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.start}
-                    onSelect={(date) => date && setDateRange(prev => ({ ...prev, start: date }))}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                type="date"
+                value={dateRange.start ? format(dateRange.start, "yyyy-MM-dd") : ""}
+                onChange={(e) => e.target.value && setDateRange(prev => ({ ...prev, start: new Date(e.target.value) }))}
+              />
             </div>
 
             <div className="space-y-2">
               <Label>End Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateRange.end, "PP")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.end}
-                    onSelect={(date) => date && setDateRange(prev => ({ ...prev, end: date }))}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                type="date"
+                value={dateRange.end ? format(dateRange.end, "yyyy-MM-dd") : ""}
+                onChange={(e) => e.target.value && setDateRange(prev => ({ ...prev, end: new Date(e.target.value) }))}
+              />
             </div>
 
             <Button onClick={() => { fetchReports(); fetchRecentInvoices(1); }} disabled={loading} data-testid="apply-filter-btn">

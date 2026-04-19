@@ -9,9 +9,22 @@
 - Replaced custom PopoverDatePicker (calendar popup) with standard HTML5 `<Input type="date">`
 - **Affected locations:**
   - Operator Invoices page: Due date, service start/end dates, payment confirmation date
+  - Operator Reports page: Start date and end date filters
   - Now matches the date picker style used in Admin Payment Reports page
 - **Benefits:** Consistent UX, better mobile support, native browser date picker
-- **Files:** `frontend/src/pages/operator/Invoices.jsx`
+- **Files:** `frontend/src/pages/operator/Invoices.jsx`, `frontend/src/pages/operator/Reports.jsx`
+
+#### Enhancement: Search Bar on Plans Page
+- **Added search functionality** to Plans page
+- Search by plan name, description, or price
+- Real-time filtering as you type
+- Shows appropriate empty state for no results
+- **File:** `frontend/src/pages/operator/Plans.jsx`
+
+#### Enhancement: Audit Logs Pagination
+- **Reduced pagination limit** from 50 to 20 items per page
+- Better performance and faster load times
+- **File:** `frontend/src/pages/admin/AuditLogs.jsx`
 
 #### Enhancement: Payment Mode on Invoice Receipt
 - **Added payment mode** display to public invoice receipts

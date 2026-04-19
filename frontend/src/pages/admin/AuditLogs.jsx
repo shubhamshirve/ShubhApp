@@ -33,7 +33,7 @@ import {
   Filter, RefreshCw,
 } from "lucide-react";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const ACTION_OPTIONS = ["create", "update", "delete", "login", "payment", "trigger"];
 const ROLE_OPTIONS   = ["admin", "operator", "staff"];

@@ -71,12 +71,28 @@ const OperatorPlans = () => {
     try {
       const response = await authAxios.get("/operator/plans");
       setPlans(response.data);
+      setFilteredPlans(response.data);
     } catch (error) {
       toast.error("Failed to load plans");
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter plans based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredPlans(plans);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = plans.filter(plan => 
+        plan.name.toLowerCase().includes(query) ||
+        plan.description?.toLowerCase().includes(query) ||
+        plan.price.toString().includes(query)
+      );
+      setFilteredPlans(filtered);
+    }
+  }, [searchQuery, plans]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -217,9 +233,19 @@ const OperatorPlans = () => {
     <OperatorLayout title="Plans" isReadOnly={isReadOnly}>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <p className="text-slate-500">Define service plans for your subscribers</p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Search plans..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
             <Button
               variant="outline"
               onClick={() => { setShowBulkDialog(true); setBulkFile(null); setBulkResult(null); }}
@@ -240,19 +266,27 @@ const OperatorPlans = () => {
         </div>
 
         {/* Plans Grid */}
-        {plans.length === 0 ? (
+        {filteredPlans.length === 0 ? (
           <Card className="p-8 text-center">
             <Package className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-            <h3 className="text-lg font-medium text-slate-900 mb-2">No plans yet</h3>
-            <p className="text-slate-500 mb-4">Create your first service plan to start adding subscribers</p>
-            <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={() => setShowBulkDialog(true)} disabled={isReadOnly}>
-                <Upload className="w-4 h-4 mr-2" /> Bulk Upload
-              </Button>
-              <Button onClick={() => setShowDialog(true)} disabled={isReadOnly}>
-                <Plus className="w-4 h-4 mr-2" /> Create Your First Plan
-              </Button>
-            </div>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">
+              {searchQuery ? "No plans found" : "No plans yet"}
+            </h3>
+            <p className="text-slate-500 mb-4">
+              {searchQuery 
+                ? "Try adjusting your search criteria" 
+                : "Create your first service plan to start adding subscribers"}
+            </p>
+            {!searchQuery && (
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" onClick={() => setShowBulkDialog(true)} disabled={isReadOnly}>
+                  <Upload className="w-4 h-4 mr-2" /> Bulk Upload
+                </Button>
+                <Button onClick={() => setShowDialog(true)} disabled={isReadOnly}>
+                  <Plus className="w-4 h-4 mr-2" /> Create Your First Plan
+                </Button>
+              </div>
+            )}
           </Card>
         ) : (
           <Card>
@@ -270,7 +304,7 @@ const OperatorPlans = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {plans.map((plan) => (
+                  {filteredPlans.map((plan) => (
                     <TableRow key={plan.id} data-testid={`plan-row-${plan.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-2 font-medium">
