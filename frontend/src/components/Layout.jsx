@@ -321,13 +321,13 @@ export const OperatorLayout = ({ children, title, isReadOnly = false }) => {
 
   const handleReturnToAdmin = async () => {
     try {
-      const res = await authAxios.post("/admin/return-from-impersonate");
-      await applyAccessToken(res.data.access_token);
-      localStorage.removeItem("impersonating");
+      await authAxios.post("/admin/return-from-impersonate");
+      // Cookie is set by backend, just refresh user and redirect
+      await refreshCurrentUser();
       window.location.href = "/admin/operators";
     } catch {
-      localStorage.removeItem("token");
-      localStorage.removeItem("impersonating");
+      // If error, logout completely
+      await logout();
       window.location.href = "/login";
     }
   };

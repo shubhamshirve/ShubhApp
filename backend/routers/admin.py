@@ -1,5 +1,5 @@
 """Admin: SaaS Plans, Operators, Settings, Gateways, Addons, Dashboard, Audit, Cron, Reports."""
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request, Response
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import os
@@ -394,7 +394,7 @@ async def activate_operator(operator_id: str, current_user: dict = Depends(requi
 
 
 @router.post("/operators/{operator_id}/impersonate")
-async def impersonate_operator(operator_id: str, current_user: dict = Depends(require_admin)):
+async def impersonate_operator(operator_id: str, response: Response, current_user: dict = Depends(require_admin)):
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
@@ -408,6 +408,18 @@ async def impersonate_operator(operator_id: str, current_user: dict = Depends(re
         "id": user["id"], "email": user["email"], "role": "operator",
         "operator_id": operator_id, "impersonated_by": current_user["id"]
     }, expiration_hours=timeout)
+    
+    # Set httpOnly cookie for impersonation
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=int(timeout * 3600),
+        path="/"
+    )
+    
     return {
         "access_token": token, "token_type": "bearer",
         "operator": {"id": operator_id, "company_name": operator["company_name"], "owner_name": operator.get("owner_name", "")}
@@ -415,7 +427,7 @@ async def impersonate_operator(operator_id: str, current_user: dict = Depends(re
 
 
 @router.post("/return-from-impersonate")
-async def return_from_impersonate(current_user: dict = Depends(get_current_user)):
+async def return_from_impersonate(response: Response, current_user: dict = Depends(get_current_user)):
     impersonated_by = current_user.get("impersonated_by")
     if not impersonated_by:
         raise HTTPException(status_code=400, detail="Not impersonating any operator")
@@ -434,6 +446,18 @@ async def return_from_impersonate(current_user: dict = Depends(get_current_user)
         {"id": admin_user["id"], "email": admin_user["email"], "role": "admin", "session_id": session_id},
         expiration_hours=timeout,
     )
+    
+    # Set httpOnly cookie for admin return
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=int(timeout * 3600),
+        path="/"
+    )
+    
     return {"access_token": token, "token_type": "bearer"}
 
 

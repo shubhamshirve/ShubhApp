@@ -351,10 +351,9 @@ const AdminOperators = () => {
 
   const handleImpersonate = async (operator) => {
     try {
-      const response = await authAxios.post(`/admin/operators/${operator.id}/impersonate`);
-      const { access_token } = response.data;
-      await applyAccessToken(access_token);
-      localStorage.setItem("impersonating", "true");
+      await authAxios.post(`/admin/operators/${operator.id}/impersonate`);
+      // Cookie is set by backend, just refresh user and redirect
+      await refreshCurrentUser();
       window.location.href = "/operator";
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to impersonate operator");
