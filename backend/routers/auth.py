@@ -521,7 +521,7 @@ async def login(data: UserLogin, request: Request, response: Response):
     if not verify_password(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if user["status"] != "active":
+    if user.get("status", "active") != "active":
         raise HTTPException(status_code=401, detail="Account is not active")
 
     token = await _issue_user_session(user)
@@ -553,7 +553,7 @@ async def login(data: UserLogin, request: Request, response: Response):
         user=UserResponse(
             id=user["id"], email=user["email"], name=user["name"],
             phone=user.get("phone"), role=user["role"],
-            operator_id=user.get("operator_id"), status=user["status"],
+            operator_id=user.get("operator_id"), status=user.get("status", "active"),
             created_at=datetime.fromisoformat(user["created_at"])
         )
     )
@@ -566,7 +566,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         id=current_user["id"], email=current_user["email"],
         name=current_user["name"], phone=current_user.get("phone"),
         role=current_user["role"], operator_id=current_user.get("operator_id"),
-        status=current_user["status"],
+        status=current_user.get("status", "active"),
         impersonated_by=current_user.get("impersonated_by"),
         created_at=datetime.fromisoformat(current_user["created_at"])
     )
