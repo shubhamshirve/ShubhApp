@@ -827,6 +827,10 @@ async def get_whatsapp_template_settings(current_user: dict = Depends(require_ad
             "payment_confirmation_template": "",
             "announcement_template": "",
             "payment_due_reminder_template": "",
+            "operator_low_balance_template": "",
+            "operator_account_expiry_template": "",
+            "operator_renewal_template": "",
+            "operator_daily_report_template": "",
         }
     return {
         "invoice_template": settings.get("invoice_template", ""),
@@ -834,6 +838,10 @@ async def get_whatsapp_template_settings(current_user: dict = Depends(require_ad
         "payment_confirmation_template": settings.get("payment_confirmation_template", ""),
         "announcement_template": settings.get("announcement_template", ""),
         "payment_due_reminder_template": settings.get("payment_due_reminder_template", ""),
+        "operator_low_balance_template": settings.get("operator_low_balance_template", ""),
+        "operator_account_expiry_template": settings.get("operator_account_expiry_template", ""),
+        "operator_renewal_template": settings.get("operator_renewal_template", ""),
+        "operator_daily_report_template": settings.get("operator_daily_report_template", ""),
     }
 
 
@@ -842,11 +850,17 @@ async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, curr
     now = datetime.now(timezone.utc)
     settings = {
         "type": "whatsapp_template_settings",
+        # Subscriber-facing templates
         "invoice_template": data.invoice_template or "",
         "reminder_template": data.reminder_template or "",
         "payment_confirmation_template": data.payment_confirmation_template or "",
         "announcement_template": data.announcement_template or "",
         "payment_due_reminder_template": data.payment_due_reminder_template or "",
+        # Operator-facing templates (used by cron jobs)
+        "operator_low_balance_template": data.operator_low_balance_template or "",
+        "operator_account_expiry_template": data.operator_account_expiry_template or "",
+        "operator_renewal_template": data.operator_renewal_template or "",
+        "operator_daily_report_template": data.operator_daily_report_template or "",
         "updated_at": now.isoformat(),
         "updated_by": current_user["id"]
     }
@@ -859,6 +873,10 @@ async def update_whatsapp_template_settings(data: WhatsAppTemplateSettings, curr
                         "payment_confirmation": data.payment_confirmation_template,
                         "announcement": data.announcement_template,
                         "payment_due_reminder": data.payment_due_reminder_template,
+                        "operator_low_balance": data.operator_low_balance_template,
+                        "operator_account_expiry": data.operator_account_expiry_template,
+                        "operator_renewal": data.operator_renewal_template,
+                        "operator_daily_report": data.operator_daily_report_template,
                     }},
                     ip_address=current_user.get("_ip_address"))
     return {"message": "Template settings updated successfully"}

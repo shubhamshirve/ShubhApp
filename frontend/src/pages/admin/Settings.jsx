@@ -140,6 +140,10 @@ const AdminSettings = () => {
     payment_confirmation_template: "",
     announcement_template: "",
     payment_due_reminder_template: "",
+    operator_low_balance_template: "",
+    operator_account_expiry_template: "",
+    operator_renewal_template: "",
+    operator_daily_report_template: "",
   });
   const [templateSettingsLoading, setTemplateSettingsLoading] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState([]);
@@ -337,6 +341,10 @@ const AdminSettings = () => {
         payment_confirmation_template: res.data.payment_confirmation_template || "",
         announcement_template: res.data.announcement_template || "",
         payment_due_reminder_template: res.data.payment_due_reminder_template || "",
+        operator_low_balance_template: res.data.operator_low_balance_template || "",
+        operator_account_expiry_template: res.data.operator_account_expiry_template || "",
+        operator_renewal_template: res.data.operator_renewal_template || "",
+        operator_daily_report_template: res.data.operator_daily_report_template || "",
       });
     } catch { /* ignore */ }
   };

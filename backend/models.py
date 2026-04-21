@@ -726,11 +726,18 @@ class WhatsAppConfig(SanitizedModel):
 
 
 class WhatsAppTemplateSettings(SanitizedModel):
+    # ── Subscriber-facing templates ───────────────────────────────────────────
     invoice_template: Optional[str] = None
     reminder_template: Optional[str] = None
     payment_confirmation_template: Optional[str] = None
     announcement_template: Optional[str] = None
     payment_due_reminder_template: Optional[str] = None  # Template for overdue invoice payment due reminders
+
+    # ── Operator-facing templates (sent to operator's phone via cron) ─────────
+    operator_low_balance_template: Optional[str] = None       # Sent by daily_wallet_check when balance < threshold
+    operator_account_expiry_template: Optional[str] = None    # Sent by daily_expiry when subscription/trial expires
+    operator_renewal_template: Optional[str] = None           # Sent by daily_expiry 7/3/1 days before expiry
+    operator_daily_report_template: Optional[str] = None      # Sent by daily_operator_report every morning
 
 
 class WhatsAppTestMessage(SanitizedModel):
