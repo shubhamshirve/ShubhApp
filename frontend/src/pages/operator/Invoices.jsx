@@ -42,6 +42,11 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Calendar } from "../../components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { 
@@ -227,6 +232,8 @@ const OperatorInvoices = () => {
     subscriber_id: "",
     line_items: [{
       plan_id: "",
+      item_type: "plan", // "plan" or "custom"
+      description: "",
       base_amount: 0,
       discount: 0,
       service_start_date: new Date(),
@@ -304,7 +311,11 @@ const OperatorInvoices = () => {
     if (formData.line_items.length === 0) { toast.error("Please add at least one line item"); return; }
     
     for (const item of formData.line_items) {
-      if (!item.plan_id) { toast.error("Please select a plan for all items"); return; }
+      if (item.item_type === "custom") {
+        if (!item.description?.trim()) { toast.error("Please enter a description for custom items"); return; }
+      } else {
+        if (!item.plan_id) { toast.error("Please select a plan for all items"); return; }
+      }
       if (item.base_amount <= 0) { toast.error("Base amount must be greater than 0"); return; }
       if (item.discount < 0) { toast.error("Discount cannot be negative"); return; }
       if (item.discount > item.base_amount) { toast.error("Discount cannot exceed base amount"); return; }
@@ -323,7 +334,11 @@ const OperatorInvoices = () => {
         subscriber_id: formData.subscriber_id,
         due_date: formData.due_date.toISOString(),
         line_items: formData.line_items.map(item => ({
-          ...item,
+          plan_id: item.item_type === "custom" ? null : item.plan_id,
+          is_custom: item.item_type === "custom",
+          description: item.item_type === "custom" ? item.description : null,
+          base_amount: item.base_amount,
+          discount: item.discount,
           service_start_date: item.service_start_date.toISOString(),
           service_end_date: item.service_end_date.toISOString()
         }))
@@ -409,6 +424,8 @@ const OperatorInvoices = () => {
       ...prev,
       line_items: [...prev.line_items, {
         plan_id: "",
+        item_type: "plan",
+        description: "",
         base_amount: 0,
         discount: 0,
         service_start_date: new Date(),
@@ -436,6 +453,15 @@ const OperatorInvoices = () => {
       }
     }
     
+    // When switching item type, reset plan_id or description
+    if (field === "item_type") {
+      if (value === "custom") {
+        updatedItems[index].plan_id = "";
+      } else {
+        updatedItems[index].description = "";
+      }
+    }
+    
     setFormData(prev => ({ ...prev, line_items: updatedItems }));
   };
 
@@ -445,6 +471,8 @@ const OperatorInvoices = () => {
       subscriber_id: "",
       line_items: [{
         plan_id: "",
+        item_type: "plan",
+        description: "",
         base_amount: 0,
         discount: 0,
         service_start_date: new Date(),
@@ -459,7 +487,9 @@ const OperatorInvoices = () => {
     setFormData({
       subscriber_id: invoice.subscriber_id,
       line_items: (invoice.line_items || []).map((item) => ({
-        plan_id: item.plan_id,
+        plan_id: item.plan_id || "",
+        item_type: item.is_custom ? "custom" : "plan",
+        description: item.description || item.plan_name || "",
         base_amount: item.base_amount ?? 0,
         discount: item.discount ?? 0,
         service_start_date: new Date(item.service_start_date),
@@ -727,8 +757,9 @@ const OperatorInvoices = () => {
                       <TableCell>
                         <div className="space-y-1">
                           {invoice.line_items?.map((item, idx) => (
-                            <span key={idx} className="text-xs bg-slate-100 px-1.5 py-0.5 rounded block w-fit">
-                              {item.plan_name}
+                            <span key={idx} className={`text-xs px-1.5 py-0.5 rounded block w-fit ${item.is_custom ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>
+                              {item.is_custom ? (item.description || item.plan_name) : item.plan_name}
+                              {item.is_custom && <span className="ml-1 opacity-60">(custom)</span>}
                             </span>
                           ))}
                           {(!invoice.line_items || invoice.line_items.length === 0) && (
@@ -882,7 +913,7 @@ const OperatorInvoices = () => {
 
                 <div className="space-y-4">
                   {formData.line_items.map((item, index) => (
-                    <div key={item.plan_id || `line-item-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100 space-y-4">
+                    <div key={`line-item-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100 space-y-4">
                       {formData.line_items.length > 1 && (
                         <Button 
                           type="button" 
@@ -895,24 +926,66 @@ const OperatorInvoices = () => {
                         </Button>
                       )}
 
+                      {/* Item type toggle */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={item.item_type !== "custom" ? "default" : "outline"}
+                          className="h-7 text-xs"
+                          onClick={() => updateLineItem(index, "item_type", "plan")}
+                        >
+                          Plan
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={item.item_type === "custom" ? "default" : "outline"}
+                          className="h-7 text-xs"
+                          onClick={() => updateLineItem(index, "item_type", "custom")}
+                        >
+                          Custom Item
+                        </Button>
+                        {item.item_type === "custom" && (
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                            Ad-hoc charge (not linked to a plan)
+                          </span>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label>Plan *</Label>
-                          <Select 
-                            value={item.plan_id || undefined} 
-                            onValueChange={(val) => updateLineItem(index, "plan_id", val)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select plan" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {plans.map((plan) => (
-                                <SelectItem key={plan.id} value={plan.id}>
-                                  {plan.name} - ₹{plan.price}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {item.item_type === "custom" ? (
+                            <>
+                              <Label>Item Description *</Label>
+                              <Input
+                                type="text"
+                                placeholder="e.g. Installation charge, Router rental..."
+                                value={item.description || ""}
+                                onChange={(e) => updateLineItem(index, "description", e.target.value)}
+                                required
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <Label>Plan *</Label>
+                              <Select 
+                                value={item.plan_id || undefined} 
+                                onValueChange={(val) => updateLineItem(index, "plan_id", val)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select plan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {plans.map((plan) => (
+                                    <SelectItem key={plan.id} value={plan.id}>
+                                      {plan.name} - ₹{plan.price}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </>
+                          )}
                         </div>
 
                         <div className="space-y-2">

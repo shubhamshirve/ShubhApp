@@ -94,6 +94,7 @@ const OperatorSettings = () => {
       show_subscriber_phone: true,
       show_subscriber_email: true,
       show_subscriber_address: true,
+      show_gst_number: true,
     },
   });
 
@@ -150,6 +151,7 @@ const OperatorSettings = () => {
           show_subscriber_phone: invoiceRes.data.visible_fields?.show_subscriber_phone !== false,
           show_subscriber_email: invoiceRes.data.visible_fields?.show_subscriber_email !== false,
           show_subscriber_address: invoiceRes.data.visible_fields?.show_subscriber_address !== false,
+          show_gst_number: invoiceRes.data.visible_fields?.show_gst_number !== false,
         },
       });
     } catch (error) {
@@ -765,6 +767,7 @@ const OperatorSettings = () => {
                         ["show_subscriber_phone", "Show Subscriber Phone"],
                         ["show_subscriber_email", "Show Subscriber Email"],
                         ["show_subscriber_address", "Show Subscriber Address"],
+                        ["show_gst_number", "Show GST Number"],
                       ].map(([key, label]) => (
                         <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
                           <Label className="font-normal">{label}</Label>

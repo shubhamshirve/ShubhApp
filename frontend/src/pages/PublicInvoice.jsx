@@ -385,7 +385,7 @@ export default function PublicInvoice() {
                     {operator.company_address}
                   </p>
                 )}
-                {showGst && operator.gst_number && (
+                {visibleFields.show_gst_number !== false && operator.gst_number && (
                   <p className="text-sm text-slate-600 font-medium mt-1">
                     GSTIN: {operator.gst_number}
                   </p>

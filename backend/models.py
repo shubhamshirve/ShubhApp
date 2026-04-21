@@ -404,8 +404,10 @@ class OperatorPlanResponse(SanitizedModel):
 # ============== INVOICE MODELS ==============
 
 class InvoiceLineItem(SanitizedModel):
-    plan_id: str
+    plan_id: Optional[str] = None
     plan_name: Optional[str] = None
+    description: Optional[str] = None  # Used for custom items when plan_id is None
+    is_custom: bool = False  # True for custom/ad-hoc line items not linked to a plan
     base_amount: float
     discount: float = 0
     tax_amount: float = 0
@@ -669,6 +671,7 @@ class InvoiceCustomization(SanitizedModel):
         "show_subscriber_phone": True,
         "show_subscriber_email": True,
         "show_subscriber_address": True,
+        "show_gst_number": True,
     })
 
     @field_validator("company_phone")

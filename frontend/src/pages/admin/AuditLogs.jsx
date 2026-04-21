@@ -35,7 +35,7 @@ import {
 
 const PAGE_SIZE = 20;
 
-const ACTION_OPTIONS = ["create", "update", "delete", "login", "payment", "trigger"];
+const ACTION_OPTIONS = ["create", "update", "delete", "login", "payment", "trigger", "cron_executed"];
 const ROLE_OPTIONS   = ["admin", "operator", "staff"];
 const MODULE_OPTIONS = [
   "auth", "operators", "saas_plans", "subscribers", "invoices",
@@ -125,6 +125,7 @@ const AdminAuditLogs = () => {
       login:   "bg-purple-100 text-purple-700",
       payment: "bg-amber-100 text-amber-700",
       trigger: "bg-indigo-100 text-indigo-700",
+      cron_executed: "bg-teal-100 text-teal-700",
     };
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[act] || "bg-slate-100 text-slate-700"}`}>

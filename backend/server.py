@@ -329,13 +329,34 @@ async def startup_event():
     )
 
     async def run_daily_backup_job():
-        await _do_backup("auto")
+        from services.cron_service import log_cron_execution
+        try:
+            await _do_backup("auto")
+            await log_cron_execution(db, "daily_backup", "success", {"type": "auto"})
+        except Exception as backup_err:
+            await log_cron_execution(db, "daily_backup", "failed", {}, error=str(backup_err))
+            raise
 
     def scheduler_listener(event):
+        import asyncio
+        job_id = event.job_id
         if event.exception:
-            logger.exception("Scheduled job '%s' failed", event.job_id, exc_info=event.exception)
+            logger.exception("Scheduled job '%s' failed", job_id, exc_info=event.exception)
+            # Log failure to audit logs
+            async def _log_failure():
+                try:
+                    from services.cron_service import log_cron_execution
+                    await log_cron_execution(db, job_id, "failed", {}, error=str(event.exception))
+                except Exception as _e:
+                    logger.warning(f"Failed to write cron failure audit log: {_e}")
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(_log_failure())
+            except Exception:
+                pass
         else:
-            logger.info("Scheduled job '%s' completed successfully", event.job_id)
+            logger.info("Scheduled job '%s' completed successfully", job_id)
 
     platform_settings = await get_global_settings_doc({"type": "platform"}, {"_id": 0}) or {}
     schedule = merge_cron_schedule_settings(platform_settings)

@@ -55,6 +55,30 @@ async def build_invoice_payload(operator_id: str, data: InvoiceCreate | InvoiceU
     line_items = []
 
     for item in data.line_items:
+        # Handle custom items (no plan linked)
+        if item.is_custom:
+            if not item.description:
+                raise HTTPException(status_code=400, detail="Custom items require a description")
+
+            final_amount = item.base_amount - item.discount
+            enriched_item = item.model_dump()
+            enriched_item["plan_name"] = item.description  # Use description as plan_name for display
+            enriched_item["plan_description"] = None
+            enriched_item["tax_amount"] = 0.0
+            enriched_item["final_amount"] = round(final_amount, 2)
+            enriched_item["service_start_date"] = item.service_start_date.isoformat()
+            enriched_item["service_end_date"] = item.service_end_date.isoformat()
+            line_items.append(enriched_item)
+
+            total_base += item.base_amount
+            total_discount += item.discount
+            total_final += final_amount
+            continue
+
+        # Standard plan-based item
+        if not item.plan_id:
+            raise HTTPException(status_code=400, detail="Plan-based items require a plan_id")
+
         plan = await db.operator_plans.find_one({"id": item.plan_id, "deleted_at": None}, {"_id": 0})
         if not plan:
             raise HTTPException(status_code=404, detail=f"Plan {item.plan_id} not found")

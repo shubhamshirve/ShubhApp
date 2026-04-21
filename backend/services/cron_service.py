@@ -16,6 +16,35 @@ async def get_maintenance_state(db) -> Dict[str, Any]:
         "maintenance_message": settings.get("maintenance_message") or "The app is under maintenance.",
     }
 
+
+async def log_cron_execution(db, job_id: str, status: str, results: dict = None, error: str = None):
+    """Log cron job execution to audit_logs collection."""
+    try:
+        from utils import generate_id
+        now = datetime.now(timezone.utc)
+        audit_log = {
+            "id": generate_id(),
+            "user_id": "system",
+            "user_name": "Scheduler",
+            "role": "system",
+            "action": "cron_executed",
+            "module": "cron_jobs",
+            "old_value": None,
+            "new_value": {
+                "job_id": job_id,
+                "status": status,
+                "results": results or {},
+                "error": error,
+                "executed_at": now.isoformat(),
+            },
+            "ip_address": None,
+            "operator_id": None,
+            "created_at": now.isoformat(),
+        }
+        await db.audit_logs.insert_one(audit_log)
+    except Exception as e:
+        logger.warning(f"Failed to log cron execution to audit_logs: {e}")
+
 class CronJobService:
     """Service for scheduled tasks like invoice generation and reminders"""
     
@@ -178,7 +207,7 @@ class CronJobService:
                             wa_id=wa_wa_id,
                             invoice_id=invoice["id"],
                             invoice_number=invoice["invoice_number"],
-                            trigger="cron",
+                            trigger="cron_reminder",
                         )
                     except Exception as log_e:
                         logger.warning(f"WhatsApp message log failed: {log_e}")
@@ -691,7 +720,7 @@ class CronJobService:
                                 wa_id=wa_wa_id,
                                 invoice_id=invoice["id"],
                                 invoice_number=invoice["invoice_number"],
-                                trigger="cron",
+                                trigger="cron_reminder",
                             )
                         except Exception as log_e:
                             logger.warning(f"WhatsApp message log failed: {log_e}")
@@ -731,6 +760,7 @@ async def run_daily_invoice_generation(db):
     service = CronJobService(db)
     results = await service.generate_upcoming_invoices(days_before=days_before)
     logger.info(f"Daily invoice generation: {results}")
+    await log_cron_execution(db, "daily_invoices", "success", results)
     return results
 
 
@@ -739,6 +769,7 @@ async def run_daily_reminder_processing(db):
     service = CronJobService(db)
     results = await service.process_scheduled_reminders()
     logger.info(f"Daily scheduled reminders: {results}")
+    await log_cron_execution(db, "daily_reminders", "success", results)
     return results
 
 
@@ -806,7 +837,7 @@ async def run_daily_wallet_check(db):
                                 status="sent",
                                 message_id=wa_msg_id,
                                 wa_id=wa_wa_id,
-                                trigger="cron",
+                                trigger="cron_wallet",
                             )
                         else:
                             # Fallback: plain text (works only within 24h window)
@@ -826,6 +857,7 @@ async def run_daily_wallet_check(db):
             results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")
 
     logger.info(f"Daily wallet check: {results}")
+    await log_cron_execution(db, "daily_wallet_check", "success", results)
     return results
 
 
@@ -910,7 +942,7 @@ async def run_daily_expiry_check(db):
                     db, operator_id=op["id"], template_name=expiry_tpl,
                     template_category="operator_account_expiry",
                     recipient_phone=op["phone"], status="sent",
-                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron_expiry",
                 )
             except Exception as wa_err:
                 logger.warning(f"Expiry WA failed for {op['id']}: {wa_err}")
@@ -950,7 +982,7 @@ async def run_daily_expiry_check(db):
                     db, operator_id=op["id"], template_name=expiry_tpl,
                     template_category="operator_account_expiry",
                     recipient_phone=op["phone"], status="sent",
-                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                    message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron_expiry",
                 )
             except Exception as wa_err:
                 logger.warning(f"Expiry WA failed for {op['id']}: {wa_err}")
@@ -998,13 +1030,14 @@ async def run_daily_expiry_check(db):
                         db, operator_id=op["id"], template_name=renewal_tpl,
                         template_category="operator_renewal",
                         recipient_phone=op["phone"], status="sent",
-                        message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                        message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron_expiry",
                     )
                     results["renewal_reminders"] += 1
                 except Exception as wa_err:
                     logger.warning(f"Renewal WA failed for {op.get('id')}: {wa_err}")
 
     logger.info(f"Daily expiry check: {results}")
+    await log_cron_execution(db, "daily_expiry", "success", results)
     return results
 
 
@@ -1096,7 +1129,7 @@ async def run_daily_operator_report(db):
                 db, operator_id=op_id, template_name=report_tpl,
                 template_category="operator_daily_report",
                 recipient_phone=op["phone"], status="sent",
-                message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron",
+                message_id=wa_msg_id, wa_id=wa_wa_id, trigger="cron_report",
             )
             results["sent"] += 1
 
@@ -1104,4 +1137,5 @@ async def run_daily_operator_report(db):
             results["errors"].append(f"Operator {op.get('id', '?')}: {str(e)}")
 
     logger.info(f"Daily operator report: {results}")
+    await log_cron_execution(db, "daily_operator_report", "success", results)
     return results

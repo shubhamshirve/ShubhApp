@@ -15,6 +15,7 @@ DEFAULT_VISIBLE_FIELDS = {
     "show_subscriber_phone": True,
     "show_subscriber_email": True,
     "show_subscriber_address": True,
+    "show_gst_number": True,
 }
 
 

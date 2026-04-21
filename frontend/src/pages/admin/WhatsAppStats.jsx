@@ -68,10 +68,25 @@ const CATEGORY_LABELS = {
 };
 
 const TRIGGER_LABELS = {
-  cron: "Scheduled",
-  manual: "Manual",
+  cron: "Scheduled (Legacy)",
+  cron_reminder: "Payment Reminders",
+  cron_wallet: "Wallet Alerts",
+  cron_expiry: "Expiry Notifications",
+  cron_report: "Daily Reports",
+  manual: "Manual (Operator)",
   auto_invoice: "Auto Invoice",
   payment_confirmation: "Payment Confirmed",
+};
+
+const TRIGGER_COLORS = {
+  cron: "bg-slate-100 text-slate-700",
+  cron_reminder: "bg-amber-100 text-amber-700",
+  cron_wallet: "bg-orange-100 text-orange-700",
+  cron_expiry: "bg-red-100 text-red-700",
+  cron_report: "bg-indigo-100 text-indigo-700",
+  manual: "bg-slate-100 text-slate-600",
+  auto_invoice: "bg-blue-100 text-blue-700",
+  payment_confirmation: "bg-green-100 text-green-700",
 };
 
 function StatCard({ title, value, subtitle, icon: Icon, color = "blue", trend = null }) {
@@ -325,6 +340,7 @@ export default function WhatsAppStats() {
             ))}
           </div>
         ) : stats ? (
+          <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Total Messages"
@@ -356,6 +372,45 @@ export default function WhatsAppStats() {
               trend={stats.success_rate}
             />
           </div>
+          {/* Automated vs Manual Breakdown */}
+          {stats.by_trigger && Object.keys(stats.by_trigger).length > 0 && (() => {
+            const manualCount = stats.by_trigger["manual"] || 0;
+            const automated = Object.entries(stats.by_trigger)
+              .filter(([t]) => t !== "manual")
+              .reduce((s, [, c]) => s + c, 0);
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Card className="border-indigo-100 bg-indigo-50/30">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-indigo-600 mb-1">Automated (All)</p>
+                    <p className="text-2xl font-bold text-indigo-800">{automated.toLocaleString()}</p>
+                    <p className="text-[11px] text-indigo-400 mt-0.5">By software / cron jobs</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-100 bg-slate-50/30">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-slate-600 mb-1">Manual (Operator)</p>
+                    <p className="text-2xl font-bold text-slate-800">{manualCount.toLocaleString()}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Triggered by operator</p>
+                  </CardContent>
+                </Card>
+                {Object.entries(stats.by_trigger)
+                  .filter(([t]) => t !== "manual" && t !== "cron")
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([trigger, count]) => (
+                    <Card key={trigger} className="border-slate-100">
+                      <CardContent className="p-4">
+                        <p className="text-xs font-medium text-slate-600 mb-1">{TRIGGER_LABELS[trigger] || trigger}</p>
+                        <p className="text-2xl font-bold text-slate-800">{count.toLocaleString()}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Auto triggered</p>
+                      </CardContent>
+                    </Card>
+                  ))
+                }
+              </div>
+            );
+          })()}
+          </>
         ) : null}
 
         {/* Activity Chart + Breakdown */}
@@ -425,15 +480,14 @@ export default function WhatsAppStats() {
 
                 {stats.by_trigger && Object.keys(stats.by_trigger).length > 0 && (
                   <div className="mt-4 pt-3 border-t border-slate-100">
-                    <p className="text-xs text-slate-500 font-medium mb-2">By Trigger</p>
+                    <p className="text-xs text-slate-500 font-medium mb-2">By Trigger Source</p>
                     <div className="space-y-1.5">
-                      {Object.entries(stats.by_trigger).map(([trigger, count]) => (
+                      {Object.entries(stats.by_trigger).sort((a, b) => b[1] - a[1]).map(([trigger, count]) => (
                         <div key={trigger} className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1.5 text-slate-500">
-                            <Clock className="w-3 h-3" />
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${TRIGGER_COLORS[trigger] || "bg-slate-100 text-slate-600"}`}>
                             {TRIGGER_LABELS[trigger] || trigger}
                           </span>
-                          <span className="font-medium text-slate-700">{count}</span>
+                          <span className="font-semibold text-slate-700">{count.toLocaleString()}</span>
                         </div>
                       ))}
                     </div>
