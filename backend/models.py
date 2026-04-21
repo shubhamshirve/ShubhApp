@@ -547,6 +547,8 @@ class GlobalSettingsUpdate(SanitizedModel):
     auto_invoice_days_before: int = 3
     late_fee_percentage: float = 0
     gst_rate: float = 18
+    gst_enabled_on_saas_plans: bool = True    # Apply GST on SaaS plan purchases/renewals
+    gst_enabled_on_wallet_topup: bool = True  # Apply GST on operator wallet top-ups
     referral_discount_percent: float = 10
     referral_discount_max_amount: float = 500
     referral_reward_percent: float = 5

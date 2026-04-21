@@ -148,6 +148,10 @@ const AdminSettings = () => {
   const [templateSettingsLoading, setTemplateSettingsLoading] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState([]);
 
+  // Cron run-now state
+  const [cronRunning, setCronRunning] = useState({});
+  const [cronStatus, setCronStatus] = useState(null);
+
   // WhatsApp test message state
   const [testPhone, setTestPhone] = useState("");
   const [testSending, setTestSending] = useState(false);
@@ -193,7 +197,8 @@ const AdminSettings = () => {
     Promise.all([
       fetchSettings(), fetchGateways(), fetchOperators(), fetchBackups(),
       fetchWaConfig(), fetchTemplateSettings(), fetchTemplates(),
-      fetchReminderSettings(), fetchEmailConfig(), fetchSecuritySettings()
+      fetchReminderSettings(), fetchEmailConfig(), fetchSecuritySettings(),
+      fetchCronStatus()
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -424,6 +429,37 @@ const AdminSettings = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update settings");
     }
+  };
+
+  const handleRunCronNow = async (job) => {
+    setCronRunning(prev => ({ ...prev, [job.id]: true }));
+    try {
+      const res = await authAxios.post(`/admin/cron/${job.endpoint}`);
+      const result = res.data;
+      const summary = typeof result === "object"
+        ? Object.entries(result)
+            .filter(([k]) => !["errors"].includes(k))
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ")
+        : JSON.stringify(result);
+      toast.success(`${job.label} completed — ${summary}`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || `Failed to run ${job.label}`);
+    } finally {
+      setCronRunning(prev => ({ ...prev, [job.id]: false }));
+      // Refresh cron status
+      try {
+        const statusRes = await authAxios.get("/admin/cron/status");
+        setCronStatus(statusRes.data?.jobs || []);
+      } catch {}
+    }
+  };
+
+  const fetchCronStatus = async () => {
+    try {
+      const res = await authAxios.get("/admin/cron/status");
+      setCronStatus(res.data?.jobs || []);
+    } catch {}
   };
 
   const VALID_BEFORE = [1, 2, 3, 5, 7];
@@ -791,6 +827,45 @@ const AdminSettings = () => {
                         <p className="text-xs text-slate-500">{field.help}</p>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Cron job next-run times + manual trigger */}
+                  <div className="pt-3 border-t border-slate-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm font-semibold text-slate-700">Job Status & Manual Trigger</p>
+                      <Button variant="outline" size="sm" onClick={fetchCronStatus} className="h-7 text-xs">
+                        Refresh Status
+                      </Button>
+                    </div>
+                    {[
+                      { id: "report",   endpoint: "send-operator-report",       label: "Operator Report",    desc: "Send daily WA billing summary to all operators now" },
+                      { id: "wallet",   endpoint: "check-wallet",               label: "Wallet Check",       desc: "Run wallet balance check & send low-balance alerts" },
+                      { id: "expiry",   endpoint: "check-expiry",               label: "Expiry Check",       desc: "Run subscription expiry check & send notifications" },
+                      { id: "invoices", endpoint: "generate-invoices",          label: "Invoice Generation", desc: "Generate upcoming invoices now" },
+                      { id: "remind",   endpoint: "process-scheduled-reminders",label: "Reminders",          desc: "Process and send all scheduled payment reminders" },
+                    ].map((job) => {
+                      const statusJob = (cronStatus || []).find(j => j.id.includes(job.id.replace("report","operator_report").replace("wallet","wallet_check").replace("remind","reminder").replace("invoices","invoices")));
+                      return (
+                        <div key={job.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">{job.label}</p>
+                            <p className="text-xs text-slate-400">{job.desc}</p>
+                            {statusJob && (
+                              <p className="text-xs text-indigo-500 mt-0.5">Next: {statusJob.next_run_ist}</p>
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs ml-4 shrink-0"
+                            disabled={cronRunning[job.id]}
+                            onClick={() => handleRunCronNow(job)}
+                          >
+                            {cronRunning[job.id] ? "Running…" : "Run Now"}
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">

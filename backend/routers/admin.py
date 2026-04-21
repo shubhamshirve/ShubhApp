@@ -61,7 +61,15 @@ def _reschedule_platform_jobs(scheduler, settings: dict):
     for job_id, time_value in job_map.items():
         hour, minute = split_cron_time(time_value)
         try:
-            scheduler.reschedule_job(job_id, trigger="cron", hour=hour, minute=minute)
+            # IMPORTANT: Must pass timezone explicitly — reschedule_job defaults to UTC,
+            # not the scheduler's Asia/Kolkata timezone.
+            scheduler.reschedule_job(
+                job_id,
+                trigger="cron",
+                hour=hour,
+                minute=minute,
+                timezone="Asia/Kolkata",
+            )
         except Exception:
             pass  # Job may not be registered yet
 
@@ -591,6 +599,8 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
         return {
             "active_payment_gateway": "razorpay", "notification_enabled": True,
             "auto_invoice_days_before": 3, "late_fee_percentage": 0, "gst_rate": 18,
+            "gst_enabled_on_saas_plans": True,
+            "gst_enabled_on_wallet_topup": True,
             "referral_discount_percent": 10,
             "referral_discount_max_amount": 500,
             "referral_reward_percent": 5,
@@ -606,7 +616,12 @@ async def get_global_settings(current_user: dict = Depends(require_admin)):
             "cron_daily_report_time": "09:30",
             **DEFAULT_CRON_SCHEDULES,
         }
-    return {**settings, **merge_cron_schedule_settings(settings)}
+    return {
+        "gst_enabled_on_saas_plans": True,
+        "gst_enabled_on_wallet_topup": True,
+        **settings,
+        **merge_cron_schedule_settings(settings),
+    }
 
 
 @router.get("/welcome-modal")
@@ -1369,9 +1384,62 @@ async def trigger_scheduled_reminders(current_user: dict = Depends(require_admin
 
 @router.post("/cron/check-expiry")
 async def trigger_expiry_check(current_user: dict = Depends(require_admin)):
-    from services.cron_service import CronJobService
-    service = CronJobService(db)
-    return await service.check_subscription_expiry()
+    from services.cron_service import run_daily_expiry_check
+    results = await run_daily_expiry_check(db)
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "trigger", "cron_jobs", None, {"action": "check_expiry", "results": results},
+        ip_address=current_user.get("_ip_address")
+    )
+    return results
+
+
+@router.post("/cron/check-wallet")
+async def trigger_wallet_check(current_user: dict = Depends(require_admin)):
+    """Manually trigger the daily wallet balance check & operator WA alerts."""
+    from services.cron_service import run_daily_wallet_check
+    results = await run_daily_wallet_check(db)
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "trigger", "cron_jobs", None, {"action": "check_wallet", "results": results},
+        ip_address=current_user.get("_ip_address")
+    )
+    return results
+
+
+@router.post("/cron/send-operator-report")
+async def trigger_operator_report(current_user: dict = Depends(require_admin)):
+    """Manually trigger the daily operator WA report. Returns per-operator results."""
+    from services.cron_service import run_daily_operator_report
+    results = await run_daily_operator_report(db)
+    await log_audit(
+        current_user["id"], current_user["name"], current_user["role"],
+        "trigger", "cron_jobs", None, {"action": "send_operator_report", "results": results},
+        ip_address=current_user.get("_ip_address")
+    )
+    return results
+
+
+@router.get("/cron/status")
+async def get_cron_status(request: Request, current_user: dict = Depends(require_admin)):
+    """Return next run times for all scheduled cron jobs (in IST)."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if not scheduler:
+        return {"error": "Scheduler not available"}
+    jobs = scheduler.get_jobs()
+    import pytz
+    ist = pytz.timezone("Asia/Kolkata")
+    return {
+        "jobs": [
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run_utc": job.next_run_time.isoformat() if job.next_run_time else None,
+                "next_run_ist": job.next_run_time.astimezone(ist).strftime("%Y-%m-%d %H:%M:%S IST") if job.next_run_time else None,
+            }
+            for job in jobs
+        ]
+    }
 
 
 
