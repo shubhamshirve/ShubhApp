@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent } from "../../components/ui/card";
@@ -657,6 +657,7 @@ const OperatorInvoices = () => {
     const days = Math.round(
       (new Date(item.service_end_date) - new Date(item.service_start_date)) / (1000 * 60 * 60 * 24)
     );
+    if (days <= 0) return null;
     if (days <= 45) return "Monthly";
     if (days <= 120) return "Quarterly";
     if (days <= 220) return "Half-Yearly";
@@ -664,7 +665,7 @@ const OperatorInvoices = () => {
   };
 
   // Group filteredInvoices by subscriber_id for the consolidated view
-  const groupedBySubscriber = (() => {
+  const groupedBySubscriber = useMemo(() => {
     const map = new Map();
     for (const inv of filteredInvoices) {
       const key = inv.subscriber_id || inv.subscriber_name || inv.id;
@@ -694,7 +695,7 @@ const OperatorInvoices = () => {
       if (b.total_due !== a.total_due) return b.total_due - a.total_due;
       return a.subscriber_name.localeCompare(b.subscriber_name);
     });
-  })();
+  }, [filteredInvoices]);
 
   const toggleSubscriberExpanded = (key) => {
     setExpandedSubscribers((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -736,7 +737,7 @@ const OperatorInvoices = () => {
                 {item.is_custom ? (item.description || item.plan_name) : item.plan_name}
                 {item.is_custom && <span className="ml-1 opacity-60">(custom)</span>}
                 {!item.is_custom && validity && (
-                  <span className="ml-1 opacity-70">· {validity}</span>
+                  <span className="ml-2 opacity-70 border-l border-slate-300 pl-2">{validity}</span>
                 )}
               </span>
             );

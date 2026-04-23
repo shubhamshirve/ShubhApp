@@ -1,5 +1,34 @@
 # E-Bill Platform — CHANGELOG
 
+## 2026-04-23
+
+### V8.25: Consolidated "By Subscriber" View on Operator Invoices Page
+
+Added a new view toggle on the operator `/operator/invoices` page. Operators can flip between the original **Flat** table (unchanged) and a new **By Subscriber** grouped view where each subscriber with invoices becomes an expandable card.
+
+**What each subscriber card shows**
+- Subscriber name
+- Validity mix pills (e.g. `Monthly × 6`, `Half-Yearly × 1`, `Custom × 2`)
+- Aggregate totals: **Outstanding** (₹), **Paid** (₹), **Invoices** (count)
+- Click to expand → nested table with all their invoices (same row actions: Mark as Paid, Download PDF, Send WhatsApp, Edit, Cancel, etc.)
+
+**Why this matters**
+After the `plan_expiry_date` billing refactor, each validity (Monthly / Quarterly / Half-Yearly / Yearly) gets its own independent invoice per billing cycle. A subscriber with Monthly + Half-Yearly plans now has multiple concurrent invoices. This view lets operators see at a glance: "Rajesh owes ₹1,050 across 2 invoices (1 Monthly pending + 1 Half-Yearly pending)" instead of hunting through a flat list.
+
+**Extras**
+- "Expand all" / "Collapse all" controls
+- Groups sorted by outstanding amount desc, then name
+- Each line-item pill now shows its validity inferred from its service window (e.g. `Broadband Basic | Monthly`)
+- Filters/search work identically in both views (the view toggle is purely a rendering choice)
+
+**Files**
+- `frontend/src/pages/operator/Invoices.jsx` — new `viewMode` + `expandedSubscribers` state, `getValidityLabel()`, `groupedBySubscriber` (memoized), `renderInvoiceRow()` extracted helper for reuse, view-aware rendering block.
+
+**Testing**
+- Testing agent (iteration 20) verified **9/9 scenarios passing**: toggle, expand/collapse, filter/search integration, regression on row actions, mixed-validity subscriber card.
+
+---
+
 
 ## 2026-04-23
 
