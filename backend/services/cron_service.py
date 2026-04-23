@@ -72,7 +72,7 @@ class CronJobService:
         target_str = (now + timedelta(days=days_before)).strftime("%Y-%m-%d")
 
         operators = await self.db.operators.find({
-            "status": {"$in": ["active", "trial"]},
+            "status": {"$nin": ["suspended", "deleted"]},
             "wallet_suspended": {"$ne": True},
             "deleted_at": None
         }, {"_id": 0}).to_list(1000)

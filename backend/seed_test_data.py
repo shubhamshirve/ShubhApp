@@ -34,6 +34,7 @@ async def seed_data():
             "address": "Test Address",
             "wallet_balance": 1000.0,
             "saas_plan_id": None,
+            "status": "active",
             "active_addons": [],
             "features": {
                 "payment_gateway": False,

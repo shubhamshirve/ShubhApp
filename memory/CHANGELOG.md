@@ -1,5 +1,42 @@
 # E-Bill Platform — CHANGELOG
 
+
+## 2026-04-23
+
+### V8.24: Billing Engine Refactor — `plan_expiry_date` Architecture (COMPLETE)
+
+Switched the entire billing engine from the legacy `billing_date` (day-of-month) approach to an exact `plan_expiry_date` approach. This fixes yearly-plan over-invoicing and makes billing windows precise.
+
+**Backend**
+- `backend/models.py`: `SubscriberPlan` gained `plan_start_date` + `plan_expiry_date` (ISO YYYY-MM-DD). `SubscriberCreate` gained `generate_first_invoice: bool`.
+- `backend/routers/operator.py`:
+  - `create_subscriber` now computes `plan_expiry_date = plan_start_date + validity_days` per plan and (optionally) triggers `_create_first_invoice` immediately.
+  - `update_invoice_status` (mark-paid) extends each matching `plans[].plan_expiry_date` by the plan's validity days, using `base_date = max(old_expiry, paid_date)` so early payments don't shorten the cycle.
+  - Added `POST /api/operator/subscribers/migrate-to-expiry-dates` — idempotent backfill.
+- `backend/services/cron_service.py`:
+  - `generate_upcoming_invoices` now queries `plans.plan_expiry_date` within the `days_before` notice window (no more 28-day hardcoded yearly bug). Legacy `billing_date` fallback preserved for unmigrated subscribers.
+  - New `_create_first_invoice` helper for on-creation invoicing.
+  - Operator query relaxed to `status: {$nin: ['suspended','deleted']}` so legacy docs without a status field are still processed.
+- `backend/services/job_queue_service.py`: Bulk CSV upload now parses `plan_start_date_1..5` columns (legacy `billing_date_1..5` still accepted as fallback).
+- `backend/seed_test_data.py`: Seeded test operator now always has `status: 'active'`.
+
+**Frontend**
+- `frontend/src/pages/operator/Subscribers.jsx`:
+  - Plan rows now show **Plan Start Date** input with auto-computed **Plan Expires On** preview (via `calcExpiry(start, validity)`).
+  - Added **"Generate First Invoice Now?"** toggle in the Add/Edit Subscriber dialog.
+  - Added **"Migrate to Expiry Billing"** action button that calls the migration endpoint.
+  - Bulk Upload CSV template and instructions updated to use `plan_start_date_1..5` columns.
+
+**Bug Fixes (during refactor)**
+- `_create_first_invoice` was calling a non-existent `self._get_next_invoice_number(...)` — fixed to use `utils.generate_invoice_number_atomic(self.db)`.
+- Silent `except Exception` in `create_subscriber` first-invoice branch was masking the above bug — promoted to `logger.error(..., exc_info=True)`.
+- Backfilled all legacy operators missing the `status` field (`{status: {$exists: false}}` → `'active'`).
+
+**Tests**
+- `/app/backend/tests/test_billing_expiry_refactor.py` — **11/11 passing** (default start/expiry math, explicit start date, first-invoice on/off, mark-paid extension, migration idempotency, sample CSV headers, cron no-error, cron skips far-future, cron creates in notice window).
+
+---
+
 ## 2026-04-19
 
 ### V8.23: GST Control Settings for SAAS Plans & Wallet Topups
