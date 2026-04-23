@@ -108,14 +108,28 @@ class CronJobService:
                         if not plans_to_bill:
                             continue
 
+                        # Determine the longest validity among plans being billed this cycle.
+                        # This is used for the duplicate-invoice window so that yearly/quarterly
+                        # plans are not re-invoiced every month.
+                        VALIDITY_PRIORITY = {"monthly": 1, "quarterly": 2, "half_yearly": 3, "yearly": 4}
+                        longest_validity = max(
+                            (p.get("validity", "monthly") for p in plans_to_bill),
+                            key=lambda v: VALIDITY_PRIORITY.get(v, 1),
+                            default="monthly",
+                        )
+
                         existing = await self._check_existing_invoice(
                             operator["id"],
                             subscriber["id"],
                             now,
-                            validity="monthly",
+                            validity=longest_validity,
                         )
                         
                         if existing:
+                            logger.debug(
+                                f"Skipping {subscriber['name']}: existing invoice found "
+                                f"within {longest_validity} window"
+                            )
                             continue
                         
                         invoice = await self._create_auto_invoice(
@@ -271,11 +285,23 @@ class CronJobService:
         current_date: datetime,
         validity: str = "monthly",
     ) -> bool:
+        """
+        Return True if a non-cancelled invoice already exists for this subscriber
+        within the billing window for the given validity period.
+
+        Window sizes match the minimum billing period so that:
+          - monthly  → 28 days   (check only last 4 weeks)
+          - quarterly → 80 days  (check only last ~11 weeks)
+          - half_yearly → 170 days
+          - yearly → 355 days    (check only last ~12 months)
+
+        This prevents re-invoicing a yearly-plan subscriber every month.
+        """
         validity_days = {
             "monthly": 28,
-            "quarterly": 85,
-            "half_yearly": 175,
-            "yearly": 360,
+            "quarterly": 80,
+            "half_yearly": 170,
+            "yearly": 355,
         }
         window = validity_days.get(validity, 28)
         cutoff = (current_date - timedelta(days=window)).isoformat()
