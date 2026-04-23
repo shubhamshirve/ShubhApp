@@ -108,40 +108,60 @@ class CronJobService:
                         if not plans_to_bill:
                             continue
 
-                        # Determine the longest validity among plans being billed this cycle.
-                        # This is used for the duplicate-invoice window so that yearly/quarterly
-                        # plans are not re-invoiced every month.
-                        VALIDITY_PRIORITY = {"monthly": 1, "quarterly": 2, "half_yearly": 3, "yearly": 4}
-                        longest_validity = max(
-                            (p.get("validity", "monthly") for p in plans_to_bill),
-                            key=lambda v: VALIDITY_PRIORITY.get(v, 1),
-                            default="monthly",
-                        )
+                        # ── Per-plan duplicate check ──────────────────────────────────
+                        # Each plan is checked against its OWN validity window so that
+                        # a yearly plan's 355-day guard doesn't block a co-assigned
+                        # monthly plan from being billed every month.
+                        plans_due = []
+                        for p in plans_to_bill:
+                            plan_validity = p.get("validity", "monthly")
+                            plan_id = p.get("plan_id")
+                            if plan_id:
+                                already_billed = await self._check_plan_recently_billed(
+                                    operator["id"], subscriber["id"],
+                                    plan_id, now, plan_validity,
+                                )
+                            else:
+                                # Fallback: subscriber-level check for legacy records
+                                already_billed = await self._check_existing_invoice(
+                                    operator["id"], subscriber["id"],
+                                    now, plan_validity,
+                                )
+                            if not already_billed:
+                                plans_due.append(p)
 
-                        existing = await self._check_existing_invoice(
-                            operator["id"],
-                            subscriber["id"],
-                            now,
-                            validity=longest_validity,
-                        )
-                        
-                        if existing:
+                        if not plans_due:
                             logger.debug(
-                                f"Skipping {subscriber['name']}: existing invoice found "
-                                f"within {longest_validity} window"
+                                f"Skipping {subscriber['name']}: all plans already "
+                                f"billed within their respective validity windows"
                             )
                             continue
-                        
-                        invoice = await self._create_auto_invoice(
-                            operator,
-                            subscriber,
-                            plans_to_bill
-                        )
-                        
-                        if invoice:
-                            results["invoices_generated"] += 1
-                            logger.info(f"Generated invoice {invoice['invoice_number']} for {subscriber['name']}")
-                        
+
+                        # ── Group due-plans by validity ──────────────────────────────
+                        # Plans with DIFFERENT validity periods generate SEPARATE invoices
+                        # so that billing cycles remain independent.
+                        # e.g. monthly ₹500 + yearly ₹1200 → separate invoices so the
+                        # yearly plan doesn't get bundled with the monthly every month.
+                        from collections import defaultdict
+                        validity_groups: dict = defaultdict(list)
+                        for p in plans_due:
+                            validity_groups[p.get("validity", "monthly")].append(p)
+
+                        VALIDITY_ORDER = ["monthly", "quarterly", "half_yearly", "yearly"]
+                        for validity in VALIDITY_ORDER:
+                            group_plans = validity_groups.get(validity)
+                            if not group_plans:
+                                continue
+                            invoice = await self._create_auto_invoice(
+                                operator, subscriber, group_plans
+                            )
+                            if invoice:
+                                results["invoices_generated"] += 1
+                                logger.info(
+                                    f"Generated {validity} invoice "
+                                    f"{invoice['invoice_number']} for {subscriber['name']}"
+                                )
+
                     except Exception as e:
                         error_msg = f"Error generating invoice for {subscriber['name']}: {str(e)}"
                         logger.error(error_msg)
@@ -288,14 +308,7 @@ class CronJobService:
         """
         Return True if a non-cancelled invoice already exists for this subscriber
         within the billing window for the given validity period.
-
-        Window sizes match the minimum billing period so that:
-          - monthly  → 28 days   (check only last 4 weeks)
-          - quarterly → 80 days  (check only last ~11 weeks)
-          - half_yearly → 170 days
-          - yearly → 355 days    (check only last ~12 months)
-
-        This prevents re-invoicing a yearly-plan subscriber every month.
+        Used for single-plan subscribers (backward-compat).
         """
         validity_days = {
             "monthly": 28,
@@ -312,6 +325,39 @@ class CronJobService:
             "status": {"$nin": ["cancelled"]},
             "service_start_date": {"$gte": cutoff},
             "deleted_at": None
+        })
+        return existing is not None
+
+    async def _check_plan_recently_billed(
+        self,
+        operator_id: str,
+        subscriber_id: str,
+        plan_id: str,
+        current_date: datetime,
+        validity: str = "monthly",
+    ) -> bool:
+        """
+        Return True if THIS SPECIFIC plan has already been billed within its
+        validity window.  Checks line_items.plan_id so that a yearly plan's
+        355-day window does NOT block a co-assigned monthly plan from being
+        billed every month.
+        """
+        validity_days = {
+            "monthly": 28,
+            "quarterly": 80,
+            "half_yearly": 170,
+            "yearly": 355,
+        }
+        window = validity_days.get(validity, 28)
+        cutoff = (current_date - timedelta(days=window)).isoformat()
+
+        existing = await self.db.invoices.find_one({
+            "operator_id": operator_id,
+            "subscriber_id": subscriber_id,
+            "status": {"$nin": ["cancelled"]},
+            "line_items": {"$elemMatch": {"plan_id": plan_id}},
+            "service_start_date": {"$gte": cutoff},
+            "deleted_at": None,
         })
         return existing is not None
     
