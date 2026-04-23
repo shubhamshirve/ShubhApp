@@ -690,13 +690,8 @@ class CronJobService:
         if not line_items:
             return None
 
-        invoice_settings_raw = await self.db.global_settings.find_one(
-            {"type": "invoice_customization", "operator_id": operator["id"]}, {"_id": 0}
-        )
-        from services.invoice_view_service import normalize_invoice_settings
-        invoice_settings = normalize_invoice_settings(invoice_settings_raw, operator)
-        prefix = invoice_settings.get("invoice_prefix", operator.get("company_name", "INV")[:3].upper())
-        invoice_num = await self._get_next_invoice_number(operator["id"], prefix)
+        from utils import generate_invoice_number_atomic
+        invoice_num = await generate_invoice_number_atomic(self.db)
 
         due_date = now + timedelta(days=7)
         invoice = {

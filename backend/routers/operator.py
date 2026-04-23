@@ -1281,7 +1281,7 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
                 for validity, group_plans in validity_groups.items():
                     await svc._create_first_invoice(operator, subscriber, group_plans)
         except Exception as inv_err:
-            logger.warning(f"First invoice creation failed for {subscriber['id']}: {inv_err}")
+            logger.error(f"First invoice creation failed for {subscriber['id']}: {inv_err}", exc_info=True)
 
     return SubscriberResponse(**{**subscriber, "created_at": now})
 
