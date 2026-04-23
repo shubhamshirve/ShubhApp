@@ -213,6 +213,8 @@ const OperatorInvoices = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [viewMode, setViewMode] = useState("flat"); // "flat" | "grouped"
   const [expandedSubscribers, setExpandedSubscribers] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
   const [showDialog, setShowDialog] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [savingInvoice, setSavingInvoice] = useState(false);
@@ -711,6 +713,11 @@ const OperatorInvoices = () => {
 
   const collapseAllGroups = () => setExpandedSubscribers({});
 
+  // Reset to page 1 whenever filters/view change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, viewMode]);
+
   const isReadOnly = dashboardStats?.is_read_only;
 
   const renderInvoiceRow = (invoice, { hideSubscriber = false } = {}) => (
@@ -866,7 +873,7 @@ const OperatorInvoices = () => {
 
   return (
     <OperatorLayout title="Invoices" isReadOnly={isReadOnly}>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-8 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div className="flex gap-4 flex-1">
@@ -938,149 +945,203 @@ const OperatorInvoices = () => {
         </div>
 
         {/* Invoices Table / Grouped View */}
-        {viewMode === "flat" ? (
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Subscriber</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInvoices.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                        <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                        No invoices found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredInvoices.map((invoice) => renderInvoiceRow(invoice))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3" data-testid="grouped-invoices-view">
-            <div className="flex items-center justify-between px-1">
-              <p className="text-sm text-slate-500">
-                {groupedBySubscriber.length} {groupedBySubscriber.length === 1 ? "subscriber" : "subscribers"} · {filteredInvoices.length} invoices
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={expandAllGroups}
-                  className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
-                  data-testid="expand-all-groups"
-                >
-                  Expand all
-                </button>
-                <span className="text-slate-300">|</span>
-                <button
-                  type="button"
-                  onClick={collapseAllGroups}
-                  className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
-                  data-testid="collapse-all-groups"
-                >
-                  Collapse all
-                </button>
-              </div>
-            </div>
+        {(() => {
+          const sourceList = viewMode === "flat" ? filteredInvoices : groupedBySubscriber;
+          const totalItems = sourceList.length;
+          const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+          const safePage = Math.min(currentPage, totalPages);
+          const startIdx = (safePage - 1) * PAGE_SIZE;
+          const endIdx = startIdx + PAGE_SIZE;
+          const pagedFlat = viewMode === "flat" ? filteredInvoices.slice(startIdx, endIdx) : [];
+          const pagedGroups = viewMode === "grouped" ? groupedBySubscriber.slice(startIdx, endIdx) : [];
 
-            {groupedBySubscriber.length === 0 ? (
+          const PaginationBar = () => {
+            if (totalItems <= PAGE_SIZE) return null;
+            const goTo = (p) => setCurrentPage(Math.min(Math.max(1, p), totalPages));
+            const rangeStart = startIdx + 1;
+            const rangeEnd = Math.min(endIdx, totalItems);
+            const unit = viewMode === "flat" ? "invoices" : "subscribers";
+            return (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2" data-testid="invoices-pagination">
+                <p className="text-xs text-slate-500">
+                  Showing <span className="font-medium text-slate-700">{rangeStart}–{rangeEnd}</span> of{" "}
+                  <span className="font-medium text-slate-700">{totalItems}</span> {unit}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goTo(safePage - 1)}
+                    disabled={safePage <= 1}
+                    data-testid="pagination-prev"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs px-3 text-slate-600" data-testid="pagination-info">
+                    Page {safePage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goTo(safePage + 1)}
+                    disabled={safePage >= totalPages}
+                    data-testid="pagination-next"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            );
+          };
+
+          return viewMode === "flat" ? (
+            <div className="space-y-3">
               <Card>
-                <CardContent className="py-12 text-center text-slate-500">
-                  <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                  No invoices found
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Subscriber</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedFlat.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                            <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            No invoices found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        pagedFlat.map((invoice) => renderInvoiceRow(invoice))
+                      )}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
-            ) : (
-              groupedBySubscriber.map((group) => {
-                const key = group.subscriber_id || group.subscriber_name;
-                const isOpen = !!expandedSubscribers[key];
-                const validityPills = Object.entries(group.validity_counts).sort(
-                  (a, b) => b[1] - a[1]
-                );
-                return (
-                  <Card key={key} data-testid={`group-card-${key}`}>
-                    <button
-                      type="button"
-                      onClick={() => toggleSubscriberExpanded(key)}
-                      className="w-full flex flex-col sm:flex-row sm:items-center gap-3 p-4 text-left hover:bg-slate-50 transition-colors"
-                      data-testid={`group-toggle-${key}`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {isOpen ? (
-                          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 truncate">{group.subscriber_name}</p>
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {validityPills.map(([validity, count]) => (
-                              <span
-                                key={validity}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium"
-                              >
-                                {validity} × {count}
-                              </span>
-                            ))}
+              <PaginationBar />
+            </div>
+          ) : (
+            <div className="space-y-3" data-testid="grouped-invoices-view">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-sm text-slate-500">
+                  {groupedBySubscriber.length} {groupedBySubscriber.length === 1 ? "subscriber" : "subscribers"} · {filteredInvoices.length} invoices
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={expandAllGroups}
+                    className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
+                    data-testid="expand-all-groups"
+                  >
+                    Expand all
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={collapseAllGroups}
+                    className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
+                    data-testid="collapse-all-groups"
+                  >
+                    Collapse all
+                  </button>
+                </div>
+              </div>
+
+              {pagedGroups.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center text-slate-500">
+                    <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    No invoices found
+                  </CardContent>
+                </Card>
+              ) : (
+                pagedGroups.map((group) => {
+                  const key = group.subscriber_id || group.subscriber_name;
+                  const isOpen = !!expandedSubscribers[key];
+                  const validityPills = Object.entries(group.validity_counts).sort(
+                    (a, b) => b[1] - a[1]
+                  );
+                  return (
+                    <Card key={key} data-testid={`group-card-${key}`}>
+                      <button
+                        type="button"
+                        onClick={() => toggleSubscriberExpanded(key)}
+                        className="w-full flex flex-col sm:flex-row sm:items-center gap-3 p-4 text-left hover:bg-slate-50 transition-colors"
+                        data-testid={`group-toggle-${key}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {isOpen ? (
+                            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">{group.subscriber_name}</p>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              {validityPills.map(([validity, count]) => (
+                                <span
+                                  key={validity}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium"
+                                >
+                                  {validity} × {count}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-6 sm:gap-8 text-sm shrink-0">
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">Outstanding</p>
-                          <p className={`font-semibold ${group.total_due > 0 ? "text-red-600" : "text-slate-400"}`}>
-                            ₹{group.total_due.toLocaleString("en-IN")}
-                          </p>
+                        <div className="flex items-center gap-6 sm:gap-8 text-sm shrink-0">
+                          <div className="text-right">
+                            <p className="text-xs text-slate-500">Outstanding</p>
+                            <p className={`font-semibold ${group.total_due > 0 ? "text-red-600" : "text-slate-400"}`}>
+                              ₹{group.total_due.toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-500">Paid</p>
+                            <p className="font-semibold text-emerald-600">
+                              ₹{group.total_paid.toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-500">Invoices</p>
+                            <p className="font-semibold text-slate-700">{group.invoices.length}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">Paid</p>
-                          <p className="font-semibold text-emerald-600">
-                            ₹{group.total_paid.toLocaleString("en-IN")}
-                          </p>
+                      </button>
+                      {isOpen && (
+                        <div className="border-t border-slate-100">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Invoice #</TableHead>
+                                <TableHead>Items</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Due Date</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {group.invoices.map((inv) => renderInvoiceRow(inv, { hideSubscriber: true }))}
+                            </TableBody>
+                          </Table>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">Invoices</p>
-                          <p className="font-semibold text-slate-700">{group.invoices.length}</p>
-                        </div>
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="border-t border-slate-100">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Invoice #</TableHead>
-                              <TableHead>Items</TableHead>
-                              <TableHead>Amount</TableHead>
-                              <TableHead>Due Date</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead className="w-[50px]"></TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {group.invoices.map((inv) => renderInvoiceRow(inv, { hideSubscriber: true }))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </Card>
-                );
-              })
-            )}
-          </div>
-        )}
+                      )}
+                    </Card>
+                  );
+                })
+              )}
+              <PaginationBar />
+            </div>
+          );
+        })()}
 
         {/* Create Dialog */}
         <Dialog

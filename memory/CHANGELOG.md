@@ -2,6 +2,22 @@
 
 ## 2026-04-23
 
+### V8.26: Pagination + Spacing Polish on Operator Invoices
+
+- **Pagination** on `/operator/invoices` with fixed page size of **20 items per page**. Works in both view modes:
+  - Flat view: 20 invoices per page
+  - By Subscriber view: 20 subscriber groups per page (each group's nested invoices not paginated — operators can see all invoices for a given subscriber at once)
+- Pagination bar shows `Showing X–Y of N invoices/subscribers` and `Previous / Page i of N / Next` controls. Hides automatically when total items ≤ 20.
+- Page resets to 1 when search term, status filter, or view mode changes.
+- **Spacing**: bumped the main page container from `space-y-6` → `space-y-8` so the list no longer looks glued to the search/filter bar above.
+
+**Files**
+- `frontend/src/pages/operator/Invoices.jsx`: `currentPage` + `PAGE_SIZE=20` state, effect to reset page on filter/view change, inline `PaginationBar` component, paged slice rendered in both flat and grouped branches.
+
+---
+
+## 2026-04-23
+
 ### V8.25: Consolidated "By Subscriber" View on Operator Invoices Page
 
 Added a new view toggle on the operator `/operator/invoices` page. Operators can flip between the original **Flat** table (unchanged) and a new **By Subscriber** grouped view where each subscriber with invoices becomes an expandable card.
