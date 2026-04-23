@@ -5,6 +5,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Switch } from "../../components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -56,14 +57,30 @@ const OperatorSubscribers = () => {
   const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
   const [subFieldErrors, setSubFieldErrors] = useState({});
   const fileInputRef = useRef(null);
+
+  // Helpers for expiry-date approach
+  const VALIDITY_DAYS = { monthly: 30, quarterly: 90, half_yearly: 180, yearly: 365 };
+  const calcExpiry = (startDateStr, validity) => {
+    if (!startDateStr || !validity) return "";
+    try {
+      const start = new Date(startDateStr);
+      const days = VALIDITY_DAYS[validity] || 30;
+      const expiry = new Date(start.getTime() + days * 86400000);
+      return expiry.toISOString().slice(0, 10);
+    } catch { return ""; }
+  };
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+
   const [formData, setFormData] = useState({
     name: "",
     whatsapp_number: "",
     email: "",
     address: "",
+    generate_first_invoice: false,
     plans: [{
       plan_id: "",
-      billing_date: 1,
+      plan_start_date: todayStr(),
+      plan_expiry_date: "",
       discount: 0
     }]
   });
@@ -221,10 +238,12 @@ const OperatorSubscribers = () => {
       whatsapp_number: subscriber.whatsapp_number,
       email: subscriber.email || "",
       address: subscriber.address || "",
+      generate_first_invoice: false,
       plans: subscriber.plans.map(p => ({
         plan_id: p.plan_id,
-        billing_date: p.billing_date,
-        discount: p.discount
+        plan_start_date: p.plan_start_date || todayStr(),
+        plan_expiry_date: p.plan_expiry_date || "",
+        discount: p.discount || 0
       }))
     });
     setShowDialog(true);
@@ -238,9 +257,11 @@ const OperatorSubscribers = () => {
       whatsapp_number: "",
       email: "",
       address: "",
+      generate_first_invoice: false,
       plans: [{
         plan_id: "",
-        billing_date: 1,
+        plan_start_date: todayStr(),
+        plan_expiry_date: "",
         discount: 0
       }]
     });
@@ -249,7 +270,7 @@ const OperatorSubscribers = () => {
   const addPlanRow = () => {
     setFormData(prev => ({
       ...prev,
-      plans: [...prev.plans, { plan_id: "", billing_date: 1, discount: 0 }]
+      plans: [...prev.plans, { plan_id: "", plan_start_date: todayStr(), plan_expiry_date: "", discount: 0 }]
     }));
   };
 
@@ -261,10 +282,21 @@ const OperatorSubscribers = () => {
   };
 
   const updatePlanRow = (index, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      plans: prev.plans.map((p, i) => i === index ? { ...p, [field]: value } : p)
-    }));
+    setFormData(prev => {
+      const updated = prev.plans.map((p, i) => {
+        if (i !== index) return p;
+        const newRow = { ...p, [field]: value };
+        // When plan changes, recalculate expiry from start_date + plan validity
+        if (field === "plan_id" || field === "plan_start_date") {
+          const planDef = plans.find(pl => pl.id === (field === "plan_id" ? value : newRow.plan_id));
+          if (planDef && newRow.plan_start_date) {
+            newRow.plan_expiry_date = calcExpiry(newRow.plan_start_date, planDef.validity);
+          }
+        }
+        return newRow;
+      });
+      return { ...prev, plans: updated };
+    });
   };
 
   const filteredSubscribers = subscribers.filter(sub =>
@@ -342,6 +374,17 @@ const OperatorSubscribers = () => {
     return <span className={badges[status] || "badge-pending"}>{status}</span>;
   };
 
+  const handleMigrateToExpiry = async () => {
+    if (!window.confirm("This will convert all existing subscribers from the old billing-date system to the new expiry-date system. Subscribers already migrated will be skipped. Continue?")) return;
+    try {
+      const res = await authAxios.post("/operator/subscribers/migrate-to-expiry-dates");
+      toast.success(`Migration done — ${res.data.plans_migrated} plans migrated, ${res.data.plans_skipped_already_migrated} already on expiry-date billing.`);
+      fetchSubscribers();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Migration failed");
+    }
+  };
+
   if (loading) {
     return (
       <OperatorLayout title="Subscribers">
@@ -386,6 +429,15 @@ const OperatorSubscribers = () => {
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Subscriber
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleMigrateToExpiry}
+              title="Migrate existing subscribers to expiry-date billing"
+              className="text-xs"
+            >
+              Migrate to Expiry Billing
             </Button>
           </div>
         </div>
@@ -472,15 +524,37 @@ const OperatorSubscribers = () => {
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          {subscriber.plans?.map((p, idx) => (
-                            <div key={idx} className="text-xs border-b border-slate-50 last:border-0 pb-1 last:pb-0">
-                              <span className="font-medium text-slate-700">{p.plan_name}</span>
-                              <div className="flex gap-2 text-slate-500 mt-0.5">
-                                <span>Day {p.billing_date}</span>
-                                {p.discount > 0 && <span>-₹{p.discount}</span>}
+                          {subscriber.plans?.map((p, idx) => {
+                            const expiry = p.plan_expiry_date;
+                            const today = new Date().toISOString().slice(0, 10);
+                            const daysLeft = expiry
+                              ? Math.ceil((new Date(expiry) - new Date(today)) / 86400000)
+                              : null;
+                            const isExpired = daysLeft !== null && daysLeft < 0;
+                            const isUrgent = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+                            return (
+                              <div key={idx} className="text-xs border-b border-slate-50 last:border-0 pb-1 last:pb-0">
+                                <span className="font-medium text-slate-700">{p.plan_name}</span>
+                                <div className="flex gap-2 mt-0.5 flex-wrap">
+                                  {expiry ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                      isExpired ? "bg-red-100 text-red-700" :
+                                      isUrgent  ? "bg-amber-100 text-amber-700" :
+                                                  "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {isExpired
+                                        ? `Expired ${Math.abs(daysLeft)}d ago`
+                                        : daysLeft === 0 ? "Expires today"
+                                        : `Expires ${expiry}`}
+                                    </span>
+                                  ) : p.billing_date ? (
+                                    <span className="text-slate-400">Day {p.billing_date}</span>
+                                  ) : null}
+                                  {p.discount > 0 && <span className="text-slate-400">-₹{p.discount}</span>}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                           {(!subscriber.plans || subscriber.plans.length === 0) && (
                             <span className="text-slate-400">-</span>
                           )}
@@ -628,75 +702,95 @@ const OperatorSubscribers = () => {
                     <Plus className="w-3 h-3 mr-1" /> Add Plan
                   </Button>
                 </div>
-                
+
                 <div className="space-y-4">
-                  {formData.plans.map((plan, index) => (
-                    <div key={plan.plan_id || `plan-row-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100">
-                      {formData.plans.length > 1 && (
-                        <Button 
-                          type="button" 
-                          variant="ghost" 
-                          size="icon" 
-                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border shadow-sm text-red-500"
-                          onClick={() => removePlanRow(index)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Plan *</Label>
-                          <Select 
-                            value={plan.plan_id} 
-                            onValueChange={(value) => updatePlanRow(index, "plan_id", value)}
+                  {formData.plans.map((plan, index) => {
+                    const planDef = plans.find(p => p.id === plan.plan_id);
+                    return (
+                      <div key={`plan-row-${index}`} className="p-4 bg-slate-50 rounded-lg relative border border-slate-100">
+                        {formData.plans.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border shadow-sm text-red-500"
+                            onClick={() => removePlanRow(index)}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select plan" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {plans.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  {p.name} - ₹{p.price}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {/* Plan selector */}
+                          <div className="space-y-2">
+                            <Label>Plan *</Label>
+                            <Select
+                              value={plan.plan_id}
+                              onValueChange={(v) => updatePlanRow(index, "plan_id", v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select plan" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {plans.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.name} — ₹{p.price} / {p.validity}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Plan start date */}
+                          <div className="space-y-2">
+                            <Label>Plan Start Date *</Label>
+                            <Input
+                              type="date"
+                              value={plan.plan_start_date || ""}
+                              onChange={(e) => updatePlanRow(index, "plan_start_date", e.target.value)}
+                            />
+                          </div>
+
+                          {/* Discount */}
+                          <div className="space-y-2">
+                            <Label>Discount (₹)</Label>
+                            <Input
+                              type="number"
+                              value={plan.discount}
+                              onChange={(e) => updatePlanRow(index, "discount", parseFloat(e.target.value) || 0)}
+                              min="0"
+                              placeholder="0"
+                            />
+                          </div>
                         </div>
 
-                        <div className="space-y-2">
-                          <Label>Billing Date *</Label>
-                          <Select 
-                            value={plan.billing_date.toString()} 
-                            onValueChange={(value) => updatePlanRow(index, "billing_date", parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select day" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                                <SelectItem key={day} value={day.toString()}>
-                                  Day {day}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Discount (₹)</Label>
-                          <Input
-                            type="number"
-                            value={plan.discount}
-                            onChange={(e) => updatePlanRow(index, "discount", parseFloat(e.target.value) || 0)}
-                            min="0"
-                            placeholder="0"
-                          />
-                        </div>
+                        {/* Expiry preview */}
+                        {plan.plan_expiry_date && (
+                          <p className="text-xs mt-2 text-indigo-600 bg-indigo-50 rounded px-2 py-1 w-fit">
+                            Plan expires on <strong>{plan.plan_expiry_date}</strong>
+                            {planDef && ` (${planDef.validity})`}
+                          </p>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+
+                {/* Generate first invoice toggle — only for new subscribers */}
+                {!editingSubscriber && (
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-amber-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Generate First Invoice Now?</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Creates an invoice for the current billing period immediately on subscriber creation.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.generate_first_invoice}
+                      onCheckedChange={(v) => setFormData(prev => ({ ...prev, generate_first_invoice: v }))}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">
@@ -726,7 +820,7 @@ const OperatorSubscribers = () => {
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-800">Download Sample File</p>
-                  <p className="text-xs text-blue-600 mt-0.5">One row per subscriber. Supports up to 5 plans per subscriber via plan_name_1…5, billing_date_1…5, discount_1…5 columns.</p>
+                  <p className="text-xs text-blue-600 mt-0.5">One row per subscriber. Supports up to 5 plans per subscriber via plan_name_1…5, plan_start_date_1…5 (YYYY-MM-DD), discount_1…5 columns.</p>
                 </div>
                 <Button variant="outline" size="sm" className="shrink-0 border-blue-200 text-blue-700" onClick={handleDownloadSample}>
                   <Download className="w-3.5 h-3.5 mr-1" /> Sample CSV

@@ -66,16 +66,17 @@ class CronJobService:
         maintenance = await get_maintenance_state(self.db)
         if maintenance["maintenance_mode"]:
             return {**results, "skipped": True, "reason": maintenance["maintenance_message"]}
-        
+
         now = datetime.now(timezone.utc)
-        target_day = (now + timedelta(days=days_before)).day
-        
+        today_str = now.strftime("%Y-%m-%d")
+        target_str = (now + timedelta(days=days_before)).strftime("%Y-%m-%d")
+
         operators = await self.db.operators.find({
             "status": {"$in": ["active", "trial"]},
             "wallet_suspended": {"$ne": True},
             "deleted_at": None
         }, {"_id": 0}).to_list(1000)
-        
+
         for operator in operators:
             try:
                 # Skip if operator wallet balance is below ₹50
@@ -84,77 +85,103 @@ class CronJobService:
                     logger.info(f"Skipping auto-invoice for {operator.get('company_name', operator['id'])}: wallet balance below ₹50")
                     continue
 
-                subscribers = await self.db.subscribers.find({
+                # ── Expiry-date approach: find subscribers whose plan expires within days_before ──
+                # Also include legacy billing_date subscribers that haven't been migrated yet
+                subscribers_expiry = await self.db.subscribers.find({
+                    "operator_id": operator["id"],
+                    "status": "active",
+                    "plans": {
+                        "$elemMatch": {
+                            "status": "active",
+                            "plan_expiry_date": {"$gte": today_str, "$lte": target_str}
+                        }
+                    },
+                    "deleted_at": None
+                }, {"_id": 0}).to_list(1000)
+
+                # ── Legacy billing_date approach: subscribers without plan_expiry_date ──
+                target_day = (now + timedelta(days=days_before)).day
+                subscribers_legacy = await self.db.subscribers.find({
                     "operator_id": operator["id"],
                     "status": "active",
                     "plans": {
                         "$elemMatch": {
                             "billing_date": target_day,
-                            "status": "active"
+                            "status": "active",
+                            "plan_expiry_date": {"$exists": False}
                         }
                     },
                     "deleted_at": None
                 }, {"_id": 0}).to_list(1000)
+
+                # Merge without duplicates
+                seen_ids = {s["id"] for s in subscribers_expiry}
+                all_subscribers = subscribers_expiry + [s for s in subscribers_legacy if s["id"] not in seen_ids]
+                results["total_checked"] += len(all_subscribers)
                 
-                results["total_checked"] += len(subscribers)
-                
-                for subscriber in subscribers:
+                for subscriber in all_subscribers:
                     try:
-                        plans_to_bill = [
+                        # ── Expiry-date plans ─────────────────────────────────
+                        plans_due_expiry = [
                             p for p in subscriber.get("plans", [])
-                            if p.get("billing_date") == target_day and p.get("status") == "active"
+                            if p.get("status") == "active"
+                            and p.get("plan_expiry_date")
+                            and today_str <= p["plan_expiry_date"] <= target_str
                         ]
-                        
+                        # ── Legacy billing_date plans (no expiry date yet) ────
+                        plans_due_legacy = [
+                            p for p in subscriber.get("plans", [])
+                            if p.get("status") == "active"
+                            and not p.get("plan_expiry_date")
+                            and p.get("billing_date") == target_day
+                        ]
+                        plans_to_bill = plans_due_expiry + plans_due_legacy
+
                         if not plans_to_bill:
                             continue
 
-                        # ── Per-plan duplicate check ──────────────────────────────────
-                        # Each plan is checked against its OWN validity window so that
-                        # a yearly plan's 355-day guard doesn't block a co-assigned
-                        # monthly plan from being billed every month.
-                        plans_due = []
-                        for p in plans_to_bill:
-                            plan_validity = p.get("validity", "monthly")
-                            plan_id = p.get("plan_id")
-                            if plan_id:
-                                already_billed = await self._check_plan_recently_billed(
-                                    operator["id"], subscriber["id"],
-                                    plan_id, now, plan_validity,
-                                )
-                            else:
-                                # Fallback: subscriber-level check for legacy records
-                                already_billed = await self._check_existing_invoice(
-                                    operator["id"], subscriber["id"],
-                                    now, plan_validity,
-                                )
-                            if not already_billed:
-                                plans_due.append(p)
+                        # ── Expiry-date plans: no duplicate check needed ──────
+                        # The expiry date IS the deduplication — a plan only appears
+                        # in the query when it is actually expiring soon.
 
-                        if not plans_due:
-                            logger.debug(
-                                f"Skipping {subscriber['name']}: all plans already "
-                                f"billed within their respective validity windows"
-                            )
+                        # ── Legacy plans: per-plan duplicate check still needed ─
+                        if plans_due_legacy:
+                            filtered_legacy = []
+                            for p in plans_due_legacy:
+                                plan_id = p.get("plan_id")
+                                plan_validity = p.get("validity", "monthly")
+                                if plan_id:
+                                    already = await self._check_plan_recently_billed(
+                                        operator["id"], subscriber["id"], plan_id, now, plan_validity
+                                    )
+                                else:
+                                    already = await self._check_existing_invoice(
+                                        operator["id"], subscriber["id"], now, plan_validity
+                                    )
+                                if not already:
+                                    filtered_legacy.append(p)
+                            plans_to_bill = plans_due_expiry + filtered_legacy
+
+                        if not plans_to_bill:
                             continue
 
-                        # ── Group due-plans by validity ──────────────────────────────
-                        # Plans with DIFFERENT validity periods generate SEPARATE invoices
-                        # so that billing cycles remain independent.
-                        # e.g. monthly ₹500 + yearly ₹1200 → separate invoices so the
-                        # yearly plan doesn't get bundled with the monthly every month.
+                        # Group by validity to create separate invoices per period type
                         from collections import defaultdict
                         validity_groups: dict = defaultdict(list)
-                        for p in plans_due:
-                            validity_groups[p.get("validity", "monthly")].append(p)
+                        for p in plans_to_bill:
+                            # Look up validity from op plan (or from cached name)
+                            op_plan_cached = await self.db.operator_plans.find_one(
+                                {"id": p.get("plan_id"), "deleted_at": None}, {"_id": 0}
+                            )
+                            validity = (op_plan_cached or {}).get("validity", "monthly")
+                            validity_groups[validity].append(p)
 
                         VALIDITY_ORDER = ["monthly", "quarterly", "half_yearly", "yearly"]
                         for validity in VALIDITY_ORDER:
                             group_plans = validity_groups.get(validity)
                             if not group_plans:
                                 continue
-                            invoice = await self._create_auto_invoice(
-                                operator, subscriber, group_plans
-                            )
+                            invoice = await self._create_auto_invoice(operator, subscriber, group_plans)
                             if invoice:
                                 results["invoices_generated"] += 1
                                 logger.info(
@@ -393,14 +420,28 @@ class CronJobService:
                 continue
 
             service_days = validity_days_map.get(plan.get("validity", "monthly"), 30)
-            billing_day = p_info.get("billing_date", now.day)
-            try:
-                service_start = now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0)
-            except ValueError:
-                import calendar
-                last_day = calendar.monthrange(now.year, now.month)[1]
-                service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0)
-            
+
+            # ── Use expiry-date approach if plan_expiry_date is set ───────────
+            # service_start = current plan expiry (start of NEW period)
+            # service_end   = current plan expiry + validity_days
+            expiry_date_str = p_info.get("plan_expiry_date")
+            if expiry_date_str:
+                try:
+                    service_start = datetime.strptime(expiry_date_str, "%Y-%m-%d").replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                except ValueError:
+                    service_start = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+            else:
+                # ── Legacy billing_date approach ──────────────────────────────
+                billing_day = p_info.get("billing_date", now.day)
+                try:
+                    service_start = now.replace(day=billing_day, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+                except ValueError:
+                    import calendar
+                    last_day = calendar.monthrange(now.year, now.month)[1]
+                    service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
             service_end = service_start + timedelta(days=service_days)
             
             base_amount = plan.get("price", 0)
@@ -560,6 +601,125 @@ class CronJobService:
             except Exception as e:
                 logger.error(f"Failed to send invoice notification: {str(e)}")
         
+        return invoice
+
+
+    async def _create_first_invoice(self, operator: dict, subscriber: dict, plans: list) -> dict | None:
+        """
+        Create the first invoice for a subscriber when they are initially created.
+        Uses plan_start_date as service_start and plan_expiry_date as service_end.
+        """
+        if not plans:
+            return None
+
+        from utils import generate_id
+        from datetime import timezone
+
+        now = datetime.now(timezone.utc)
+        VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+
+        operator_plan_cache: dict = {}
+        line_items = []
+        total_base = 0.0
+        total_discount = 0.0
+        total_tax = 0.0
+        total_final = 0.0
+
+        can_charge_gst = operator.get("charge_gst") and operator.get("gst_number")
+
+        for p_info in plans:
+            plan_id = p_info.get("plan_id")
+            if plan_id not in operator_plan_cache:
+                plan = await self.db.operator_plans.find_one({"id": plan_id, "deleted_at": None}, {"_id": 0})
+                if not plan:
+                    continue
+                operator_plan_cache[plan_id] = plan
+            plan = operator_plan_cache[plan_id]
+
+            validity = plan.get("validity", "monthly")
+            service_days = VALIDITY_DAYS.get(validity, 30)
+
+            # Use plan_start_date → plan_expiry_date as the service window for first invoice
+            start_str = p_info.get("plan_start_date")
+            expiry_str = p_info.get("plan_expiry_date")
+
+            if start_str:
+                try:
+                    service_start = datetime.strptime(start_str, "%Y-%m-%d")
+                except ValueError:
+                    service_start = now.replace(tzinfo=None)
+            else:
+                service_start = now.replace(tzinfo=None)
+
+            if expiry_str:
+                try:
+                    service_end = datetime.strptime(expiry_str, "%Y-%m-%d")
+                except ValueError:
+                    service_end = service_start + timedelta(days=service_days)
+            else:
+                service_end = service_start + timedelta(days=service_days)
+
+            discount = float(p_info.get("discount", 0))
+            base_amount = float(plan.get("price", 0))
+            tax_amount = 0.0
+            if can_charge_gst and plan.get("tax_percentage", 0) > 0:
+                taxable = base_amount - discount
+                if plan.get("tax_type") == "exclusive":
+                    tax_amount = taxable * (plan["tax_percentage"] / 100)
+                elif plan.get("tax_type") == "inclusive":
+                    tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
+            final_amount = base_amount - discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
+
+            line_items.append({
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "plan_description": plan.get("description"),
+                "is_custom": False,
+                "base_amount": round(base_amount, 2),
+                "discount": round(discount, 2),
+                "tax_amount": round(tax_amount, 2),
+                "final_amount": round(final_amount, 2),
+                "service_start_date": service_start.strftime("%Y-%m-%dT00:00:00"),
+                "service_end_date": service_end.strftime("%Y-%m-%dT00:00:00"),
+            })
+            total_base += base_amount
+            total_discount += discount
+            total_tax += tax_amount
+            total_final += final_amount
+
+        if not line_items:
+            return None
+
+        invoice_settings_raw = await self.db.global_settings.find_one(
+            {"type": "invoice_customization", "operator_id": operator["id"]}, {"_id": 0}
+        )
+        from services.invoice_view_service import normalize_invoice_settings
+        invoice_settings = normalize_invoice_settings(invoice_settings_raw, operator)
+        prefix = invoice_settings.get("invoice_prefix", operator.get("company_name", "INV")[:3].upper())
+        invoice_num = await self._get_next_invoice_number(operator["id"], prefix)
+
+        due_date = now + timedelta(days=7)
+        invoice = {
+            "id": generate_id(),
+            "invoice_number": invoice_num,
+            "operator_id": operator["id"],
+            "subscriber_id": subscriber["id"],
+            "subscriber_name": subscriber.get("name", ""),
+            "line_items": line_items,
+            "base_amount": round(total_base, 2),
+            "discount": round(total_discount, 2),
+            "tax_amount": round(total_tax, 2),
+            "final_amount": round(total_final, 2),
+            "status": "pending",
+            "due_date": due_date.isoformat(),
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "deleted_at": None,
+            "is_auto_generated": True,
+            "is_first_invoice": True,
+        }
+        await self.db.invoices.insert_one(invoice)
+        logger.info(f"Created first invoice {invoice['invoice_number']} for {subscriber['name']}")
         return invoice
 
 

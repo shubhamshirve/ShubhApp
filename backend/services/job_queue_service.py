@@ -301,6 +301,7 @@ class JobQueueService:
                 continue
 
             # Parse up to 5 plan slots (plan_name_1..5)
+            VALIDITY_DAYS_BULK = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
             plans = []
             plan_errors = []
             for i in range(1, 6):
@@ -311,10 +312,27 @@ class JobQueueService:
                 if not plan:
                     plan_errors.append(f"Plan '{pname}' not found")
                     continue
-                try:
-                    bdate = max(1, min(28, int(row.get(f"billing_date_{i}", 1) or 1)))
-                except (ValueError, TypeError):
-                    bdate = 1
+
+                # plan_start_date (new) or billing_date (legacy) from CSV
+                start_date_raw = str(row.get(f"plan_start_date_{i}", "") or "").strip()
+                if start_date_raw:
+                    try:
+                        from datetime import date as _date
+                        start_dt = datetime.strptime(start_date_raw, "%Y-%m-%d")
+                    except ValueError:
+                        start_dt = now.replace(tzinfo=None)
+                else:
+                    # legacy billing_date column fallback
+                    try:
+                        bdate = max(1, min(28, int(row.get(f"billing_date_{i}", now.day) or now.day)))
+                    except (ValueError, TypeError):
+                        bdate = now.day
+                    start_dt = now.replace(day=bdate, tzinfo=None)
+
+                validity = plan.get("validity", "monthly")
+                days = VALIDITY_DAYS_BULK.get(validity, 30)
+                expiry_dt = start_dt + timedelta(days=days)
+
                 try:
                     disc = float(row.get(f"discount_{i}", 0) or 0)
                 except (ValueError, TypeError):
@@ -322,7 +340,9 @@ class JobQueueService:
                 plans.append({
                     "plan_id": plan["id"],
                     "plan_name": plan["name"],
-                    "billing_date": bdate,
+                    "plan_start_date": start_dt.strftime("%Y-%m-%d"),
+                    "plan_expiry_date": expiry_dt.strftime("%Y-%m-%d"),
+                    "billing_date": start_dt.day,
                     "discount": disc,
                     "status": "active",
                 })

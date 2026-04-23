@@ -340,7 +340,11 @@ class SaaSPlanResponse(SanitizedModel):
 class SubscriberPlan(SanitizedModel):
     plan_id: str
     plan_name: Optional[str] = None
-    billing_date: int  # Day of month (1-28)
+    # ── Expiry-date billing (new) ──────────────────────────────────────────────
+    plan_start_date: Optional[str] = None   # YYYY-MM-DD — when this plan period began
+    plan_expiry_date: Optional[str] = None  # YYYY-MM-DD — when this plan period ends (auto-calculated)
+    # ── Legacy field (backward compat only, no longer drives billing) ──────────
+    billing_date: Optional[int] = None      # Day of month 1-28, kept for existing records
     discount: float = 0
     status: str = "active"  # active, inactive
 
@@ -351,6 +355,7 @@ class SubscriberCreate(SanitizedModel):
     email: Optional[EmailStr] = None
     address: Optional[str] = None
     plans: List[SubscriberPlan]
+    generate_first_invoice: bool = False  # If True, create the first invoice on subscriber creation
 
     @field_validator("email", "address", mode="before")
     @classmethod

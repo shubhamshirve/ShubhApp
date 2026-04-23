@@ -1222,7 +1222,10 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
-    # Validate all plans exist and enrich names
+    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+    now = datetime.now(timezone.utc)
+
+    # Validate all plans exist, enrich names, and calculate expiry dates
     enriched_plans = []
     for p in data.plans:
         op_plan = await db.operator_plans.find_one(
@@ -1230,12 +1233,27 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         )
         if not op_plan:
             raise HTTPException(status_code=404, detail=f"Plan {p.plan_id} not found")
-        
+
         plan_dict = p.model_dump()
         plan_dict["plan_name"] = op_plan["name"]
+
+        # Calculate expiry from start_date + validity
+        validity = op_plan.get("validity", "monthly")
+        days = VALIDITY_DAYS.get(validity, 30)
+        if p.plan_start_date:
+            try:
+                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d")
+            except ValueError:
+                start = now.replace(tzinfo=None)
+        else:
+            start = now.replace(tzinfo=None)
+            plan_dict["plan_start_date"] = start.strftime("%Y-%m-%d")
+
+        expiry = start + timedelta(days=days)
+        plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
+        plan_dict["billing_date"] = start.day  # keep for legacy display only
         enriched_plans.append(plan_dict)
 
-    now = datetime.now(timezone.utc)
     subscriber = {
         "id": generate_id(), "name": data.name, "whatsapp_number": data.whatsapp_number,
         "email": data.email, "address": data.address,
@@ -1244,6 +1262,27 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
     await db.subscribers.insert_one(subscriber)
+
+    # ── Generate first invoice if requested ───────────────────────────────────
+    if data.generate_first_invoice and enriched_plans:
+        try:
+            operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
+            if operator:
+                from services.cron_service import CronJobService
+                svc = CronJobService(db)
+                # Group plans by validity to create separate invoices per billing period type
+                from collections import defaultdict
+                validity_groups: dict = defaultdict(list)
+                for ep in enriched_plans:
+                    op_plan = await db.operator_plans.find_one({"id": ep["plan_id"], "deleted_at": None}, {"_id": 0})
+                    if op_plan:
+                        validity_groups[op_plan.get("validity", "monthly")].append(ep)
+
+                for validity, group_plans in validity_groups.items():
+                    await svc._create_first_invoice(operator, subscriber, group_plans)
+        except Exception as inv_err:
+            logger.warning(f"First invoice creation failed for {subscriber['id']}: {inv_err}")
+
     return SubscriberResponse(**{**subscriber, "created_at": now})
 
 
@@ -1300,11 +1339,11 @@ async def get_subscribers_sample_csv(current_user: dict = Depends(require_operat
     rows = [
         [
             "name", "whatsapp_number", "email", "address",
-            "plan_name_1", "billing_date_1", "discount_1",
-            "plan_name_2", "billing_date_2", "discount_2",
-            "plan_name_3", "billing_date_3", "discount_3",
-            "plan_name_4", "billing_date_4", "discount_4",
-            "plan_name_5", "billing_date_5", "discount_5",
+            "plan_name_1", "plan_start_date_1", "discount_1",
+            "plan_name_2", "plan_start_date_2", "discount_2",
+            "plan_name_3", "plan_start_date_3", "discount_3",
+            "plan_name_4", "plan_start_date_4", "discount_4",
+            "plan_name_5", "plan_start_date_5", "discount_5",
         ],
         # Single plan example
         ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",     "Monthly Basic", "1",  "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
@@ -1324,6 +1363,100 @@ async def get_subscribers_sample_csv(current_user: dict = Depends(require_operat
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=subscribers_sample.csv"}
     )
+
+
+@router.post("/subscribers/migrate-to-expiry-dates")
+async def migrate_subscribers_to_expiry_dates(current_user: dict = Depends(require_operator)):
+    """
+    One-time migration: converts all subscribers using the legacy billing_date approach
+    to the new expiry-date approach by calculating plan_start_date and plan_expiry_date
+    from existing invoice history (or approximating from billing_date).
+    """
+    from datetime import date
+    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+    now = datetime.now(timezone.utc)
+    operator_id = current_user["operator_id"]
+
+    subscribers = await db.subscribers.find(
+        {"operator_id": operator_id, "deleted_at": None}, {"_id": 0}
+    ).to_list(5000)
+
+    migrated = 0
+    skipped = 0
+
+    for sub in subscribers:
+        plans_updated = sub.get("plans", [])
+        changed = False
+
+        for sp in plans_updated:
+            # Already migrated
+            if sp.get("plan_expiry_date"):
+                skipped += 1
+                continue
+
+            plan_id = sp.get("plan_id")
+            billing_day = sp.get("billing_date", 1)
+
+            # Get validity from operator plan
+            op_plan = await db.operator_plans.find_one({"id": plan_id, "deleted_at": None}, {"_id": 0})
+            validity = (op_plan or {}).get("validity", "monthly")
+            days = VALIDITY_DAYS.get(validity, 30)
+
+            # Try to find the most recent paid invoice for this plan
+            latest_invoice = await db.invoices.find_one(
+                {
+                    "operator_id": operator_id,
+                    "subscriber_id": sub["id"],
+                    "status": "paid",
+                    "line_items": {"$elemMatch": {"plan_id": plan_id}},
+                    "deleted_at": None,
+                },
+                {"_id": 0, "service_end_date": 1},
+                sort=[("created_at", -1)],
+            )
+
+            if latest_invoice and latest_invoice.get("service_end_date"):
+                try:
+                    svc_end = datetime.fromisoformat(latest_invoice["service_end_date"]).date()
+                    # service_end of last paid invoice = current plan start
+                    plan_start = svc_end
+                    plan_expiry = plan_start + timedelta(days=days)
+                except Exception:
+                    latest_invoice = None
+
+            if not latest_invoice:
+                # Approximate: next occurrence of billing_day
+                today = now.date()
+                try:
+                    candidate = today.replace(day=billing_day)
+                    if candidate < today:
+                        # billing day already passed this month → next month
+                        if today.month == 12:
+                            candidate = candidate.replace(year=today.year + 1, month=1)
+                        else:
+                            candidate = candidate.replace(month=today.month + 1)
+                    plan_expiry = candidate
+                    plan_start = plan_expiry - timedelta(days=days)
+                except ValueError:
+                    plan_start = today
+                    plan_expiry = today + timedelta(days=days)
+
+            sp["plan_start_date"] = plan_start.strftime("%Y-%m-%d")
+            sp["plan_expiry_date"] = plan_expiry.strftime("%Y-%m-%d")
+            changed = True
+            migrated += 1
+
+        if changed:
+            await db.subscribers.update_one(
+                {"id": sub["id"]},
+                {"$set": {"plans": plans_updated, "updated_at": now.isoformat()}}
+            )
+
+    return {
+        "message": "Migration complete",
+        "plans_migrated": migrated,
+        "plans_skipped_already_migrated": skipped,
+    }
 
 
 @router.post("/subscribers/bulk-upload")
@@ -1378,7 +1511,9 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
     if not existing:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     
-    # Validate all plans exist and enrich names
+    # Validate all plans exist and enrich names + expiry dates
+    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+    now_dt = datetime.now(timezone.utc)
     enriched_plans = []
     for p in data.plans:
         op_plan = await db.operator_plans.find_one(
@@ -1386,9 +1521,38 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
         )
         if not op_plan:
             raise HTTPException(status_code=404, detail=f"Plan {p.plan_id} not found")
-        
+
         plan_dict = p.model_dump()
         plan_dict["plan_name"] = op_plan["name"]
+
+        # Preserve existing expiry if already set and start_date hasn't changed
+        existing_plan = next((ep for ep in existing.get("plans", []) if ep.get("plan_id") == p.plan_id), None)
+        if p.plan_start_date and (not existing_plan or existing_plan.get("plan_start_date") != p.plan_start_date):
+            # Start date changed or new plan — recalculate expiry
+            validity = op_plan.get("validity", "monthly")
+            days = VALIDITY_DAYS.get(validity, 30)
+            try:
+                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d")
+            except ValueError:
+                start = now_dt.replace(tzinfo=None)
+            expiry = start + timedelta(days=days)
+            plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
+            plan_dict["billing_date"] = start.day
+        elif existing_plan and existing_plan.get("plan_expiry_date") and not p.plan_start_date:
+            # Preserve existing expiry if no start_date provided
+            plan_dict["plan_expiry_date"] = existing_plan["plan_expiry_date"]
+            plan_dict["plan_start_date"] = existing_plan.get("plan_start_date")
+            plan_dict["billing_date"] = existing_plan.get("billing_date")
+        elif not p.plan_expiry_date and not p.plan_start_date:
+            # New plan without dates — set defaults
+            validity = op_plan.get("validity", "monthly")
+            days = VALIDITY_DAYS.get(validity, 30)
+            start = now_dt.replace(tzinfo=None)
+            expiry = start + timedelta(days=days)
+            plan_dict["plan_start_date"] = start.strftime("%Y-%m-%d")
+            plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
+            plan_dict["billing_date"] = start.day
+
         enriched_plans.append(plan_dict)
 
     update_data = data.model_dump()
@@ -1734,7 +1898,54 @@ async def update_invoice_status(
 
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
-    # ── Send WhatsApp payment confirmation ────────────────────────────────────
+    # ── Extend subscriber plan expiry dates when invoice is paid ─────────────
+    if status == "paid":
+        try:
+            VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+            subscriber = await db.subscribers.find_one(
+                {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
+            )
+            if subscriber and invoice.get("line_items"):
+                plans_updated = subscriber.get("plans", [])
+                changed = False
+                paid_date = datetime.fromisoformat(updates["paid_at"]).date()
+
+                for line_item in invoice["line_items"]:
+                    pid = line_item.get("plan_id")
+                    if not pid:
+                        continue
+                    op_plan = await db.operator_plans.find_one({"id": pid, "deleted_at": None}, {"_id": 0})
+                    if not op_plan:
+                        continue
+                    validity = op_plan.get("validity", "monthly")
+                    days = VALIDITY_DAYS.get(validity, 30)
+
+                    for sp in plans_updated:
+                        if sp.get("plan_id") != pid:
+                            continue
+                        old_expiry_str = sp.get("plan_expiry_date")
+                        if old_expiry_str:
+                            try:
+                                old_expiry = datetime.strptime(old_expiry_str, "%Y-%m-%d").date()
+                                # If expiry is in the past, extend from payment date; otherwise from old expiry
+                                base_date = old_expiry if old_expiry >= paid_date else paid_date
+                                new_expiry = base_date + timedelta(days=days)
+                            except ValueError:
+                                new_expiry = paid_date + timedelta(days=days)
+                        else:
+                            new_expiry = paid_date + timedelta(days=days)
+                        sp["plan_expiry_date"] = new_expiry.strftime("%Y-%m-%d")
+                        sp["plan_start_date"] = (new_expiry - timedelta(days=days)).strftime("%Y-%m-%d")
+                        changed = True
+                        break  # each plan_id updated once
+
+                if changed:
+                    await db.subscribers.update_one(
+                        {"id": subscriber["id"]},
+                        {"$set": {"plans": plans_updated, "updated_at": now.isoformat()}}
+                    )
+        except Exception as expiry_err:
+            logger.warning(f"Failed to extend plan expiry for invoice {invoice_id}: {expiry_err}")
     if status == "paid":
         try:
             from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
