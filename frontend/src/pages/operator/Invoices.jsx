@@ -77,6 +77,10 @@ import {
   Smartphone,
   ChevronsUpDown,
   Check,
+  ChevronDown,
+  ChevronRight,
+  Users,
+  LayoutList,
 } from "lucide-react";
 
 const SearchableSubscriberSelect = ({ value, onSelect, authAxios }) => {
@@ -207,6 +211,8 @@ const OperatorInvoices = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [viewMode, setViewMode] = useState("flat"); // "flat" | "grouped"
+  const [expandedSubscribers, setExpandedSubscribers] = useState({});
   const [showDialog, setShowDialog] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [savingInvoice, setSavingInvoice] = useState(false);
@@ -645,6 +651,192 @@ const OperatorInvoices = () => {
     return matchesSearch && matchesStatus;
   });
 
+  // Infer validity label from a line item's service window (in days)
+  const getValidityLabel = (item) => {
+    if (!item?.service_start_date || !item?.service_end_date) return null;
+    const days = Math.round(
+      (new Date(item.service_end_date) - new Date(item.service_start_date)) / (1000 * 60 * 60 * 24)
+    );
+    if (days <= 45) return "Monthly";
+    if (days <= 120) return "Quarterly";
+    if (days <= 220) return "Half-Yearly";
+    return "Yearly";
+  };
+
+  // Group filteredInvoices by subscriber_id for the consolidated view
+  const groupedBySubscriber = (() => {
+    const map = new Map();
+    for (const inv of filteredInvoices) {
+      const key = inv.subscriber_id || inv.subscriber_name || inv.id;
+      if (!map.has(key)) {
+        map.set(key, {
+          subscriber_id: inv.subscriber_id,
+          subscriber_name: inv.subscriber_name || "—",
+          invoices: [],
+          total_due: 0,
+          total_paid: 0,
+          validity_counts: {},
+          status_counts: { pending: 0, paid: 0, overdue: 0, cancelled: 0 },
+        });
+      }
+      const g = map.get(key);
+      g.invoices.push(inv);
+      if (inv.status === "paid") g.total_paid += inv.final_amount || 0;
+      else if (inv.status !== "cancelled") g.total_due += inv.final_amount || 0;
+      g.status_counts[inv.status] = (g.status_counts[inv.status] || 0) + 1;
+      (inv.line_items || []).forEach((li) => {
+        const v = getValidityLabel(li) || (li.is_custom ? "Custom" : "Other");
+        g.validity_counts[v] = (g.validity_counts[v] || 0) + 1;
+      });
+    }
+    // Sort by outstanding amount desc, then by name
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.total_due !== a.total_due) return b.total_due - a.total_due;
+      return a.subscriber_name.localeCompare(b.subscriber_name);
+    });
+  })();
+
+  const toggleSubscriberExpanded = (key) => {
+    setExpandedSubscribers((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const expandAllGroups = () => {
+    const all = {};
+    groupedBySubscriber.forEach((g) => {
+      all[g.subscriber_id || g.subscriber_name] = true;
+    });
+    setExpandedSubscribers(all);
+  };
+
+  const collapseAllGroups = () => setExpandedSubscribers({});
+
+  const isReadOnly = dashboardStats?.is_read_only;
+
+  const renderInvoiceRow = (invoice, { hideSubscriber = false } = {}) => (
+    <TableRow key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+      <TableCell>
+        <span className="font-mono text-sm font-medium">{invoice.invoice_number}</span>
+      </TableCell>
+      {!hideSubscriber && (
+        <TableCell>
+          <span className="font-medium block">{invoice.subscriber_name}</span>
+        </TableCell>
+      )}
+      <TableCell>
+        <div className="space-y-1">
+          {invoice.line_items?.map((item, idx) => {
+            const validity = getValidityLabel(item);
+            return (
+              <span
+                key={idx}
+                className={`text-xs px-1.5 py-0.5 rounded block w-fit ${
+                  item.is_custom ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {item.is_custom ? (item.description || item.plan_name) : item.plan_name}
+                {item.is_custom && <span className="ml-1 opacity-60">(custom)</span>}
+                {!item.is_custom && validity && (
+                  <span className="ml-1 opacity-70">· {validity}</span>
+                )}
+              </span>
+            );
+          })}
+          {(!invoice.line_items || invoice.line_items.length === 0) && (
+            <span className="text-xs text-slate-400">{invoice.plan_name}</span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <div>
+          <span className="font-medium">₹{invoice.final_amount.toLocaleString("en-IN")}</span>
+          {invoice.tax_amount > 0 && (
+            <span className="text-xs text-slate-500 block">Tax: ₹{invoice.tax_amount}</span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="text-sm">
+        {new Date(invoice.due_date).toLocaleDateString()}
+      </TableCell>
+      <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+      <TableCell>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" disabled={isReadOnly}>
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {invoice.status === "pending" && !invoice.payment_link && features?.payment_gateway && gatewayConfigured && invoiceSettings?.accept_payment_gateway && (
+              <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
+                <Link2 className="w-4 h-4 mr-2 text-blue-600" />
+                Generate Payment Link
+              </DropdownMenuItem>
+            )}
+            {invoice.payment_link && (
+              <DropdownMenuItem onClick={() => {
+                setPaymentLinkData({ payment_link: invoice.payment_link });
+                setShowPaymentLinkDialog(true);
+              }}>
+                <QrCode className="w-4 h-4 mr-2 text-purple-600" />
+                View Payment Link/QR
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}>
+              <Download className="w-4 h-4 mr-2 text-slate-600" />
+              Download PDF
+            </DropdownMenuItem>
+            {invoice.status === "pending" && (
+              <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
+                <Pencil className="w-4 h-4 mr-2 text-blue-600" />
+                Edit Invoice
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => window.open(`/invoice/${invoice.invoice_number || invoice.id}`, "_blank")}
+            >
+              <ExternalLink className="w-4 h-4 mr-2 text-blue-600" />
+              View Public Invoice
+            </DropdownMenuItem>
+            {features?.whatsapp_notifications && (
+              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
+                <Send className="w-4 h-4 mr-2 text-emerald-600" />
+                Send via WhatsApp API (Rs 0.5)
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)}>
+              <MessageSquare className="w-4 h-4 mr-2 text-green-600" />
+              Send via WhatsApp Web
+            </DropdownMenuItem>
+            {invoice.status === "overdue" && features?.whatsapp_notifications && (
+              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
+                <Bell className="w-4 h-4 mr-2 text-amber-600" />
+                Send Reminder
+              </DropdownMenuItem>
+            )}
+            {invoice.status === "pending" && (
+              <DropdownMenuItem onClick={() => openPaymentConfirmDialog(invoice)}>
+                <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" />
+                Mark as Paid
+              </DropdownMenuItem>
+            )}
+            {invoice.status !== "overdue" && invoice.status !== "paid" && (
+              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "overdue")}>
+                <AlertTriangle className="w-4 h-4 mr-2 text-red-600" />
+                Mark as Overdue
+              </DropdownMenuItem>
+            )}
+            {invoice.status !== "cancelled" && invoice.status !== "paid" && (
+              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "cancelled")}>
+                Cancel Invoice
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+
+
   const getStatusBadge = (status) => {
     const config = {
       pending: { class: "badge-pending", icon: Clock },
@@ -670,8 +862,6 @@ const OperatorInvoices = () => {
       </OperatorLayout>
     );
   }
-
-  const isReadOnly = dashboardStats?.is_read_only;
 
   return (
     <OperatorLayout title="Invoices" isReadOnly={isReadOnly}>
@@ -701,6 +891,30 @@ const OperatorInvoices = () => {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
+            <div className="inline-flex rounded-md border border-slate-200 overflow-hidden" data-testid="view-mode-toggle">
+              <button
+                type="button"
+                onClick={() => setViewMode("flat")}
+                className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  viewMode === "flat" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                data-testid="view-mode-flat"
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+                Flat
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("grouped")}
+                className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  viewMode === "grouped" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                data-testid="view-mode-grouped"
+              >
+                <Users className="w-3.5 h-3.5" />
+                By Subscriber
+              </button>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
@@ -722,147 +936,150 @@ const OperatorInvoices = () => {
           </div>
         </div>
 
-        {/* Invoices Table */}
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Subscriber</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredInvoices.length === 0 ? (
+        {/* Invoices Table / Grouped View */}
+        {viewMode === "flat" ? (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                      <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      No invoices found
-                    </TableCell>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Subscriber</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
-                ) : (
-                  filteredInvoices.map((invoice) => (
-                    <TableRow key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
-                      <TableCell>
-                        <span className="font-mono text-sm font-medium">{invoice.invoice_number}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium block">{invoice.subscriber_name}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          {invoice.line_items?.map((item, idx) => (
-                            <span key={idx} className={`text-xs px-1.5 py-0.5 rounded block w-fit ${item.is_custom ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>
-                              {item.is_custom ? (item.description || item.plan_name) : item.plan_name}
-                              {item.is_custom && <span className="ml-1 opacity-60">(custom)</span>}
-                            </span>
-                          ))}
-                          {(!invoice.line_items || invoice.line_items.length === 0) && (
-                            <span className="text-xs text-slate-400">{invoice.plan_name}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <span className="font-medium">₹{invoice.final_amount.toLocaleString('en-IN')}</span>
-                          {invoice.tax_amount > 0 && (
-                            <span className="text-xs text-slate-500 block">
-                              Tax: ₹{invoice.tax_amount}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {new Date(invoice.due_date).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" disabled={isReadOnly}>
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {invoice.status === "pending" && !invoice.payment_link && features?.payment_gateway && gatewayConfigured && invoiceSettings?.accept_payment_gateway && (
-                              <DropdownMenuItem onClick={() => handleGeneratePaymentLink(invoice.id)}>
-                                <Link2 className="w-4 h-4 mr-2 text-blue-600" />
-                                Generate Payment Link
-                              </DropdownMenuItem>
-                            )}
-                            {invoice.payment_link && (
-                              <DropdownMenuItem onClick={() => {
-                                setPaymentLinkData({ payment_link: invoice.payment_link });
-                                setShowPaymentLinkDialog(true);
-                              }}>
-                                <QrCode className="w-4 h-4 mr-2 text-purple-600" />
-                                View Payment Link/QR
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}>
-                              <Download className="w-4 h-4 mr-2 text-slate-600" />
-                              Download PDF
-                            </DropdownMenuItem>
-                            {invoice.status === "pending" && (
-                              <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
-                                <Pencil className="w-4 h-4 mr-2 text-blue-600" />
-                                Edit Invoice
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem 
-                              onClick={() => window.open(`/invoice/${invoice.invoice_number || invoice.id}`, '_blank')}
-                            >
-                              <ExternalLink className="w-4 h-4 mr-2 text-blue-600" />
-                              View Public Invoice
-                            </DropdownMenuItem>
-                            {features?.whatsapp_notifications && (
-                              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "invoice")}>
-                                <Send className="w-4 h-4 mr-2 text-emerald-600" />
-                                Send via WhatsApp API (Rs 0.5)
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => handleSendWhatsAppWeb(invoice)}>
-                              <MessageSquare className="w-4 h-4 mr-2 text-green-600" />
-                              Send via WhatsApp Web
-                            </DropdownMenuItem>
-                            {invoice.status === "overdue" && features?.whatsapp_notifications && (
-                              <DropdownMenuItem onClick={() => handleSendNotification(invoice.id, "reminder")}>
-                                <Bell className="w-4 h-4 mr-2 text-amber-600" />
-                                Send Reminder
-                              </DropdownMenuItem>
-                            )}
-                            {invoice.status === "pending" && (
-                              <DropdownMenuItem onClick={() => openPaymentConfirmDialog(invoice)}>
-                                <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" />
-                                Mark as Paid
-                              </DropdownMenuItem>
-                            )}
-                            {invoice.status !== "overdue" && invoice.status !== "paid" && (
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "overdue")}>
-                                <AlertTriangle className="w-4 h-4 mr-2 text-red-600" />
-                                Mark as Overdue
-                              </DropdownMenuItem>
-                            )}
-                            {invoice.status !== "cancelled" && invoice.status !== "paid" && (
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "cancelled")}>
-                                Cancel Invoice
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                </TableHeader>
+                <TableBody>
+                  {filteredInvoices.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                        <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        No invoices found
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  ) : (
+                    filteredInvoices.map((invoice) => renderInvoiceRow(invoice))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3" data-testid="grouped-invoices-view">
+            <div className="flex items-center justify-between px-1">
+              <p className="text-sm text-slate-500">
+                {groupedBySubscriber.length} {groupedBySubscriber.length === 1 ? "subscriber" : "subscribers"} · {filteredInvoices.length} invoices
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={expandAllGroups}
+                  className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
+                  data-testid="expand-all-groups"
+                >
+                  Expand all
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={collapseAllGroups}
+                  className="text-xs text-slate-600 hover:text-slate-900 underline underline-offset-2"
+                  data-testid="collapse-all-groups"
+                >
+                  Collapse all
+                </button>
+              </div>
+            </div>
+
+            {groupedBySubscriber.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-slate-500">
+                  <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  No invoices found
+                </CardContent>
+              </Card>
+            ) : (
+              groupedBySubscriber.map((group) => {
+                const key = group.subscriber_id || group.subscriber_name;
+                const isOpen = !!expandedSubscribers[key];
+                const validityPills = Object.entries(group.validity_counts).sort(
+                  (a, b) => b[1] - a[1]
+                );
+                return (
+                  <Card key={key} data-testid={`group-card-${key}`}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSubscriberExpanded(key)}
+                      className="w-full flex flex-col sm:flex-row sm:items-center gap-3 p-4 text-left hover:bg-slate-50 transition-colors"
+                      data-testid={`group-toggle-${key}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {isOpen ? (
+                          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{group.subscriber_name}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {validityPills.map(([validity, count]) => (
+                              <span
+                                key={validity}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium"
+                              >
+                                {validity} × {count}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6 sm:gap-8 text-sm shrink-0">
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">Outstanding</p>
+                          <p className={`font-semibold ${group.total_due > 0 ? "text-red-600" : "text-slate-400"}`}>
+                            ₹{group.total_due.toLocaleString("en-IN")}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">Paid</p>
+                          <p className="font-semibold text-emerald-600">
+                            ₹{group.total_paid.toLocaleString("en-IN")}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">Invoices</p>
+                          <p className="font-semibold text-slate-700">{group.invoices.length}</p>
+                        </div>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-slate-100">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Invoice #</TableHead>
+                              <TableHead>Items</TableHead>
+                              <TableHead>Amount</TableHead>
+                              <TableHead>Due Date</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="w-[50px]"></TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {group.invoices.map((inv) => renderInvoiceRow(inv, { hideSubscriber: true }))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        )}
 
         {/* Create Dialog */}
         <Dialog
