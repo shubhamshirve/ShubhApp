@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timedelta
 
 # Configuration
-BASE_URL = "https://gst-invoice-display.preview.emergentagent.com/api"
+BASE_URL = "https://changelog-review-13.preview.emergentagent.com/api"
 
 class ReviewRequestTester:
     def __init__(self):

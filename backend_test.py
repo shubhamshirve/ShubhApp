@@ -15,7 +15,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://gst-invoice-display.preview.emergentagent.com/api"
+BASE_URL = "https://changelog-review-13.preview.emergentagent.com/api"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 
