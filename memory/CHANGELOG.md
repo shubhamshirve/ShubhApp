@@ -2,7 +2,29 @@
 
 ## 2026-04-24
 
-### V8.29: Calendar-Month Expiry & Dashboard Cleanup
+### V8.30: WhatsApp Logging Completeness + First-Invoice Auto-Send
+
+#### 1. Complete WhatsApp message logging (all sends now logged)
+Three previously un-logged send paths now write to `whatsapp_message_logs`:
+
+| Location | Trigger field | What was missing |
+|----------|--------------|-----------------|
+| `operator.py` — announcement loop | `manual_announcement` | Result captured + `log_whatsapp_message` added |
+| `operator.py` — auto-send on `POST /invoices` | `auto_invoice_create` | `wa_result` captured + log block added |
+| `cron_service.py` — fallback `send_text_message` (wallet balance alert) | `cron_wallet` | Log call added after text send |
+
+All log calls are wrapped in `try/except` so a logging failure never disrupts the send path.
+
+#### 2. First-invoice WhatsApp send (`generate_first_invoice: true`)
+`CronJobService._create_first_invoice` now sends the invoice notification via WhatsApp **and** logs it (trigger=`first_invoice`) after inserting the invoice — using the same pattern as `_create_invoice_for_plans`. Gracefully skips if WhatsApp is not configured.
+
+**Files changed:**
+- `backend/routers/operator.py`
+- `backend/services/cron_service.py`
+
+---
+
+
 
 #### 1. Remove invoice_value_this_month from Admin Dashboard
 - Removed `invoice_value_this_month` field from `GET /api/admin/dashboard` and the corresponding frontend KPI card. The subscriber overview section is back to 4 cards.
