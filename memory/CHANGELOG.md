@@ -2,7 +2,28 @@
 
 ## 2026-04-24
 
-### V8.30: WhatsApp Logging Completeness + First-Invoice Auto-Send
+### V8.31: WhatsApp Stats — Pagination Cap + View Status Modal
+
+**Backend** — `GET /api/admin/whatsapp-message-logs`:
+- `per_page` default changed from 50 → 20; max enforced at 20 via `Query(20, ge=1, le=20)`.
+
+**Frontend** — `frontend/src/pages/admin/WhatsAppStats.jsx`:
+
+1. **Message Logs table**:
+   - Removed the "Message ID" column.
+   - Added a **"View" column** (last) with an Eye-icon button on every row.
+   - Trigger labels updated with new triggers: `auto_invoice_create`, `first_invoice`, `manual_announcement`.
+
+2. **Pagination**: Always visible (moved outside the `logs.length === 0` block). Shows `«`, `<`, numbered page pills (up to 5), `>`, `»` controls and "Page X of Y · Z total".
+
+3. **"Message Status" modal** (new):  Opened by the Eye button. Shows:
+   - Status banner: **"Sent & API Accepted"** (green, has message_id) / **"Sent (No Receipt)"** / **"Failed"** (red, shows error).
+   - Detail grid: Sent At · Trigger · Recipient Phone · WA ID · Template · Category · Invoice # · Operator ID.
+   - Full WhatsApp Message ID block with explanatory note about delivery vs acceptance.
+
+---
+
+
 
 #### 1. Complete WhatsApp message logging (all sends now logged)
 Three previously un-logged send paths now write to `whatsapp_message_logs`:
