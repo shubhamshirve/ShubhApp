@@ -2,6 +2,35 @@
 
 ## 2026-04-24
 
+### V8.29: Calendar-Month Expiry & Dashboard Cleanup
+
+#### 1. Remove invoice_value_this_month from Admin Dashboard
+- Removed `invoice_value_this_month` field from `GET /api/admin/dashboard` and the corresponding frontend KPI card. The subscriber overview section is back to 4 cards.
+
+#### 2. Calendar-Month Expiry Date Calculation
+Replaced fixed-day expiry arithmetic (`start + N days`) with calendar-month arithmetic (`start + N months - 1 day`) everywhere plan expiry dates are computed.
+
+| Validity | Old | New (example start Apr 21) |
+|----------|-----|---------------------------|
+| Monthly | +30 days = May 21 | +1 month −1 day = **May 20** |
+| Quarterly | +90 days = Jul 20 | +3 months −1 day = **Jul 20** |
+| Half-Yearly | +180 days = Oct 18 | +6 months −1 day = **Oct 20** |
+| Yearly | +365 days = Apr 21 | +12 months −1 day = **Apr 20** |
+
+Edge cases handled correctly via `dateutil.relativedelta` (e.g. Jan 31 + 1 month = Feb 28/29).
+
+**Backend changes:**
+- `backend/routers/operator.py`: Added `_VALIDITY_MONTHS` constant + `_calc_plan_expiry(start, validity)` helper. Updated all 4 expiry calculation sites: `create_subscriber`, `update_subscriber`, `migrate_subscribers_to_expiry_dates`, `update_invoice_status` (mark-paid extension).
+  - Mark-paid: `new_expiry = base_date + relativedelta(months=N)`, `new_start = base_date + 1 day`
+- `backend/services/cron_service.py`: Updated `service_end` in `_create_invoice_for_plan` to use `relativedelta(months=N) - timedelta(days=1)`.
+
+**Frontend changes:**
+- `frontend/src/pages/operator/Subscribers.jsx`: `calcExpiry` now uses `Date.UTC + month arithmetic - 1 day` for the "Plan Expires On" preview.
+
+---
+
+## 2026-04-24
+
 ### V8.28: Admin Dashboard — Revised Revenue & Invoice Value Metrics
 
 Updated the **"Subscriber Overview"** section of the admin dashboard (`/admin`):
