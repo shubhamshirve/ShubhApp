@@ -17,8 +17,7 @@ import {
   Receipt,
   UserCheck,
   UserX,
-  Wallet,
-  FileText
+  Wallet
 } from "lucide-react";
 
 const AdminDashboard = () => {
@@ -67,7 +66,6 @@ const AdminDashboard = () => {
     { title: "Active Subscribers", value: stats?.active_subscribers || 0, icon: UserCheck, color: "bg-emerald-100 text-emerald-700", testid: "sub-active" },
     { title: "Suspended Subscribers", value: stats?.suspended_subscribers || 0, icon: UserX, color: "bg-red-100 text-red-700", testid: "sub-suspended" },
     { title: "Invoice Charges / mo", value: fmt(stats?.approx_monthly_revenue), icon: Wallet, color: "bg-indigo-100 text-indigo-700", testid: "sub-approx-revenue", hint: "Invoice charge × active subscribers across all operators" },
-    { title: "Invoice Value (This Month)", value: fmt(stats?.invoice_value_this_month), icon: FileText, color: "bg-purple-100 text-purple-700", testid: "sub-invoice-value-month", hint: "Total value of all non-cancelled invoices generated this month" }
   ];
 
   return (
@@ -97,7 +95,7 @@ const AdminDashboard = () => {
         {/* Subscriber Overview */}
         <section>
           <h2 className="text-lg font-heading font-semibold text-slate-900 mb-4">Subscriber Overview</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {subscriberCards.map((card) => {
               const Icon = card.icon;
               return (

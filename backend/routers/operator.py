@@ -1,13 +1,14 @@
 """Operator router: profile, plans, subscribers, invoices, staff, reports, subscription, checkout, etc."""
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from fastapi.responses import Response
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as date_type
 from typing import List, Optional
 import os
 import csv
 import io
 import logging
 import uuid
+from dateutil.relativedelta import relativedelta
 
 from database import db
 from models import (
@@ -39,6 +40,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operator", tags=["Operator"])
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# ── Expiry-date helpers ────────────────────────────────────────────────────────
+# Named validity → number of calendar months to add
+_VALIDITY_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+
+def _calc_plan_expiry(start: date_type, validity: str) -> date_type:
+    """Return the plan expiry date: start + N calendar months - 1 day.
+
+    E.g. monthly plan starting 21 Apr → expires 20 May.
+    Falls back to start + 29 days for unknown validity codes.
+    """
+    months = _VALIDITY_MONTHS.get(validity)
+    if months:
+        return start + relativedelta(months=months) - timedelta(days=1)
+    return start + timedelta(days=29)  # safe fallback
 
 
 # ── Addon helper ──────────────────────────────────────────────────────────────
@@ -1222,7 +1238,6 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
-    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
     now = datetime.now(timezone.utc)
 
     # Validate all plans exist, enrich names, and calculate expiry dates
@@ -1237,19 +1252,18 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         plan_dict = p.model_dump()
         plan_dict["plan_name"] = op_plan["name"]
 
-        # Calculate expiry from start_date + validity
+        # Calculate expiry: start + N calendar months - 1 day
         validity = op_plan.get("validity", "monthly")
-        days = VALIDITY_DAYS.get(validity, 30)
         if p.plan_start_date:
             try:
-                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d")
+                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d").date()
             except ValueError:
-                start = now.replace(tzinfo=None)
+                start = now.date()
         else:
-            start = now.replace(tzinfo=None)
+            start = now.date()
             plan_dict["plan_start_date"] = start.strftime("%Y-%m-%d")
 
-        expiry = start + timedelta(days=days)
+        expiry = _calc_plan_expiry(start, validity)
         plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
         plan_dict["billing_date"] = start.day  # keep for legacy display only
         enriched_plans.append(plan_dict)
@@ -1373,7 +1387,6 @@ async def migrate_subscribers_to_expiry_dates(current_user: dict = Depends(requi
     from existing invoice history (or approximating from billing_date).
     """
     from datetime import date
-    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
     now = datetime.now(timezone.utc)
     operator_id = current_user["operator_id"]
 
@@ -1400,7 +1413,6 @@ async def migrate_subscribers_to_expiry_dates(current_user: dict = Depends(requi
             # Get validity from operator plan
             op_plan = await db.operator_plans.find_one({"id": plan_id, "deleted_at": None}, {"_id": 0})
             validity = (op_plan or {}).get("validity", "monthly")
-            days = VALIDITY_DAYS.get(validity, 30)
 
             # Try to find the most recent paid invoice for this plan
             latest_invoice = await db.invoices.find_one(
@@ -1418,9 +1430,8 @@ async def migrate_subscribers_to_expiry_dates(current_user: dict = Depends(requi
             if latest_invoice and latest_invoice.get("service_end_date"):
                 try:
                     svc_end = datetime.fromisoformat(latest_invoice["service_end_date"]).date()
-                    # service_end of last paid invoice = current plan start
                     plan_start = svc_end
-                    plan_expiry = plan_start + timedelta(days=days)
+                    plan_expiry = _calc_plan_expiry(plan_start, validity)
                 except Exception:
                     latest_invoice = None
 
@@ -1430,16 +1441,19 @@ async def migrate_subscribers_to_expiry_dates(current_user: dict = Depends(requi
                 try:
                     candidate = today.replace(day=billing_day)
                     if candidate < today:
-                        # billing day already passed this month → next month
                         if today.month == 12:
                             candidate = candidate.replace(year=today.year + 1, month=1)
                         else:
                             candidate = candidate.replace(month=today.month + 1)
                     plan_expiry = candidate
-                    plan_start = plan_expiry - timedelta(days=days)
+                    months = _VALIDITY_MONTHS.get(validity)
+                    if months:
+                        plan_start = plan_expiry - relativedelta(months=months) + timedelta(days=1)
+                    else:
+                        plan_start = plan_expiry - timedelta(days=29)
                 except ValueError:
                     plan_start = today
-                    plan_expiry = today + timedelta(days=days)
+                    plan_expiry = _calc_plan_expiry(today, validity)
 
             sp["plan_start_date"] = plan_start.strftime("%Y-%m-%d")
             sp["plan_expiry_date"] = plan_expiry.strftime("%Y-%m-%d")
@@ -1512,7 +1526,6 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
         raise HTTPException(status_code=404, detail="Subscriber not found")
     
     # Validate all plans exist and enrich names + expiry dates
-    VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
     now_dt = datetime.now(timezone.utc)
     enriched_plans = []
     for p in data.plans:
@@ -1530,12 +1543,11 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
         if p.plan_start_date and (not existing_plan or existing_plan.get("plan_start_date") != p.plan_start_date):
             # Start date changed or new plan — recalculate expiry
             validity = op_plan.get("validity", "monthly")
-            days = VALIDITY_DAYS.get(validity, 30)
             try:
-                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d")
+                start = datetime.strptime(p.plan_start_date, "%Y-%m-%d").date()
             except ValueError:
-                start = now_dt.replace(tzinfo=None)
-            expiry = start + timedelta(days=days)
+                start = now_dt.date()
+            expiry = _calc_plan_expiry(start, validity)
             plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
             plan_dict["billing_date"] = start.day
         elif existing_plan and existing_plan.get("plan_expiry_date") and not p.plan_start_date:
@@ -1546,9 +1558,8 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
         elif not p.plan_expiry_date and not p.plan_start_date:
             # New plan without dates — set defaults
             validity = op_plan.get("validity", "monthly")
-            days = VALIDITY_DAYS.get(validity, 30)
-            start = now_dt.replace(tzinfo=None)
-            expiry = start + timedelta(days=days)
+            start = now_dt.date()
+            expiry = _calc_plan_expiry(start, validity)
             plan_dict["plan_start_date"] = start.strftime("%Y-%m-%d")
             plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
             plan_dict["billing_date"] = start.day
@@ -1901,7 +1912,6 @@ async def update_invoice_status(
     # ── Extend subscriber plan expiry dates when invoice is paid ─────────────
     if status == "paid":
         try:
-            VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
             subscriber = await db.subscribers.find_one(
                 {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
             )
@@ -1918,7 +1928,7 @@ async def update_invoice_status(
                     if not op_plan:
                         continue
                     validity = op_plan.get("validity", "monthly")
-                    days = VALIDITY_DAYS.get(validity, 30)
+                    months = _VALIDITY_MONTHS.get(validity)
 
                     for sp in plans_updated:
                         if sp.get("plan_id") != pid:
@@ -1927,15 +1937,24 @@ async def update_invoice_status(
                         if old_expiry_str:
                             try:
                                 old_expiry = datetime.strptime(old_expiry_str, "%Y-%m-%d").date()
-                                # If expiry is in the past, extend from payment date; otherwise from old expiry
+                                # Extend from old expiry or paid_date (whichever is later)
                                 base_date = old_expiry if old_expiry >= paid_date else paid_date
-                                new_expiry = base_date + timedelta(days=days)
                             except ValueError:
-                                new_expiry = paid_date + timedelta(days=days)
+                                base_date = paid_date
                         else:
-                            new_expiry = paid_date + timedelta(days=days)
+                            base_date = paid_date
+
+                        # new_expiry = base_date + N months  (= next period's last day)
+                        # new_start  = base_date + 1 day     (= first day of next period)
+                        if months:
+                            new_expiry = base_date + relativedelta(months=months)
+                            new_start = base_date + timedelta(days=1)
+                        else:
+                            new_expiry = base_date + timedelta(days=30)
+                            new_start = base_date + timedelta(days=1)
+
                         sp["plan_expiry_date"] = new_expiry.strftime("%Y-%m-%d")
-                        sp["plan_start_date"] = (new_expiry - timedelta(days=days)).strftime("%Y-%m-%d")
+                        sp["plan_start_date"] = new_start.strftime("%Y-%m-%d")
                         changed = True
                         break  # each plan_id updated once
 

@@ -4,6 +4,7 @@ Cron Job Services for Auto Invoice Generation and Reminders
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -404,11 +405,11 @@ class CronJobService:
         total_tax = 0
         total_final = 0
 
-        validity_days_map = {
-            "monthly": 30,
-            "quarterly": 90,
-            "half_yearly": 180,
-            "yearly": 365
+        validity_months_map = {
+            "monthly": 1,
+            "quarterly": 3,
+            "half_yearly": 6,
+            "yearly": 12
         }
 
         for p_info in plans_to_bill:
@@ -419,11 +420,12 @@ class CronJobService:
             if not plan:
                 continue
 
-            service_days = validity_days_map.get(plan.get("validity", "monthly"), 30)
+            validity = plan.get("validity", "monthly")
+            svc_months = validity_months_map.get(validity, 1)
 
             # ── Use expiry-date approach if plan_expiry_date is set ───────────
-            # service_start = current plan expiry (start of NEW period)
-            # service_end   = current plan expiry + validity_days
+            # service_start = current plan expiry (first day billed under new period)
+            # service_end   = service_start + N calendar months - 1 day
             expiry_date_str = p_info.get("plan_expiry_date")
             if expiry_date_str:
                 try:
@@ -442,7 +444,7 @@ class CronJobService:
                     last_day = calendar.monthrange(now.year, now.month)[1]
                     service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
-            service_end = service_start + timedelta(days=service_days)
+            service_end = service_start + relativedelta(months=svc_months) - timedelta(days=1)
             
             base_amount = plan.get("price", 0)
             discount = p_info.get("discount", 0)

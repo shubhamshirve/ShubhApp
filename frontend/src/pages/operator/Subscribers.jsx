@@ -59,13 +59,21 @@ const OperatorSubscribers = () => {
   const fileInputRef = useRef(null);
 
   // Helpers for expiry-date approach
-  const VALIDITY_DAYS = { monthly: 30, quarterly: 90, half_yearly: 180, yearly: 365 };
+  // start + N calendar months - 1 day  (e.g. Apr 21 + 1mo → May 20)
+  const VALIDITY_MONTHS = { monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 };
   const calcExpiry = (startDateStr, validity) => {
     if (!startDateStr || !validity) return "";
     try {
-      const start = new Date(startDateStr);
-      const days = VALIDITY_DAYS[validity] || 30;
-      const expiry = new Date(start.getTime() + days * 86400000);
+      const [yr, mo, dy] = startDateStr.split("-").map(Number);
+      const months = VALIDITY_MONTHS[validity];
+      if (months) {
+        // Use UTC Date to avoid DST shifts
+        const expiry = new Date(Date.UTC(yr, mo - 1 + months, dy));
+        expiry.setUTCDate(expiry.getUTCDate() - 1);
+        return expiry.toISOString().slice(0, 10);
+      }
+      // fallback for unknown validity
+      const expiry = new Date(Date.UTC(yr, mo - 1, dy + 29));
       return expiry.toISOString().slice(0, 10);
     } catch { return ""; }
   };

@@ -1126,14 +1126,6 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
 
     now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    # ── Invoice value generated this month (across all operators, excl. cancelled) ──
-    invoice_value_this_month = 0.0
-    async for inv in db.invoices.find(
-        {"created_at": {"$gte": start_of_month.isoformat()}, "status": {"$ne": "cancelled"}},
-        {"_id": 0, "final_amount": 1},
-    ):
-        invoice_value_this_month += float(inv.get("final_amount") or 0)
     expiring_date = (now + timedelta(days=7)).isoformat()
     expiring_operators = await db.operators.count_documents({
         "subscription_ends_at": {"$lte": expiring_date, "$gte": now.isoformat()}, "deleted_at": None
@@ -1171,7 +1163,6 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
         "active_subscribers": active_subscribers,
         "suspended_subscribers": suspended_subscribers,
         "approx_monthly_revenue": round(approx_monthly_revenue, 2),
-        "invoice_value_this_month": round(invoice_value_this_month, 2),
         "saas_revenue_this_month": round(saas_revenue_this_month, 2),
         "addon_revenue_this_month": round(addon_revenue_this_month, 2),
         "gst_collected_this_month": round(gst_collected_this_month, 2),
