@@ -1,5 +1,25 @@
 # E-Bill Platform — CHANGELOG
 
+## 2026-04-24
+
+### V8.28: Admin Dashboard — Revised Revenue & Invoice Value Metrics
+
+Updated the **"Subscriber Overview"** section of the admin dashboard (`/admin`):
+
+1. **"Invoice Charges / mo"** (renamed from "Approx Revenue / mo") — now calculates the platform's expected monthly invoice-charge revenue as: Σ (operator's `per_invoice_price` × operator's active subscriber count) across all active operators. Tooltip updated accordingly.
+2. **"Invoice Value (This Month)"** — new KPI card showing the total `final_amount` of all non-cancelled invoices generated this month across all operators.
+
+**Backend** — `GET /api/admin/dashboard`:
+- `approx_monthly_revenue`: replaced plan-price normalization with `per_invoice_price × active_sub_count` aggregation per operator.
+- `invoice_value_this_month` (new field): sum of `final_amount` for invoices with `created_at >= start_of_month` and `status != "cancelled"`.
+
+**Frontend** — `frontend/src/pages/admin/Dashboard.jsx`:
+- 4th subscriber card title/hint updated to "Invoice Charges / mo".
+- 5th card added: "Invoice Value (This Month)" (purple, `FileText` icon).
+- Subscriber Overview grid updated to `grid-cols-2 md:grid-cols-3 lg:grid-cols-5`.
+
+---
+
 ## 2026-04-23
 
 ### V8.27: Admin Dashboard — Subscriber Overview Section

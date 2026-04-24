@@ -1109,29 +1109,31 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
     active_subscribers = await db.subscribers.count_documents({"status": "active", "deleted_at": None})
     suspended_subscribers = await db.subscribers.count_documents({"status": "suspended", "deleted_at": None})
 
-    # ── Approx monthly recurring revenue across the platform ──
-    # Sum active plan prices of active subscribers, normalized to monthly equivalent.
-    VALIDITY_TO_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
-    plan_map = {}
-    async for p in db.operator_plans.find({"deleted_at": None}, {"_id": 0, "id": 1, "price": 1, "validity": 1}):
-        plan_map[p["id"]] = p
+    # ── Approx monthly invoice-charge revenue across the platform ──
+    # = Σ (operator's per_invoice_price × operator's active subscriber count)
+    saas_plan_charge_map: dict[str, float] = {}
+    async for p in db.saas_plans.find({"deleted_at": None}, {"_id": 0, "id": 1, "per_invoice_price": 1}):
+        saas_plan_charge_map[p["id"]] = float(p.get("per_invoice_price") or 10.0)
     approx_monthly_revenue = 0.0
-    async for sub in db.subscribers.find(
-        {"status": "active", "deleted_at": None}, {"_id": 0, "plans": 1}
+    async for op in db.operators.find(
+        {"status": "active", "deleted_at": None}, {"_id": 0, "id": 1, "saas_plan_id": 1}
     ):
-        for sp in sub.get("plans", []) or []:
-            if sp.get("status") and sp.get("status") != "active":
-                continue
-            plan = plan_map.get(sp.get("plan_id"))
-            if not plan:
-                continue
-            price = float(plan.get("price", 0) or 0)
-            months = VALIDITY_TO_MONTHS.get(plan.get("validity", "monthly"), 1)
-            if months > 0:
-                approx_monthly_revenue += price / months
+        charge = saas_plan_charge_map.get(op.get("saas_plan_id") or "", 10.0)
+        op_active_subs = await db.subscribers.count_documents(
+            {"operator_id": op["id"], "status": "active", "deleted_at": None}
+        )
+        approx_monthly_revenue += charge * op_active_subs
 
     now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # ── Invoice value generated this month (across all operators, excl. cancelled) ──
+    invoice_value_this_month = 0.0
+    async for inv in db.invoices.find(
+        {"created_at": {"$gte": start_of_month.isoformat()}, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "final_amount": 1},
+    ):
+        invoice_value_this_month += float(inv.get("final_amount") or 0)
     expiring_date = (now + timedelta(days=7)).isoformat()
     expiring_operators = await db.operators.count_documents({
         "subscription_ends_at": {"$lte": expiring_date, "$gte": now.isoformat()}, "deleted_at": None
@@ -1169,6 +1171,7 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
         "active_subscribers": active_subscribers,
         "suspended_subscribers": suspended_subscribers,
         "approx_monthly_revenue": round(approx_monthly_revenue, 2),
+        "invoice_value_this_month": round(invoice_value_this_month, 2),
         "saas_revenue_this_month": round(saas_revenue_this_month, 2),
         "addon_revenue_this_month": round(addon_revenue_this_month, 2),
         "gst_collected_this_month": round(gst_collected_this_month, 2),
