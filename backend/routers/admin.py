@@ -1104,6 +1104,32 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
     suspended_operators = await db.operators.count_documents({"status": "suspended", "deleted_at": None})
     read_only_operators = await db.operators.count_documents({"is_read_only": True, "deleted_at": None})
 
+    # ── Subscriber-level stats across all operators ──
+    total_subscribers = await db.subscribers.count_documents({"deleted_at": None})
+    active_subscribers = await db.subscribers.count_documents({"status": "active", "deleted_at": None})
+    suspended_subscribers = await db.subscribers.count_documents({"status": "suspended", "deleted_at": None})
+
+    # ── Approx monthly recurring revenue across the platform ──
+    # Sum active plan prices of active subscribers, normalized to monthly equivalent.
+    VALIDITY_TO_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+    plan_map = {}
+    async for p in db.operator_plans.find({"deleted_at": None}, {"_id": 0, "id": 1, "price": 1, "validity": 1}):
+        plan_map[p["id"]] = p
+    approx_monthly_revenue = 0.0
+    async for sub in db.subscribers.find(
+        {"status": "active", "deleted_at": None}, {"_id": 0, "plans": 1}
+    ):
+        for sp in sub.get("plans", []) or []:
+            if sp.get("status") and sp.get("status") != "active":
+                continue
+            plan = plan_map.get(sp.get("plan_id"))
+            if not plan:
+                continue
+            price = float(plan.get("price", 0) or 0)
+            months = VALIDITY_TO_MONTHS.get(plan.get("validity", "monthly"), 1)
+            if months > 0:
+                approx_monthly_revenue += price / months
+
     now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     expiring_date = (now + timedelta(days=7)).isoformat()
@@ -1139,6 +1165,10 @@ async def get_admin_dashboard(current_user: dict = Depends(require_admin)):
         "total_operators": total_operators, "active_operators": active_operators,
         "trial_operators": trial_operators, "suspended_operators": suspended_operators,
         "read_only_operators": read_only_operators, "expiring_operators": expiring_operators,
+        "total_subscribers": total_subscribers,
+        "active_subscribers": active_subscribers,
+        "suspended_subscribers": suspended_subscribers,
+        "approx_monthly_revenue": round(approx_monthly_revenue, 2),
         "saas_revenue_this_month": round(saas_revenue_this_month, 2),
         "addon_revenue_this_month": round(addon_revenue_this_month, 2),
         "gst_collected_this_month": round(gst_collected_this_month, 2),

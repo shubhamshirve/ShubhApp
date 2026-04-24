@@ -14,7 +14,10 @@ import {
   IndianRupee,
   TrendingUp,
   Puzzle,
-  Receipt
+  Receipt,
+  UserCheck,
+  UserX,
+  Wallet
 } from "lucide-react";
 
 const AdminDashboard = () => {
@@ -58,6 +61,13 @@ const AdminDashboard = () => {
 
   const fmt = (n) => `₹${(n || 0).toLocaleString("en-IN")}`;
 
+  const subscriberCards = [
+    { title: "Total Subscribers", value: stats?.total_subscribers || 0, icon: Users, color: "bg-slate-100 text-slate-700", testid: "sub-total" },
+    { title: "Active Subscribers", value: stats?.active_subscribers || 0, icon: UserCheck, color: "bg-emerald-100 text-emerald-700", testid: "sub-active" },
+    { title: "Suspended Subscribers", value: stats?.suspended_subscribers || 0, icon: UserX, color: "bg-red-100 text-red-700", testid: "sub-suspended" },
+    { title: "Approx Revenue / mo", value: fmt(stats?.approx_monthly_revenue), icon: Wallet, color: "bg-indigo-100 text-indigo-700", testid: "sub-approx-revenue", hint: "Sum of active plan prices, normalized to monthly" }
+  ];
+
   return (
     <AdminLayout title="Dashboard">
       <WelcomeModal />
@@ -71,6 +81,25 @@ const AdminDashboard = () => {
               const Icon = card.icon;
               return (
                 <Card key={index} className="kpi-card card-hover" data-testid={`kpi-${card.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <div className={`w-10 h-10 rounded-lg ${card.color} flex items-center justify-center mb-3`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <p className="kpi-value">{card.value}</p>
+                  <p className="kpi-label">{card.title}</p>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Subscriber Overview */}
+        <section>
+          <h2 className="text-lg font-heading font-semibold text-slate-900 mb-4">Subscriber Overview</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {subscriberCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Card key={card.testid} className="kpi-card card-hover" data-testid={`kpi-${card.testid}`} title={card.hint || ""}>
                   <div className={`w-10 h-10 rounded-lg ${card.color} flex items-center justify-center mb-3`}>
                     <Icon className="w-5 h-5" />
                   </div>

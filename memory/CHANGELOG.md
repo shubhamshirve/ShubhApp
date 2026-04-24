@@ -2,6 +2,24 @@
 
 ## 2026-04-23
 
+### V8.27: Admin Dashboard — Subscriber Overview Section
+
+Added a new **"Subscriber Overview"** section to the admin dashboard (`/admin`) sitting right below the existing Operator Overview, with 4 new KPI cards aggregated across all operators:
+
+1. **Total Subscribers** — count of all non-deleted subscribers across the platform
+2. **Active Subscribers** — subscribers with `status: "active"`
+3. **Suspended Subscribers** — subscribers with `status: "suspended"`
+4. **Approx Revenue / mo** — estimated monthly recurring revenue = Σ (active plan prices ÷ validity-in-months) across all active subscribers' active plans. Title tooltip: "Sum of active plan prices, normalized to monthly"
+
+**Backend** — `GET /api/admin/dashboard` response extended with `total_subscribers`, `active_subscribers`, `suspended_subscribers`, `approx_monthly_revenue` (rounded to 2 dp).
+**Frontend** — `frontend/src/pages/admin/Dashboard.jsx`: new `subscriberCards` array + new `<section>` rendered in a 2/4-col responsive grid.
+
+Verified: current test data shows 46 active subscribers, ₹18,000/mo approx revenue.
+
+---
+
+## 2026-04-23
+
 ### V8.26: Pagination + Spacing Polish on Operator Invoices
 
 - **Pagination** on `/operator/invoices` with fixed page size of **20 items per page**. Works in both view modes:
