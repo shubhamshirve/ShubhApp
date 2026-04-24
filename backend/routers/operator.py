@@ -379,6 +379,24 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
                             if result:
                                 whatsapp_count += 1
                                 logger.info(f"Sent announcement via template to {sub['whatsapp_number']}")
+                                # Log every sent announcement message
+                                try:
+                                    from services.whatsapp_service import log_whatsapp_message
+                                    _msg_id = (result.get("messages") or [{}])[0].get("id", "")
+                                    _wa_id = (result.get("contacts") or [{}])[0].get("wa_id", "")
+                                    await log_whatsapp_message(
+                                        db,
+                                        operator_id=current_user["operator_id"],
+                                        template_name=announcement_template,
+                                        template_category="announcement",
+                                        recipient_phone=sub["whatsapp_number"],
+                                        status="sent",
+                                        message_id=_msg_id,
+                                        wa_id=_wa_id,
+                                        trigger="manual_announcement",
+                                    )
+                                except Exception as _log_err:
+                                    logger.warning(f"Announcement WA log failed: {_log_err}")
                         except Exception as e:
                             logger.error(f"Failed to send announcement template to {sub['whatsapp_number']}: {e}")
             else:
@@ -1768,7 +1786,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                 )
 
                 if params["body_vars"]:
-                    await wa_service.send_template_message(
+                    wa_result = await wa_service.send_template_message(
                         recipient_phone=subscriber["whatsapp_number"],
                         template_name=template_name,
                         language_code=params["language_code"],
@@ -1778,7 +1796,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                         button_params=params["btn_params"],
                     )
                 else:
-                    await wa_service.send_invoice_notification(
+                    wa_result = await wa_service.send_invoice_notification(
                         recipient_phone=subscriber["whatsapp_number"],
                         customer_name=subscriber["name"],
                         invoice_number=invoice["invoice_number"],
@@ -1790,6 +1808,26 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                         header_type=params["header_type"],
                     )
                 auto_wa_sent = True
+                # Log the auto-send
+                try:
+                    from services.whatsapp_service import log_whatsapp_message
+                    _msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                    _wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                    await log_whatsapp_message(
+                        db,
+                        operator_id=current_user["operator_id"],
+                        template_name=template_name,
+                        template_category="invoice_notification",
+                        recipient_phone=subscriber["whatsapp_number"],
+                        status="sent",
+                        message_id=_msg_id,
+                        wa_id=_wa_id,
+                        invoice_id=invoice["id"],
+                        invoice_number=invoice["invoice_number"],
+                        trigger="auto_invoice_create",
+                    )
+                except Exception as _log_err:
+                    logger.warning(f"Auto-invoice WA log failed: {_log_err}")
         except Exception as e:
             logger.warning(f"Auto WhatsApp send failed: {e}")
 

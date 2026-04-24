@@ -717,6 +717,68 @@ class CronJobService:
         }
         await self.db.invoices.insert_one(invoice)
         logger.info(f"Created first invoice {invoice['invoice_number']} for {subscriber['name']}")
+
+        # ── Send invoice via WhatsApp (same pattern as _create_invoice_for_plans) ──
+        try:
+            from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
+            from services.invoice_view_service import build_public_invoice_url_from_env
+            wa_service = await get_whatsapp_service_async()
+            if wa_service and subscriber.get("whatsapp_number"):
+                cron_template_settings = await self.db.global_settings.find_one(
+                    {"type": "whatsapp_template_settings"}, {"_id": 0}
+                ) or {}
+                invoice_tpl_name = cron_template_settings.get("invoice_template") or "invoice_notification"
+                tmpl_doc = await self.db.whatsapp_templates.find_one(
+                    {"template_name": invoice_tpl_name, "deleted_at": None}, {"_id": 0}
+                )
+                inv_public_url = await build_public_invoice_url_from_env(invoice)
+                params = await build_wa_send_params(self.db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
+
+                wa_result = None
+                if params["body_vars"]:
+                    wa_result = await wa_service.send_template_message(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        template_name=invoice_tpl_name,
+                        language_code=params["language_code"],
+                        variables=params["variables"],
+                        header_params=params["header_params"],
+                        header_type=params["header_type"],
+                        button_params=params["btn_params"],
+                    )
+                else:
+                    wa_result = await wa_service.send_invoice_notification(
+                        recipient_phone=subscriber["whatsapp_number"],
+                        customer_name=subscriber["name"],
+                        invoice_number=invoice["invoice_number"],
+                        amount=f"INR {invoice['final_amount']:,.2f}",
+                        due_date=(now + timedelta(days=7)).strftime("%d %b %Y"),
+                        payment_link=inv_public_url or invoice.get("payment_link"),
+                        header_params=params["header_params"],
+                        header_type=params["header_type"],
+                    )
+
+                # Log the send
+                try:
+                    wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                    wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                    await log_whatsapp_message(
+                        self.db,
+                        operator_id=operator["id"],
+                        template_name=invoice_tpl_name,
+                        template_category="invoice_notification",
+                        recipient_phone=subscriber["whatsapp_number"],
+                        status="sent",
+                        message_id=wa_msg_id,
+                        wa_id=wa_wa_id,
+                        invoice_id=invoice["id"],
+                        invoice_number=invoice["invoice_number"],
+                        trigger="first_invoice",
+                    )
+                except Exception as log_e:
+                    logger.warning(f"WhatsApp log failed for first invoice {invoice['id']}: {log_e}")
+        except Exception as wa_e:
+            logger.warning(f"WhatsApp send failed for first invoice {invoice['id']}: {wa_e}")
+
         return invoice
 
 
@@ -1079,6 +1141,20 @@ async def run_daily_wallet_check(db):
                                     f"Balance below Rs.50 will suspend your account.\n\nLogin to top-up: E-Bill Dashboard"
                                 )
                             )
+                            try:
+                                await log_whatsapp_message(
+                                    db,
+                                    operator_id=op["id"],
+                                    template_name="text_message",
+                                    template_category="wallet_balance_alert",
+                                    recipient_phone=op["phone"],
+                                    status="sent",
+                                    message_id="",
+                                    wa_id="",
+                                    trigger="cron_wallet",
+                                )
+                            except Exception as _log_err:
+                                logger.warning(f"Wallet text-message WA log failed: {_log_err}")
                     except Exception as wa_err:
                         logger.warning(f"Wallet reminder WhatsApp failed for {op['id']}: {wa_err}")
 
