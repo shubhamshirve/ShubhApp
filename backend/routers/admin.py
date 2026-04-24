@@ -1702,8 +1702,8 @@ async def get_whatsapp_stats(current_user: dict = Depends(require_admin)):
 
 @router.get("/whatsapp-message-logs")
 async def get_whatsapp_message_logs(
-    page: int = 1,
-    per_page: int = 50,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=20),
     status: Optional[str] = None,
     template: Optional[str] = None,
     template_category: Optional[str] = None,

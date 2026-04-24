@@ -74,7 +74,10 @@ const TRIGGER_LABELS = {
   cron_expiry: "Expiry Notifications",
   cron_report: "Daily Reports",
   manual: "Manual (Operator)",
-  auto_invoice: "Auto Invoice",
+  auto_invoice: "Auto Invoice (Cron)",
+  auto_invoice_create: "Auto Invoice (Create)",
+  first_invoice: "First Invoice",
+  manual_announcement: "Announcement",
   payment_confirmation: "Payment Confirmed",
 };
 
@@ -86,6 +89,9 @@ const TRIGGER_COLORS = {
   cron_report: "bg-indigo-100 text-indigo-700",
   manual: "bg-slate-100 text-slate-600",
   auto_invoice: "bg-blue-100 text-blue-700",
+  auto_invoice_create: "bg-blue-100 text-blue-700",
+  first_invoice: "bg-teal-100 text-teal-700",
+  manual_announcement: "bg-purple-100 text-purple-700",
   payment_confirmation: "bg-green-100 text-green-700",
 };
 
@@ -193,6 +199,8 @@ export default function WhatsAppStats() {
   const [errorLogsLoading, setErrorLogsLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [selectedError, setSelectedError] = useState(null);
+  // Message status detail
+  const [selectedLog, setSelectedLog] = useState(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -579,119 +587,149 @@ export default function WhatsAppStats() {
                 </p>
               </div>
             ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-slate-50">
-                        <TableHead>Date & Time</TableHead>
-                        <TableHead>Recipient</TableHead>
-                        <TableHead>Template</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Trigger</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Message ID</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {logs.map((log) => (
-                        <TableRow key={log.id} className="hover:bg-slate-50">
-                          <TableCell className="text-xs text-slate-500 whitespace-nowrap">
-                            {formatDate(log.created_at)}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="text-sm font-mono text-slate-700">{log.recipient_phone || "—"}</p>
-                              {log.wa_id && log.wa_id !== log.recipient_phone && (
-                                <p className="text-xs text-slate-400 font-mono">{log.wa_id}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-xs font-mono">
-                              {log.template_name || "—"}
-                            </code>
-                          </TableCell>
-                          <TableCell>
-                            {log.template_category ? (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[log.template_category] || "bg-slate-100 text-slate-700"}`}>
-                                {CATEGORY_LABELS[log.template_category] || log.template_category}
-                              </span>
-                            ) : "—"}
-                          </TableCell>
-                          <TableCell>
-                            {log.invoice_number ? (
-                              <span className="text-xs text-slate-600 font-medium">{log.invoice_number}</span>
-                            ) : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-xs text-slate-500">
-                              {TRIGGER_LABELS[log.trigger] || log.trigger || "—"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {log.status === "sent" ? (
-                              <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Sent
-                              </span>
-                            ) : (
-                              <div>
-                                <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
-                                  <XCircle className="w-3.5 h-3.5" />
-                                  Failed
-                                </span>
-                                {log.error_message && (
-                                  <p className="text-xs text-red-400 mt-0.5 max-w-32 truncate" title={log.error_message}>
-                                    {log.error_message}
-                                  </p>
-                                )}
-                              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50">
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Template</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Trigger</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-20 text-center">View</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id} className="hover:bg-slate-50">
+                        <TableCell className="text-xs text-slate-500 whitespace-nowrap">
+                          {formatDate(log.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-mono text-slate-700">{log.recipient_phone || "—"}</p>
+                            {log.wa_id && log.wa_id !== log.recipient_phone && (
+                              <p className="text-xs text-slate-400 font-mono">{log.wa_id}</p>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            {log.message_id ? (
-                              <code className="text-[10px] text-slate-400 font-mono max-w-24 block truncate" title={log.message_id}>
-                                {log.message_id}
-                              </code>
-                            ) : "—"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-xs font-mono">
+                            {log.template_name || "—"}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          {log.template_category ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[log.template_category] || "bg-slate-100 text-slate-700"}`}>
+                              {CATEGORY_LABELS[log.template_category] || log.template_category}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {log.invoice_number ? (
+                            <span className="text-xs text-slate-600 font-medium">{log.invoice_number}</span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TRIGGER_COLORS[log.trigger] || "bg-slate-100 text-slate-600"}`}>
+                            {TRIGGER_LABELS[log.trigger] || log.trigger || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {log.status === "sent" ? (
+                            <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Sent
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
+                              <XCircle className="w-3.5 h-3.5" />
+                              Failed
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedLog(log)}
+                            className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600"
+                            title="View message status"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
-                {/* Pagination */}
-                {logsTotalPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-                    <p className="text-xs text-slate-500">
-                      Page {logsPage} of {logsTotalPages} · {logsTotal} total
-                    </p>
-                    <div className="flex gap-1">
+            {/* Pagination — always visible */}
+            {!logsLoading && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                <p className="text-xs text-slate-500">
+                  Page {logsPage} of {logsTotalPages} · {logsTotal.toLocaleString()} total
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchLogs(1)}
+                    disabled={logsPage <= 1 || logsLoading}
+                    className="h-7 px-2 text-xs"
+                  >
+                    «
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchLogs(logsPage - 1)}
+                    disabled={logsPage <= 1 || logsLoading}
+                    className="h-7 px-2"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  {/* Page number pills */}
+                  {Array.from({ length: Math.min(5, logsTotalPages) }, (_, i) => {
+                    const start = Math.max(1, Math.min(logsPage - 2, logsTotalPages - 4));
+                    const p = start + i;
+                    return p <= logsTotalPages ? (
                       <Button
-                        variant="outline"
+                        key={p}
+                        variant={p === logsPage ? "default" : "outline"}
                         size="sm"
-                        onClick={() => fetchLogs(logsPage - 1)}
-                        disabled={logsPage <= 1 || logsLoading}
-                        className="h-7 px-2"
+                        onClick={() => fetchLogs(p)}
+                        disabled={logsLoading}
+                        className="h-7 w-7 p-0 text-xs"
                       >
-                        <ChevronLeft className="w-3.5 h-3.5" />
+                        {p}
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchLogs(logsPage + 1)}
-                        disabled={logsPage >= logsTotalPages || logsLoading}
-                        className="h-7 px-2"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
+                    ) : null;
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchLogs(logsPage + 1)}
+                    disabled={logsPage >= logsTotalPages || logsLoading}
+                    className="h-7 px-2"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchLogs(logsTotalPages)}
+                    disabled={logsPage >= logsTotalPages || logsLoading}
+                    className="h-7 px-2 text-xs"
+                  >
+                    »
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -773,6 +811,114 @@ export default function WhatsAppStats() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Message Status Detail Dialog ────────────────────────────────── */}
+      <Dialog open={!!selectedLog} onOpenChange={(v) => !v && setSelectedLog(null)}>
+        <DialogContent className="max-w-lg w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="w-4 h-4 text-green-600" />
+              Message Status
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedLog && (
+            <div className="space-y-4 text-sm">
+              {/* Status banner */}
+              {selectedLog.status === "sent" ? (
+                <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-green-800">
+                      {selectedLog.message_id ? "Sent & API Accepted" : "Sent (No Receipt)"}
+                    </p>
+                    <p className="text-xs text-green-600 mt-0.5">
+                      {selectedLog.message_id
+                        ? "WhatsApp API accepted the message and issued a message ID."
+                        : "Message was sent but no message ID was returned by the API."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                  <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-800">Failed to Send</p>
+                    {selectedLog.error_message && (
+                      <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">
+                        {selectedLog.error_message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Details grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Sent At</p>
+                  <p className="font-medium text-slate-700 text-xs">{formatDate(selectedLog.created_at)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Trigger</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TRIGGER_COLORS[selectedLog.trigger] || "bg-slate-100 text-slate-600"}`}>
+                    {TRIGGER_LABELS[selectedLog.trigger] || selectedLog.trigger || "—"}
+                  </span>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Recipient Phone</p>
+                  <p className="font-mono text-slate-700 text-xs break-all">{selectedLog.recipient_phone || "—"}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">WA ID (Resolved)</p>
+                  <p className="font-mono text-slate-700 text-xs break-all">{selectedLog.wa_id || "—"}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Template</p>
+                  <code className="bg-white border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-xs font-mono break-all">
+                    {selectedLog.template_name || "—"}
+                  </code>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-0.5">Category</p>
+                  {selectedLog.template_category ? (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[selectedLog.template_category] || "bg-slate-100 text-slate-700"}`}>
+                      {CATEGORY_LABELS[selectedLog.template_category] || selectedLog.template_category}
+                    </span>
+                  ) : <span className="text-slate-400 text-xs">—</span>}
+                </div>
+                {selectedLog.invoice_number && (
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-0.5">Invoice #</p>
+                    <p className="font-semibold text-slate-700 text-xs">{selectedLog.invoice_number}</p>
+                  </div>
+                )}
+                {selectedLog.operator_id && (
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-0.5">Operator ID</p>
+                    <p className="font-mono text-slate-500 text-[10px] break-all">{selectedLog.operator_id}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Message ID — full width */}
+              {selectedLog.message_id && (
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-400 mb-1">WhatsApp Message ID</p>
+                  <code className="text-xs text-slate-600 font-mono break-all">{selectedLog.message_id}</code>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    This ID confirms the message was accepted by the WhatsApp API. Delivery to device depends on the recipient's connection.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-1 border-t border-slate-100">
+                <Button variant="outline" size="sm" onClick={() => setSelectedLog(null)}>Close</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Error Detail Dialog ─────────────────────────────────────────── */}
       <Dialog open={!!selectedError} onOpenChange={(v) => !v && setSelectedError(null)}>
