@@ -3,6 +3,39 @@
 
 ## 2026-04-24
 
+### V9.10: Bulk Upload — Multi-Tenure & Calendar-Month Expiry Support
+
+Updated all three bulk upload modules (plans / subscribers / invoices) and their sample CSV templates to support the multi-tenure plan feature (V8.32) and calendar-month expiry calculation (V8.29).
+
+#### Plans bulk upload (`job_queue_service.py` — `_run_bulk_plans`)
+- New column **`available_validities`** — comma-separated list (e.g. `"monthly,quarterly,yearly"`).
+- Base `validity` is always auto-included. Invalid tenures produce a row-level error.
+- Plan document stored with `available_validities` list.
+
+#### Subscribers bulk upload (`job_queue_service.py` — `_run_bulk_subscribers`)
+- New columns **`tenure_1..5`** — selected validity per plan slot (e.g. `yearly`).
+- Blank tenure defaults to the plan's base `validity`. Tenure not in `available_validities` → row error.
+- Expiry date calculation changed from fixed `+N days` (old `VALIDITY_DAYS_BULK`) to **`start + N calendar months – 1 day`** using `dateutil.relativedelta` — consistent with V8.29.
+- Subscriber plan entry stores `selected_validity`.
+
+#### Invoices bulk upload (`job_queue_service.py` — `_run_bulk_invoices`)
+- New column **`selected_validity`** (optional).
+- When `base_amount` is blank: **auto-calculated** as `plan.price / base_months × selected_months` — consistent with V8.32 price formula.
+- `selected_validity` stored in invoice line item.
+
+#### Sample CSV templates (`routers/operator.py`)
+| Endpoint | New column(s) | Example |
+|---|---|---|
+| `GET /plans/sample-csv` | `available_validities` | `"monthly,quarterly,half_yearly,yearly"` |
+| `GET /subscribers/sample-csv` | `tenure_1..3` | `yearly`, `quarterly` |
+| `GET /invoices/sample-csv` | `selected_validity` | `yearly`, blank = base |
+
+Added `relativedelta` import to `job_queue_service.py`.
+
+**Backend: 19/19 tests passing.**
+
+---
+
 ### V8.32: Multi-Tenure Plan Support
 
 Operators can now create one plan with multiple enabled tenures (monthly / quarterly / half-yearly / yearly) and choose the tenant at subscriber assignment or invoice creation time — no need to create separate plans per period.
