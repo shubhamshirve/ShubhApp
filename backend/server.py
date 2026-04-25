@@ -31,6 +31,7 @@ Modules:
 """
 
 from fastapi import FastAPI, Request, HTTPException
+from config import API_VERSION
 from fastapi.responses import JSONResponse, FileResponse
 from starlette.middleware.cors import CORSMiddleware
 import logging
@@ -72,7 +73,7 @@ def _ensure_env_files():
     pass
 
 # ── App & routers ───────────────────────────────────────────────────────────
-app = FastAPI(title="Multi-Tenant SaaS Billing Platform")
+app = FastAPI(title="Multi-Tenant SaaS Billing Platform", version=API_VERSION)
 
 app.include_router(auth_router,      prefix="/api")
 app.include_router(admin_router,     prefix="/api")

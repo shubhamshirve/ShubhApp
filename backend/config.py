@@ -72,7 +72,7 @@ CORS_ORIGINS_LIST = [origin.strip() for origin in CORS_ORIGINS.split(',') if ori
 # API Configuration
 # ============================================================================
 API_TITLE = "eBill - Multi-Tenant SaaS Billing Platform"
-API_VERSION = os.environ.get('APP_VERSION', '1.0.0')
+API_VERSION = os.environ.get('APP_VERSION', '9.10.0')
 API_DESCRIPTION = "REST API for billing, invoicing, and payment management"
 API_DOCS_ENABLED = IS_DEVELOPMENT  # Disable /docs in production
 
