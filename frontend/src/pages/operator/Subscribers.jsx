@@ -61,6 +61,20 @@ const OperatorSubscribers = () => {
   // Helpers for expiry-date approach
   // start + N calendar months - 1 day  (e.g. Apr 21 + 1mo → May 20)
   const VALIDITY_MONTHS = { monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 };
+  const VALIDITY_OPTIONS = [
+    { value: "monthly", label: "Monthly" },
+    { value: "quarterly", label: "Quarterly" },
+    { value: "half_yearly", label: "Half-Yearly" },
+    { value: "yearly", label: "Yearly" },
+  ];
+
+  /** Scale plan base price to a selected tenure */
+  const priceForTenure = (basePrice, baseValidity, selectedValidity) => {
+    const bm = VALIDITY_MONTHS[baseValidity] || 1;
+    const sm = VALIDITY_MONTHS[selectedValidity] || bm;
+    return Math.round((basePrice / bm * sm) * 100) / 100;
+  };
+
   const calcExpiry = (startDateStr, validity) => {
     if (!startDateStr || !validity) return "";
     try {
@@ -87,6 +101,7 @@ const OperatorSubscribers = () => {
     generate_first_invoice: false,
     plans: [{
       plan_id: "",
+      selected_validity: "",
       plan_start_date: todayStr(),
       plan_expiry_date: "",
       discount: 0
@@ -294,12 +309,23 @@ const OperatorSubscribers = () => {
       const updated = prev.plans.map((p, i) => {
         if (i !== index) return p;
         const newRow = { ...p, [field]: value };
-        // When plan changes, recalculate expiry from start_date + plan validity
-        if (field === "plan_id" || field === "plan_start_date") {
-          const planDef = plans.find(pl => pl.id === (field === "plan_id" ? value : newRow.plan_id));
-          if (planDef && newRow.plan_start_date) {
+        const planDef = plans.find(pl => pl.id === newRow.plan_id);
+
+        // When plan changes, reset selected_validity to base validity and recalc expiry
+        if (field === "plan_id" && planDef) {
+          newRow.selected_validity = planDef.validity;
+          if (newRow.plan_start_date) {
             newRow.plan_expiry_date = calcExpiry(newRow.plan_start_date, planDef.validity);
           }
+        }
+        // When tenure changes, recalc expiry using selected_validity
+        if (field === "selected_validity" && newRow.plan_start_date) {
+          newRow.plan_expiry_date = calcExpiry(newRow.plan_start_date, value);
+        }
+        // When start_date changes, recalc expiry using current selected_validity or plan validity
+        if (field === "plan_start_date" && planDef) {
+          const v = newRow.selected_validity || planDef.validity;
+          newRow.plan_expiry_date = calcExpiry(value, v);
         }
         return newRow;
       });
@@ -728,7 +754,7 @@ const OperatorSubscribers = () => {
                           </Button>
                         )}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {/* Plan selector */}
                           <div className="space-y-2">
                             <Label>Plan *</Label>
@@ -747,6 +773,39 @@ const OperatorSubscribers = () => {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </div>
+
+                          {/* Tenure selector */}
+                          <div className="space-y-2">
+                            <Label>Tenure</Label>
+                            {(() => {
+                              const planDef = plans.find(pl => pl.id === plan.plan_id);
+                              const avail = planDef?.available_validities?.length
+                                ? planDef.available_validities
+                                : planDef ? [planDef.validity] : [];
+                              return (
+                                <Select
+                                  value={plan.selected_validity || planDef?.validity || ""}
+                                  onValueChange={(v) => updatePlanRow(index, "selected_validity", v)}
+                                  disabled={!planDef || avail.length <= 1}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select tenure" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {avail.map(v => {
+                                      const labels = { monthly:"Monthly", quarterly:"Quarterly", half_yearly:"Half-Yearly", yearly:"Yearly" };
+                                      const price = planDef ? priceForTenure(planDef.price, planDef.validity, v) : 0;
+                                      return (
+                                        <SelectItem key={v} value={v}>
+                                          {labels[v] || v} — ₹{price.toLocaleString('en-IN')}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            })()}
                           </div>
 
                           {/* Plan start date */}
@@ -772,13 +831,26 @@ const OperatorSubscribers = () => {
                           </div>
                         </div>
 
-                        {/* Expiry preview */}
-                        {plan.plan_expiry_date && (
-                          <p className="text-xs mt-2 text-indigo-600 bg-indigo-50 rounded px-2 py-1 w-fit">
-                            Plan expires on <strong>{plan.plan_expiry_date}</strong>
-                            {planDef && ` (${planDef.validity})`}
-                          </p>
-                        )}
+                        {/* Expiry + price preview */}
+                        {plan.plan_id && (() => {
+                          const planDef = plans.find(pl => pl.id === plan.plan_id);
+                          const tenure = plan.selected_validity || planDef?.validity;
+                          const calcPrice = planDef ? priceForTenure(planDef.price, planDef.validity, tenure) : 0;
+                          return (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {plan.plan_expiry_date && (
+                                <p className="text-xs text-indigo-600 bg-indigo-50 rounded px-2 py-1">
+                                  Expires <strong>{plan.plan_expiry_date}</strong>
+                                </p>
+                              )}
+                              {planDef && (
+                                <p className="text-xs text-emerald-700 bg-emerald-50 rounded px-2 py-1">
+                                  ₹{calcPrice.toLocaleString('en-IN')} / {tenure}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}

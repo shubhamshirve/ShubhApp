@@ -340,6 +340,8 @@ class SaaSPlanResponse(SanitizedModel):
 class SubscriberPlan(SanitizedModel):
     plan_id: str
     plan_name: Optional[str] = None
+    # ── Tenure chosen at assignment time ──────────────────────────────────────
+    selected_validity: Optional[str] = None  # monthly/quarterly/half_yearly/yearly — overrides plan.validity
     # ── Expiry-date billing (new) ──────────────────────────────────────────────
     plan_start_date: Optional[str] = None   # YYYY-MM-DD — when this plan period began
     plan_expiry_date: Optional[str] = None  # YYYY-MM-DD — when this plan period ends (auto-calculated)
@@ -386,7 +388,8 @@ class SubscriberResponse(SanitizedModel):
 class OperatorPlanCreate(SanitizedModel):
     name: str
     price: float
-    validity: str  # monthly, quarterly, half_yearly, yearly
+    validity: str  # base validity — determines what the price refers to
+    available_validities: List[str] = Field(default_factory=list)  # tenures the plan can be assigned with
     tax_percentage: float = 0
     tax_type: str = "none"  # inclusive, exclusive, none
     description: Optional[str] = None
@@ -398,6 +401,7 @@ class OperatorPlanResponse(SanitizedModel):
     name: str
     price: float
     validity: str
+    available_validities: List[str] = Field(default_factory=list)
     tax_percentage: float = 0
     tax_type: str = "none"
     description: Optional[str] = None
@@ -411,6 +415,7 @@ class OperatorPlanResponse(SanitizedModel):
 class InvoiceLineItem(SanitizedModel):
     plan_id: Optional[str] = None
     plan_name: Optional[str] = None
+    selected_validity: Optional[str] = None  # tenure used for this line item
     description: Optional[str] = None  # Used for custom items when plan_id is None
     is_custom: bool = False  # True for custom/ad-hoc line items not linked to a plan
     base_amount: float

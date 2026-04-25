@@ -166,16 +166,18 @@ class CronJobService:
                         if not plans_to_bill:
                             continue
 
-                        # Group by validity to create separate invoices per period type
+                        # Group by EFFECTIVE validity (selected_validity > plan.validity)
                         from collections import defaultdict
                         validity_groups: dict = defaultdict(list)
                         for p in plans_to_bill:
-                            # Look up validity from op plan (or from cached name)
-                            op_plan_cached = await self.db.operator_plans.find_one(
-                                {"id": p.get("plan_id"), "deleted_at": None}, {"_id": 0}
-                            )
-                            validity = (op_plan_cached or {}).get("validity", "monthly")
-                            validity_groups[validity].append(p)
+                            # selected_validity on the subscriber plan overrides the plan's base validity
+                            effective_v = p.get("selected_validity") or None
+                            if not effective_v:
+                                op_plan_cached = await self.db.operator_plans.find_one(
+                                    {"id": p.get("plan_id"), "deleted_at": None}, {"_id": 0}
+                                )
+                                effective_v = (op_plan_cached or {}).get("validity", "monthly")
+                            validity_groups[effective_v].append(p)
 
                         VALIDITY_ORDER = ["monthly", "quarterly", "half_yearly", "yearly"]
                         for validity in VALIDITY_ORDER:
@@ -421,11 +423,11 @@ class CronJobService:
                 continue
 
             validity = plan.get("validity", "monthly")
-            svc_months = validity_months_map.get(validity, 1)
+            # Use selected_validity from subscriber plan assignment if set
+            effective_validity = p_info.get("selected_validity") or validity
+            svc_months = validity_months_map.get(effective_validity, 1)
 
             # ── Use expiry-date approach if plan_expiry_date is set ───────────
-            # service_start = current plan expiry (first day billed under new period)
-            # service_end   = service_start + N calendar months - 1 day
             expiry_date_str = p_info.get("plan_expiry_date")
             if expiry_date_str:
                 try:
@@ -445,10 +447,15 @@ class CronJobService:
                     service_start = now.replace(day=last_day, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
             service_end = service_start + relativedelta(months=svc_months) - timedelta(days=1)
-            
-            base_amount = plan.get("price", 0)
+
+            # Price scaled to effective_validity
+            base_months = validity_months_map.get(validity, 1)
+            if effective_validity != validity and base_months > 0:
+                base_amount = round(plan.get("price", 0) / base_months * svc_months, 2)
+            else:
+                base_amount = plan.get("price", 0)
             discount = p_info.get("discount", 0)
-            
+
             tax_amount = 0
             if can_charge_gst and plan.get("tax_percentage", 0) > 0:
                 taxable = base_amount - discount
@@ -456,12 +463,13 @@ class CronJobService:
                     tax_amount = taxable * (plan["tax_percentage"] / 100)
                 elif plan.get("tax_type") == "inclusive":
                     tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
-            
+
             final_amount = base_amount - discount + (tax_amount if plan.get("tax_type") == "exclusive" else 0)
-            
+
             line_items.append({
                 "plan_id": plan["id"],
                 "plan_name": plan["name"],
+                "selected_validity": effective_validity,
                 "base_amount": base_amount,
                 "discount": discount,
                 "tax_amount": round(tax_amount, 2),

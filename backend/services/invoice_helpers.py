@@ -1,20 +1,22 @@
 """
 Shared invoice and WhatsApp helper functions.
-
-Extracted from routers/operator.py to break the circular import between
-routers/operator.py ↔ services/job_queue_service.py.
-
-Import chain:
-  routers/operator.py  →  services/job_queue_service.py  (lazy, inside fn bodies)
-  services/job_queue_service.py  →  routers/operator.py  (lazy, inside fn bodies)
-
-By moving shared helpers here both callers can import cleanly from this module.
 """
 from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from database import db
 from models import InvoiceCreate, InvoiceUpdate
+
+_VALIDITY_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+
+
+def _price_for_tenure(base_price: float, base_validity: str, selected_validity: str) -> float:
+    """Scale plan base_price to the selected tenure."""
+    base_m = _VALIDITY_MONTHS.get(base_validity, 1)
+    sel_m = _VALIDITY_MONTHS.get(selected_validity, base_m)
+    if base_m == 0:
+        return round(base_price, 2)
+    return round(base_price / base_m * sel_m, 2)
 
 
 # ─── WhatsApp config helpers ──────────────────────────────────────────────────
@@ -83,28 +85,37 @@ async def build_invoice_payload(operator_id: str, data: InvoiceCreate | InvoiceU
         if not plan:
             raise HTTPException(status_code=404, detail=f"Plan {item.plan_id} not found")
 
+        # Auto-calculate base_amount when selected_validity is provided
+        effective_validity = item.selected_validity or plan.get("validity", "monthly")
+        if item.selected_validity and item.selected_validity != plan.get("validity"):
+            computed_price = _price_for_tenure(plan["price"], plan.get("validity", "monthly"), item.selected_validity)
+        else:
+            computed_price = item.base_amount  # use what the client sent (may already be correct)
+
         tax_amount = 0.0
         if can_charge_gst and plan.get("tax_percentage", 0) > 0:
-            taxable = item.base_amount - item.discount
+            taxable = computed_price - item.discount
             if plan.get("tax_type") == "exclusive":
                 tax_amount = taxable * (plan["tax_percentage"] / 100)
             elif plan.get("tax_type") == "inclusive":
                 tax_amount = taxable - (taxable / (1 + plan["tax_percentage"] / 100))
 
-        final_amount = item.base_amount - item.discount + (
+        final_amount = computed_price - item.discount + (
             tax_amount if plan.get("tax_type") == "exclusive" else 0
         )
 
         enriched_item = item.model_dump()
+        enriched_item["base_amount"] = round(computed_price, 2)
         enriched_item["plan_name"] = plan["name"]
         enriched_item["plan_description"] = plan.get("description")
+        enriched_item["selected_validity"] = effective_validity
         enriched_item["tax_amount"] = round(tax_amount, 2)
         enriched_item["final_amount"] = round(final_amount, 2)
         enriched_item["service_start_date"] = item.service_start_date.isoformat()
         enriched_item["service_end_date"] = item.service_end_date.isoformat()
         line_items.append(enriched_item)
 
-        total_base += item.base_amount
+        total_base += computed_price
         total_discount += item.discount
         total_tax += tax_amount
         total_final += final_amount

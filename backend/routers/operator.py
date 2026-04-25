@@ -46,15 +46,23 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 _VALIDITY_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
 
 def _calc_plan_expiry(start: date_type, validity: str) -> date_type:
-    """Return the plan expiry date: start + N calendar months - 1 day.
-
-    E.g. monthly plan starting 21 Apr → expires 20 May.
-    Falls back to start + 29 days for unknown validity codes.
-    """
+    """Return the plan expiry date: start + N calendar months - 1 day."""
     months = _VALIDITY_MONTHS.get(validity)
     if months:
         return start + relativedelta(months=months) - timedelta(days=1)
     return start + timedelta(days=29)  # safe fallback
+
+
+def _price_for_tenure(base_price: float, base_validity: str, selected_validity: str) -> float:
+    """Normalise base_price to monthly rate, then scale to selected_validity months.
+
+    Example: base_price=1400 (quarterly) → monthly_rate=467 → yearly=5600.
+    """
+    base_m = _VALIDITY_MONTHS.get(base_validity, 1)
+    sel_m = _VALIDITY_MONTHS.get(selected_validity, base_m)
+    if base_m == 0:
+        return round(base_price, 2)
+    return round(base_price / base_m * sel_m, 2)
 
 
 # ── Addon helper ──────────────────────────────────────────────────────────────
@@ -1121,8 +1129,11 @@ async def create_operator_plan(data: OperatorPlanCreate, current_user: dict = De
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
     now = datetime.now(timezone.utc)
+    # Ensure base validity is always in available_validities
+    av = list(dict.fromkeys([data.validity] + (data.available_validities or [])))  # dedup, base first
     plan = {
         "id": generate_id(), "name": data.name, "price": data.price, "validity": data.validity,
+        "available_validities": av,
         "tax_percentage": data.tax_percentage, "tax_type": data.tax_type,
         "description": data.description, "status": "active",
         "operator_id": current_user["operator_id"],
@@ -1148,8 +1159,9 @@ async def get_operator_plans(current_user: dict = Depends(require_operator)):
                     created_at = datetime.fromisoformat(created_at)
                 elif not isinstance(created_at, datetime):
                     created_at = datetime.now(timezone.utc)
-                
-                # Use Pydantic model for validation
+                # Back-fill available_validities for legacy plans that don't have it
+                if not p.get("available_validities"):
+                    p["available_validities"] = [p.get("validity", "monthly")]
                 plan_data = {**p, "created_at": created_at}
                 parsed_plans.append(OperatorPlanResponse(**plan_data))
             except Exception as e:
@@ -1228,6 +1240,9 @@ async def update_operator_plan(plan_id: str, data: OperatorPlanCreate, current_u
     if not existing:
         raise HTTPException(status_code=404, detail="Plan not found")
     update_data = data.model_dump()
+    # Ensure base validity stays in available_validities
+    av = list(dict.fromkeys([data.validity] + (data.available_validities or [])))
+    update_data["available_validities"] = av
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.operator_plans.update_one({"id": plan_id}, {"$set": update_data})
     updated = await db.operator_plans.find_one({"id": plan_id}, {"_id": 0})
@@ -1270,8 +1285,11 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         plan_dict = p.model_dump()
         plan_dict["plan_name"] = op_plan["name"]
 
+        # Determine effective validity (selected_validity overrides plan.validity)
+        validity = p.selected_validity or op_plan.get("validity", "monthly")
+        plan_dict["selected_validity"] = validity
+
         # Calculate expiry: start + N calendar months - 1 day
-        validity = op_plan.get("validity", "monthly")
         if p.plan_start_date:
             try:
                 start = datetime.strptime(p.plan_start_date, "%Y-%m-%d").date()
@@ -1558,6 +1576,11 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
 
         # Preserve existing expiry if already set and start_date hasn't changed
         existing_plan = next((ep for ep in existing.get("plans", []) if ep.get("plan_id") == p.plan_id), None)
+
+        # Determine effective validity (selected_validity overrides plan.validity)
+        validity = p.selected_validity or op_plan.get("validity", "monthly")
+        plan_dict["selected_validity"] = validity
+
         if p.plan_start_date and (not existing_plan or existing_plan.get("plan_start_date") != p.plan_start_date):
             # Start date changed or new plan — recalculate expiry
             validity = op_plan.get("validity", "monthly")

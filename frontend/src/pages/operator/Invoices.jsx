@@ -240,6 +240,7 @@ const OperatorInvoices = () => {
     subscriber_id: "",
     line_items: [{
       plan_id: "",
+      selected_validity: "",
       item_type: "plan", // "plan" or "custom"
       description: "",
       base_amount: 0,
@@ -449,27 +450,64 @@ const OperatorInvoices = () => {
     }));
   };
 
+  // Validity helpers for tenure-based pricing
+  const VALIDITY_MONTHS_INV = { monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 };
+  const VALIDITY_OPTIONS_INV = [
+    { value: "monthly", label: "Monthly" },
+    { value: "quarterly", label: "Quarterly" },
+    { value: "half_yearly", label: "Half-Yearly" },
+    { value: "yearly", label: "Yearly" },
+  ];
+  const priceForTenureInv = (basePrice, baseValidity, targetValidity) => {
+    const bm = VALIDITY_MONTHS_INV[baseValidity] || 1;
+    const tm = VALIDITY_MONTHS_INV[targetValidity] || bm;
+    return Math.round((basePrice / bm * tm) * 100) / 100;
+  };
+  const serviceEndForTenure = (startDate, validity) => {
+    const d = new Date(startDate);
+    const months = VALIDITY_MONTHS_INV[validity] || 1;
+    d.setMonth(d.getMonth() + months);
+    d.setDate(d.getDate() - 1);
+    return d;
+  };
+
   const updateLineItem = (index, field, value) => {
     const updatedItems = [...formData.line_items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
-    
-    // Auto-fill price if plan is selected
+
+    // Auto-fill price + tenure when plan selected
     if (field === "plan_id") {
       const plan = plans.find(p => p.id === value);
       if (plan) {
         updatedItems[index].base_amount = plan.price;
+        updatedItems[index].selected_validity = plan.validity;
+        updatedItems[index].service_end_date = serviceEndForTenure(
+          updatedItems[index].service_start_date || new Date(), plan.validity
+        );
       }
     }
-    
+
+    // Recalc price + service_end when tenure changes
+    if (field === "selected_validity") {
+      const plan = plans.find(p => p.id === updatedItems[index].plan_id);
+      if (plan) {
+        updatedItems[index].base_amount = priceForTenureInv(plan.price, plan.validity, value);
+        updatedItems[index].service_end_date = serviceEndForTenure(
+          updatedItems[index].service_start_date || new Date(), value
+        );
+      }
+    }
+
     // When switching item type, reset plan_id or description
     if (field === "item_type") {
       if (value === "custom") {
         updatedItems[index].plan_id = "";
+        updatedItems[index].selected_validity = "";
       } else {
         updatedItems[index].description = "";
       }
     }
-    
+
     setFormData(prev => ({ ...prev, line_items: updatedItems }));
   };
 
@@ -479,6 +517,7 @@ const OperatorInvoices = () => {
       subscriber_id: "",
       line_items: [{
         plan_id: "",
+        selected_validity: "",
         item_type: "plan",
         description: "",
         base_amount: 0,
@@ -496,6 +535,7 @@ const OperatorInvoices = () => {
       subscriber_id: invoice.subscriber_id,
       line_items: (invoice.line_items || []).map((item) => ({
         plan_id: item.plan_id || "",
+        selected_validity: item.selected_validity || "",
         item_type: item.is_custom ? "custom" : "plan",
         description: item.description || item.plan_name || "",
         base_amount: item.base_amount ?? 0,
@@ -1248,8 +1288,8 @@ const OperatorInvoices = () => {
                           ) : (
                             <>
                               <Label>Plan *</Label>
-                              <Select 
-                                value={item.plan_id || undefined} 
+                              <Select
+                                value={item.plan_id || undefined}
                                 onValueChange={(val) => updateLineItem(index, "plan_id", val)}
                               >
                                 <SelectTrigger>
@@ -1258,7 +1298,7 @@ const OperatorInvoices = () => {
                                 <SelectContent>
                                   {plans.map((plan) => (
                                     <SelectItem key={plan.id} value={plan.id}>
-                                      {plan.name} - ₹{plan.price}
+                                      {plan.name} - ₹{plan.price} / {plan.validity}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -1266,6 +1306,40 @@ const OperatorInvoices = () => {
                             </>
                           )}
                         </div>
+
+                        {/* Tenure dropdown — only for plan items */}
+                        {item.item_type !== "custom" && (
+                          <div className="space-y-2">
+                            <Label>Tenure</Label>
+                            {(() => {
+                              const plan = plans.find(p => p.id === item.plan_id);
+                              const avail = plan?.available_validities?.length
+                                ? plan.available_validities
+                                : plan ? [plan.validity] : [];
+                              return (
+                                <Select
+                                  value={item.selected_validity || plan?.validity || ""}
+                                  onValueChange={(v) => updateLineItem(index, "selected_validity", v)}
+                                  disabled={!plan || avail.length <= 1}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select tenure" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {avail.map(v => {
+                                      const price = plan ? priceForTenureInv(plan.price, plan.validity, v) : 0;
+                                      return (
+                                        <SelectItem key={v} value={v}>
+                                          {VALIDITY_OPTIONS_INV.find(o => o.value === v)?.label || v} — ₹{price.toLocaleString('en-IN')}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            })()}
+                          </div>
+                        )}
 
                         <div className="space-y-2">
                           <Label>Base Amount (₹) *</Label>

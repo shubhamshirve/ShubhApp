@@ -30,6 +30,22 @@ import {
 } from "../../components/ui/table";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Package, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Search } from "lucide-react";
+import { Checkbox } from "../../components/ui/checkbox";
+
+const VALIDITY_OPTIONS = [
+  { value: "monthly",    label: "Monthly" },
+  { value: "quarterly",  label: "Quarterly" },
+  { value: "half_yearly",label: "Half-Yearly" },
+  { value: "yearly",     label: "Yearly" },
+];
+const VALIDITY_MONTHS = { monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 };
+
+/** Scale base plan price to a target tenure */
+const priceForTenure = (basePrice, baseValidity, targetValidity) => {
+  const bm = VALIDITY_MONTHS[baseValidity] || 1;
+  const tm = VALIDITY_MONTHS[targetValidity] || bm;
+  return Math.round((basePrice / bm * tm) * 100) / 100;
+};
 
 const OperatorPlans = () => {
   const { authAxios, user } = useAuth();
@@ -50,6 +66,7 @@ const OperatorPlans = () => {
     name: "",
     price: 0,
     validity: "monthly",
+    available_validities: ["monthly"],
     tax_percentage: 0,
     tax_type: "none",
     description: ""
@@ -106,7 +123,8 @@ const OperatorPlans = () => {
     if (formData.tax_percentage < 0 || formData.tax_percentage > 100) {
       toast.error("Tax percentage must be between 0 and 100"); return;
     }
-    if (!formData.validity) { toast.error("Please select a validity period"); return; }
+    if (!formData.validity) { toast.error("Please select a base validity period"); return; }
+    if (!formData.available_validities?.length) { toast.error("Please enable at least one tenure"); return; }
     try {
       if (editingPlan) {
         await authAxios.put(`/operator/plans/${editingPlan.id}`, formData);
@@ -140,6 +158,7 @@ const OperatorPlans = () => {
       name: plan.name,
       price: plan.price,
       validity: plan.validity,
+      available_validities: plan.available_validities?.length ? plan.available_validities : [plan.validity],
       tax_percentage: plan.tax_percentage,
       tax_type: plan.tax_type,
       description: plan.description || ""
@@ -153,15 +172,28 @@ const OperatorPlans = () => {
       name: "",
       price: 0,
       validity: "monthly",
+      available_validities: ["monthly"],
       tax_percentage: 0,
       tax_type: "none",
       description: ""
     });
   };
 
+  const toggleTenure = (val) => {
+    setFormData(prev => {
+      const cur = prev.available_validities || [];
+      // base validity cannot be unchecked
+      if (val === prev.validity) return prev;
+      const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val];
+      // ensure base is always present
+      if (!next.includes(prev.validity)) next.unshift(prev.validity);
+      return { ...prev, available_validities: next };
+    });
+  };
+
   const getValidityLabel = (validity) => {
-    const labels = { monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half Yearly", yearly: "Yearly" };
-    return labels[validity] || validity;
+    const opt = VALIDITY_OPTIONS.find(o => o.value === validity);
+    return opt ? opt.label : validity;
   };
 
   // ── Bulk Upload ───────────────────────────────────────────────────────────
@@ -298,15 +330,17 @@ const OperatorPlans = () => {
                   <TableRow>
                     <TableHead>Plan Name</TableHead>
                     <TableHead>Price</TableHead>
-                    <TableHead>Validity</TableHead>
+                    <TableHead>Base Validity</TableHead>
+                    <TableHead>Available Tenures</TableHead>
                     <TableHead>Tax</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Description</TableHead>
                     <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPlans.map((plan) => (
+                  {filteredPlans.map((plan) => {
+                    const tenures = plan.available_validities?.length ? plan.available_validities : [plan.validity];
+                    return (
                     <TableRow key={plan.id} data-testid={`plan-row-${plan.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-2 font-medium">
@@ -316,33 +350,47 @@ const OperatorPlans = () => {
                       </TableCell>
                       <TableCell className="font-medium">
                         ₹{plan.price.toLocaleString('en-IN')}
+                        <span className="text-xs text-slate-400 ml-1">/ {getValidityLabel(plan.validity)}</span>
                       </TableCell>
-                      <TableCell>{getValidityLabel(plan.validity)}</TableCell>
+                      <TableCell>
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                          {getValidityLabel(plan.validity)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {VALIDITY_OPTIONS.map(opt => (
+                            tenures.includes(opt.value) ? (
+                              <span key={opt.value} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-medium">
+                                {opt.label}
+                              </span>
+                            ) : (
+                              <span key={opt.value} className="text-xs bg-slate-50 text-slate-300 border border-slate-100 px-1.5 py-0.5 rounded">
+                                {opt.label}
+                              </span>
+                            )
+                          ))}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {plan.tax_type === "none" ? "No Tax" : `${plan.tax_percentage}% (${plan.tax_type})`}
                       </TableCell>
                       <TableCell>
                         <span className="badge-active">{plan.status}</span>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-slate-500" title={plan.description}>
-                        {plan.description || "-"}
-                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button 
-                            variant="ghost" 
-                            size="icon"
+                            variant="ghost" size="icon"
                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                             onClick={() => openEditDialog(plan)}
-                            disabled={isReadOnly}
-                            title="Edit plan"
+                            disabled={isReadOnly} title="Edit plan"
                           >
                             <Pencil className="w-4 h-4" />
                           </Button>
                           {!isStaff && (
                             <Button
-                              variant="ghost" 
-                              size="icon"
+                              variant="ghost" size="icon"
                               className="text-red-600 hover:text-red-700 hover:bg-red-50"
                               onClick={() => handleDelete(plan.id)}
                               disabled={isReadOnly}
@@ -355,7 +403,7 @@ const OperatorPlans = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );})}
                 </TableBody>
               </Table>
             </CardContent>
@@ -388,22 +436,64 @@ const OperatorPlans = () => {
                   <Input
                     type="number"
                     value={formData.price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
                     min="0" required
                     data-testid="plan-price-input"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Validity *</Label>
-                  <Select value={formData.validity} onValueChange={(v) => setFormData(p => ({ ...p, validity: v }))}>
+                  <Label>Base Validity (price reference) *</Label>
+                  <Select
+                    value={formData.validity}
+                    onValueChange={(v) => setFormData(p => ({
+                      ...p,
+                      validity: v,
+                      // keep base validity in available_validities
+                      available_validities: Array.from(new Set([v, ...(p.available_validities || [])]))
+                    }))}
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="half_yearly">Half Yearly</SelectItem>
-                      <SelectItem value="yearly">Yearly</SelectItem>
+                      {VALIDITY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <p className="text-[11px] text-slate-400">The price above is for this period.</p>
+                </div>
+              </div>
+
+              {/* Available Tenures */}
+              <div className="space-y-2">
+                <Label>Available Tenures</Label>
+                <p className="text-xs text-slate-500">Choose which tenures operators can assign to subscribers.</p>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {VALIDITY_OPTIONS.map(opt => {
+                    const isBase = opt.value === formData.validity;
+                    const checked = (formData.available_validities || []).includes(opt.value);
+                    const calcPrice = priceForTenure(formData.price || 0, formData.validity, opt.value);
+                    return (
+                      <label
+                        key={opt.value}
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                          checked ? "bg-blue-50 border-blue-300" : "bg-slate-50 border-slate-200 opacity-60"
+                        } ${isBase ? "ring-1 ring-blue-400" : ""}`}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={isBase}
+                          onCheckedChange={() => toggleTenure(opt.value)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 flex items-center gap-1">
+                            {opt.label}
+                            {isBase && <span className="text-[10px] bg-blue-200 text-blue-700 px-1 rounded">base</span>}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {formData.price > 0 ? `₹${calcPrice.toLocaleString('en-IN')}` : "—"}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
