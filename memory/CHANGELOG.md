@@ -1,6 +1,24 @@
 # E-Bill Platform — CHANGELOG
 # Current Version: V9.10
 
+## 2026-04-25
+
+### V9.10 — Bug fix: First invoice amount on multi-tenure subscribers + workspace cleanup
+
+#### Bug fix — First invoice billed wrong amount for non-default `selected_validity`
+For a ₹500/month plan with a yearly subscriber, the first invoice showed ₹500 instead of ₹6000. Two root causes:
+1. `routers/operator.py` (~L1325) grouped enriched plan rows by `op_plan.validity` (always 'monthly') instead of the subscriber's effective `selected_validity`. Fixed: group by `ep.selected_validity or op_plan.validity`.
+2. `services/cron_service.py` `_create_first_invoice` used `plan["price"]` directly, ignoring tenure. Fixed: scale via `VALIDITY_MONTHS` map (`raw_price / base_months * sel_months`) and persist `selected_validity` on the line item.
+
+Verified end-to-end via `/app/backend/tests/test_first_invoice_validity.py` (5/5 pass): monthly→500, quarterly→1500, half_yearly→3000, yearly→6000, mixed-tenure subscriber → one invoice per effective tenure group.
+
+#### Workspace cleanup (Cat 1, 2, 3)
+- Removed 15 root-level temp scripts (`/app/backend_test_v*.py`, `debug_auth.py`, `fix_gst_config.py`, etc.).
+- Removed 20 old `iteration_*.json` reports + 14 stale pytest XMLs (kept latest `iteration_21.json` + `first_invoice_validity_results.xml`).
+- Removed 10 superseded backend tests in `/app/backend/tests/` (`test_billing_platform.py`, `test_billing_refactor.py`, `test_task5_multi_plan.py`, `test_iteration{5,6,7}_*.py`, `test_new_features_iteration4.py`, `test_p0_features.py`, `test_task6_roles_session.py`, `test_task8_admin_wallet.py`).
+- Categories 4/5/6 (backend migrations, shadcn UI, stale docs) preserved per user instruction.
+
+
 ## 2026-04-24
 
 ### V9.10: Bulk Upload — Multi-Tenure & Calendar-Month Expiry Support
