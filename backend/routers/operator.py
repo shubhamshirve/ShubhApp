@@ -1180,11 +1180,11 @@ async def get_operator_plans(current_user: dict = Depends(require_operator)):
 async def get_plans_sample_csv(current_user: dict = Depends(require_operator)):
     """Download a sample CSV template for bulk plan upload."""
     rows = [
-        ["name", "price", "validity", "tax_percentage", "tax_type", "description"],
-        ["Monthly Basic",      "500",  "monthly",     "18", "exclusive", "Basic monthly broadband plan"],
-        ["Quarterly Standard", "1400", "quarterly",   "18", "exclusive", "Standard quarterly plan"],
-        ["Half Yearly Gold",   "2700", "half_yearly",  "0", "none",      "Half yearly plan with no tax"],
-        ["Annual Premium",     "5000", "yearly",      "18", "inclusive", "Annual premium plan GST inclusive"],
+        ["name", "price", "validity", "available_validities", "tax_percentage", "tax_type", "description"],
+        ["Monthly Basic",      "500",  "monthly",     "monthly,quarterly,half_yearly,yearly", "18", "exclusive", "Basic broadband – price is per month; system scales for other tenures"],
+        ["Quarterly Standard", "1400", "quarterly",   "quarterly,yearly",                      "18", "exclusive", "Standard plan – price is per quarter"],
+        ["Half Yearly Gold",   "2700", "half_yearly",  "monthly,half_yearly",                  "0",  "none",      "Half-yearly plan, no tax"],
+        ["Annual Premium",     "5000", "yearly",      "yearly",                                "18", "inclusive", "Yearly-only plan, GST inclusive"],
     ]
     output = io.StringIO()
     writer = csv.writer(output)
@@ -1389,27 +1389,34 @@ async def get_subscribers_sample_csv(current_user: dict = Depends(require_operat
     rows = [
         [
             "name", "whatsapp_number", "email", "address",
-            "plan_name_1", "plan_start_date_1", "discount_1",
-            "plan_name_2", "plan_start_date_2", "discount_2",
-            "plan_name_3", "plan_start_date_3", "discount_3",
-            "plan_name_4", "plan_start_date_4", "discount_4",
-            "plan_name_5", "plan_start_date_5", "discount_5",
+            "plan_name_1", "plan_start_date_1", "tenure_1", "discount_1",
+            "plan_name_2", "plan_start_date_2", "tenure_2", "discount_2",
+            "plan_name_3", "plan_start_date_3", "tenure_3", "discount_3",
         ],
-        # Single plan example
-        ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",     "Monthly Basic", "1",  "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
-        # Two plans example
-        ["Priya Sharma",  "9123456789", "priya@example.com",   "456 Anna Salai, Chennai", "Monthly Basic", "5",  "0",  "Fiber Pro",     "5",  "0", "", "", "", "", "", "", "", ""],
-        # Three plans with discount on first
-        ["Amit Patel",    "9988776655", "amit@example.com",    "789 FC Road, Pune",       "Monthly Basic", "10", "50", "Fiber Pro",     "10", "0", "Cable TV", "10", "0", "", "", "", "", ""],
-        # Single plan, no email
-        ["Sunita Verma",  "9871234567", "",                    "321 Brigade Rd, Bangalore","Monthly Basic", "15", "0",  "",              "",   "",  "", "", "", "", "", "", "", ""],
+        # Single plan, monthly tenure
+        ["Rajesh Kumar",  "9876543210", "rajesh@example.com",  "123 MG Road, Mumbai",
+         "Monthly Basic", "2026-04-21", "monthly",  "0",
+         "", "", "", "",  "", "", "", ""],
+        # Two plans, different tenures
+        ["Priya Sharma",  "9123456789", "priya@example.com",   "456 Anna Salai, Chennai",
+         "Monthly Basic", "2026-04-01", "yearly",   "0",
+         "Monthly Basic", "2026-04-01", "quarterly","0",
+         "", "", "", ""],
+        # Three plans, with discount on first
+        ["Amit Patel",    "9988776655", "amit@example.com",    "789 FC Road, Pune",
+         "Monthly Basic", "2026-04-10", "monthly",  "50",
+         "Monthly Basic", "2026-04-10", "half_yearly","0",
+         "Monthly Basic", "2026-04-10", "quarterly", "0"],
+        # Single plan, no email, default tenure (leave blank = plan's base validity)
+        ["Sunita Verma",  "9871234567", "",                    "321 Brigade Rd, Bangalore",
+         "Monthly Basic", "2026-04-15", "",         "0",
+         "", "", "", "",  "", "", "", ""],
     ]
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerows(rows)
-    csv_content = output.getvalue()
     return Response(
-        content=csv_content,
+        content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=subscribers_sample.csv"}
     )
@@ -1683,10 +1690,15 @@ PAYMENT_MODES = {"cash", "own_upi", "bank_transfer", "cheque"}
 async def get_invoices_sample_csv(current_user: dict = Depends(require_operator)):
     """Download a sample CSV template for bulk invoice upload."""
     rows = [
-        ["subscriber_whatsapp_number", "plan_name", "base_amount", "discount", "service_start_date", "service_end_date", "due_date"],
-        ["9876543210", "Monthly Basic", "599", "0", "2026-03-01", "2026-03-31", "2026-04-05"],
-        ["9123456789", "Monthly Basic", "699", "50", "2026-03-01", "2026-03-31", "2026-04-05"],
-        ["9988776655", "Fiber Pro", "", "0", "2026-03-15", "2026-04-14", "2026-04-20"],
+        ["subscriber_whatsapp_number", "plan_name", "selected_validity", "base_amount", "discount", "service_start_date", "service_end_date", "due_date"],
+        # Explicit base_amount (overrides auto-calculation)
+        ["9876543210", "Monthly Basic", "monthly",     "590", "0",  "2026-04-01", "2026-04-30", "2026-05-05"],
+        # Yearly tenure — leave base_amount blank to auto-calculate from plan price
+        ["9876543210", "Monthly Basic", "yearly",      "",    "0",  "2026-04-01", "2027-03-31", "2026-05-05"],
+        # Quarterly with discount
+        ["9123456789", "Monthly Basic", "quarterly",   "",    "50", "2026-04-01", "2026-06-30", "2026-05-05"],
+        # Leave selected_validity blank to use plan's base validity
+        ["9988776655", "Monthly Basic", "",            "",    "0",  "2026-04-15", "2026-05-14", "2026-05-20"],
     ]
     output = io.StringIO()
     writer = csv.writer(output)

@@ -5,10 +5,11 @@ Jobs are processed by APScheduler every 30 seconds.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import io
 import csv
+from dateutil.relativedelta import relativedelta
 
 from database import db
 from utils import generate_id, generate_invoice_number_atomic
@@ -216,6 +217,20 @@ class JobQueueService:
                 errors.append({"row": idx, "name": name, "reason": f"Invalid validity '{validity}'. Use: {VALID_VALIDITY}"})
                 continue
 
+            # Parse available_validities — comma-separated list; defaults to [validity]
+            av_raw = row.get("available_validities", "").strip()
+            if av_raw:
+                av_list = [v.strip().lower() for v in av_raw.split(",") if v.strip()]
+                invalid_av = [v for v in av_list if v not in VALID_VALIDITY]
+                if invalid_av:
+                    errors.append({"row": idx, "name": name, "reason": f"Invalid available_validities: {invalid_av}"})
+                    continue
+                # Ensure base validity is always included
+                if validity not in av_list:
+                    av_list.insert(0, validity)
+            else:
+                av_list = [validity]
+
             tax_type = row.get("tax_type", "none").strip().lower()
             if tax_type not in VALID_TAX_TYPE:
                 tax_type = "none"
@@ -238,6 +253,7 @@ class JobQueueService:
                 "name": name,
                 "price": price,
                 "validity": validity,
+                "available_validities": av_list,
                 "tax_percentage": tax_percentage,
                 "tax_type": tax_type,
                 "description": row.get("description", "") or None,
@@ -291,6 +307,8 @@ class JobQueueService:
 
         now = datetime.now(timezone.utc)
         created, skipped, errors = [], [], []
+        VALID_VALIDITY = ["monthly", "quarterly", "half_yearly", "yearly"]
+        VALIDITY_MONTHS_BULK = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
 
         for idx, row in enumerate(rows, start=2):
             name = row.get("name", "").strip()
@@ -301,7 +319,6 @@ class JobQueueService:
                 continue
 
             # Parse up to 5 plan slots (plan_name_1..5)
-            VALIDITY_DAYS_BULK = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
             plans = []
             plan_errors = []
             for i in range(1, 6):
@@ -313,33 +330,53 @@ class JobQueueService:
                     plan_errors.append(f"Plan '{pname}' not found")
                     continue
 
-                # plan_start_date (new) or billing_date (legacy) from CSV
+                # plan_start_date from CSV
                 start_date_raw = str(row.get(f"plan_start_date_{i}", "") or "").strip()
                 if start_date_raw:
                     try:
                         from datetime import date as _date
-                        start_dt = datetime.strptime(start_date_raw, "%Y-%m-%d")
+                        start_dt = datetime.strptime(start_date_raw, "%Y-%m-%d").date()
                     except ValueError:
-                        start_dt = now.replace(tzinfo=None)
+                        start_dt = now.date()
                 else:
                     # legacy billing_date column fallback
                     try:
                         bdate = max(1, min(28, int(row.get(f"billing_date_{i}", now.day) or now.day)))
                     except (ValueError, TypeError):
                         bdate = now.day
-                    start_dt = now.replace(day=bdate, tzinfo=None)
+                    try:
+                        start_dt = now.date().replace(day=bdate)
+                    except ValueError:
+                        start_dt = now.date()
 
-                validity = plan.get("validity", "monthly")
-                days = VALIDITY_DAYS_BULK.get(validity, 30)
-                expiry_dt = start_dt + timedelta(days=days)
+                # Resolve selected_validity: tenure_i column, fallback to plan base validity
+                tenure_raw = str(row.get(f"tenure_{i}", "") or "").strip().lower()
+                if tenure_raw and tenure_raw in VALID_VALIDITY:
+                    # Validate against plan's available_validities
+                    av = plan.get("available_validities") or [plan.get("validity", "monthly")]
+                    if tenure_raw not in av:
+                        plan_errors.append(f"Tenure '{tenure_raw}' not available for plan '{pname}' (available: {av})")
+                        continue
+                    selected_validity = tenure_raw
+                else:
+                    selected_validity = plan.get("validity", "monthly")
+
+                # Calendar-month expiry: start + N months - 1 day
+                sel_months = VALIDITY_MONTHS_BULK.get(selected_validity, 1)
+                expiry_dt = (
+                    datetime.combine(start_dt, datetime.min.time()) +
+                    relativedelta(months=sel_months) - timedelta(days=1)
+                ).date()
 
                 try:
                     disc = float(row.get(f"discount_{i}", 0) or 0)
                 except (ValueError, TypeError):
                     disc = 0.0
+
                 plans.append({
                     "plan_id": plan["id"],
                     "plan_name": plan["name"],
+                    "selected_validity": selected_validity,
                     "plan_start_date": start_dt.strftime("%Y-%m-%d"),
                     "plan_expiry_date": expiry_dt.strftime("%Y-%m-%d"),
                     "billing_date": start_dt.day,
@@ -450,6 +487,15 @@ class JobQueueService:
                 if not plan:
                     raise ValueError(f"Plan '{row.get('plan_name', '')}' not found")
 
+                # Resolve selected_validity (column optional; defaults to plan base validity)
+                VALID_VALIDITY_INV = ["monthly", "quarterly", "half_yearly", "yearly"]
+                VALIDITY_MONTHS_INV = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+                sel_val_raw = (row.get("selected_validity") or "").strip().lower()
+                if sel_val_raw and sel_val_raw in VALID_VALIDITY_INV:
+                    selected_validity = sel_val_raw
+                else:
+                    selected_validity = plan.get("validity", "monthly")
+
                 service_start_date = parse_bulk_invoice_date(row.get("service_start_date", ""), "service_start_date")
                 service_end_date = parse_bulk_invoice_date(row.get("service_end_date", ""), "service_end_date")
                 due_date = parse_bulk_invoice_date(row.get("due_date", ""), "due_date")
@@ -457,9 +503,16 @@ class JobQueueService:
                 if service_end_date <= service_start_date:
                     raise ValueError("service_end_date must be after service_start_date")
 
+                # Auto-calculate base_amount from selected_validity if not provided
                 base_amount_raw = (row.get("base_amount") or "").strip()
                 discount_raw = (row.get("discount") or "").strip()
-                base_amount = float(base_amount_raw) if base_amount_raw else float(plan.get("price", 0))
+                if base_amount_raw:
+                    base_amount = float(base_amount_raw)
+                else:
+                    # Scale plan.price to selected tenure
+                    base_months = VALIDITY_MONTHS_INV.get(plan.get("validity", "monthly"), 1)
+                    sel_months = VALIDITY_MONTHS_INV.get(selected_validity, base_months)
+                    base_amount = round(float(plan.get("price", 0)) / base_months * sel_months, 2)
                 discount = float(discount_raw) if discount_raw else 0.0
 
                 if base_amount <= 0:
@@ -475,6 +528,7 @@ class JobQueueService:
                         line_items=[
                             {
                                 "plan_id": plan["id"],
+                                "selected_validity": selected_validity,
                                 "base_amount": base_amount,
                                 "discount": discount,
                                 "service_start_date": service_start_date,
