@@ -1320,13 +1320,15 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
             if operator:
                 from services.cron_service import CronJobService
                 svc = CronJobService(db)
-                # Group plans by validity to create separate invoices per billing period type
+                # Group plans by EFFECTIVE validity (selected_validity > plan.validity)
+                # so that subscribers assigned a non-default tenure are billed correctly.
                 from collections import defaultdict
                 validity_groups: dict = defaultdict(list)
                 for ep in enriched_plans:
                     op_plan = await db.operator_plans.find_one({"id": ep["plan_id"], "deleted_at": None}, {"_id": 0})
                     if op_plan:
-                        validity_groups[op_plan.get("validity", "monthly")].append(ep)
+                        effective_v = ep.get("selected_validity") or op_plan.get("validity", "monthly")
+                        validity_groups[effective_v].append(ep)
 
                 for validity, group_plans in validity_groups.items():
                     await svc._create_first_invoice(operator, subscriber, group_plans)

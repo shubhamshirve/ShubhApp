@@ -1,0 +1,32 @@
+{
+  "summary": "Backend-only verification of the multi-tenure first-invoice pricing bug fix (V9.10). Created /app/backend/tests/test_first_invoice_validity.py covering all 5 review scenarios. All 5 tests PASS (5/5). Verified that POST /api/operator/subscribers with generate_first_invoice=true produces a first invoice whose line_items[0].base_amount and aggregate base_amount/final_amount are correctly scaled by the subscriber's selected_validity for monthly (500), quarterly (1500), half_yearly (3000), and yearly (6000) on a 500/month base plan. Also verified that mixing two plan rows with different selected_validity for one subscriber produces 2 separate first invoices (one per effective tenure group) — confirmed in cron logs (EBILL-3I4RY8N6 monthly + EBILL-RIO2P3HZ yearly). line_item.selected_validity is correctly persisted, and service_start_date matches plan_start_date. Both bug fix sites verified end-to-end: routers/operator.py validity_groups now keys on effective selected_validity (not base plan.validity), and services/cron_service.py _create_first_invoice scales price = raw_price / base_months * sel_months via VALIDITY_MONTHS map.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/operator/invoices", "issue": "InvoiceResponse Pydantic model has extra='ignore' so backend-stored fields is_first_invoice and is_auto_generated are silently stripped from the API response. Not blocking the bug fix, but it makes it impossible for clients (or tests) to distinguish first invoices from later cron-generated invoices via the API. Consider exposing them in InvoiceResponse."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_first_invoice_validity.py",
+    "/app/test_reports/pytest/first_invoice_validity_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Expose is_first_invoice / is_auto_generated on InvoiceResponse so the frontend & integrators can identify first-cycle invoices without inferring from creation order.",
+    "(Optional, observed during cleanup) Operator-role users cannot DELETE their own subscribers (only suspend). This is by design but means automated regression tests can't fully clean their data via the API; mongo-direct cleanup was used in this iteration."
+  ],
+  "critical_code_review_comments": [
+    "cron_service.py _create_first_invoice (line 678-684): scaling formula round(raw_price / base_months * sel_months, 2) is correct for the common case (base_validity=monthly), but for non-monthly base plans it could produce floating fractions. With 500/monthly the math is exact for all 4 tenures. Fine.",
+    "cron_service.py _create_first_invoice line 705-706: service_end_date is computed from the user-supplied plan_expiry_date (good); but if plan_expiry_date is missing, fallback uses VALIDITY_DAYS[effective_validity] (30/90/180/365) instead of calendar-month math used in operator.py _calc_plan_expiry. For consistency, both code paths should use the same calendar-month helper.",
+    "routers/operator.py line 1326-1331: re-fetching op_plan inside the validity_groups loop duplicates the work already done in the enrichment loop above (line 1278-1305). Could pass enriched plans + their op_plan via a tuple to avoid the second DB round-trip per plan row.",
+    "Backend MONGO_URL/DB_NAME mismatch: backend/.env DB_NAME=saas_billing_db but live data (and what the API writes to) is in saas_db. Already flagged in iteration_20; still present. This will bite future test agents if they read DB_NAME from env."
+  ],
+  "updated_files": ["/app/backend/tests/test_first_invoice_validity.py"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "N/A (backend-only run)"},
+  "test_credentials": "operator@test.com / test123 (OK)",
+  "seed_data_creation": "Per-test: 1 operator plan (TEST_MultiTenure_Plan_*) + 5 subscribers (TEST_FirstInv_*) and their 6 first-invoices. Plan soft-deleted via API teardown; subscribers + invoices hard-deleted directly from MongoDB saas_db at teardown (operator role can't DELETE subscribers via API). All test data cleaned up post-run; verified zero TEST_FirstInv subscribers/invoices remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_first_invoice_validity.py is reusable. It (a) loads REACT_APP_BACKEND_URL from /app/frontend/.env, (b) uses operator@test.com login, (c) creates a 500/monthly plan supporting all 4 tenures, (d) parametrises subscriber creation across monthly/quarterly/half_yearly/yearly, (e) covers the mixed-validity grouping scenario, (f) cleans up via mongo direct (saas_db). InvoiceResponse model strips is_first_invoice/is_auto_generated so the test asserts on aggregate base_amount/final_amount and line_items[0].selected_validity instead. Bug fix is fully verified.",
+  "rca of the issue": "Bug RCA confirmed by tests: (1) routers/operator.py was previously grouping enriched plan rows by op_plan.validity (always 'monthly' for a monthly-priced plan), so every plan ended up in a single 'monthly' group regardless of subscriber's selected_validity. Fix: group by ep.selected_validity or op_plan.validity. (2) services/cron_service.py _create_first_invoice was using plan.get('price') directly without multiplying by the tenure factor. Fix: scale via VALIDITY_MONTHS map (raw_price / base_months * sel_months) and persist selected_validity on the line item. Both fixes verified end-to-end: a 500/month plan with selected_validity=yearly now correctly produces a 6000 first invoice; quarterly→1500; half_yearly→3000; monthly→500; mixed rows produce 2 separate invoices."
+}

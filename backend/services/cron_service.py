@@ -627,6 +627,7 @@ class CronJobService:
 
         now = datetime.now(timezone.utc)
         VALIDITY_DAYS = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+        VALIDITY_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
 
         operator_plan_cache: dict = {}
         line_items = []
@@ -646,8 +647,10 @@ class CronJobService:
                 operator_plan_cache[plan_id] = plan
             plan = operator_plan_cache[plan_id]
 
-            validity = plan.get("validity", "monthly")
-            service_days = VALIDITY_DAYS.get(validity, 30)
+            base_validity = plan.get("validity", "monthly")
+            # Honour subscriber-level tenure override
+            effective_validity = p_info.get("selected_validity") or base_validity
+            service_days = VALIDITY_DAYS.get(effective_validity, 30)
 
             # Use plan_start_date → plan_expiry_date as the service window for first invoice
             start_str = p_info.get("plan_start_date")
@@ -670,7 +673,16 @@ class CronJobService:
                 service_end = service_start + timedelta(days=service_days)
 
             discount = float(p_info.get("discount", 0))
-            base_amount = float(plan.get("price", 0))
+
+            # Scale base price to the effective tenure
+            base_months = VALIDITY_MONTHS.get(base_validity, 1)
+            sel_months = VALIDITY_MONTHS.get(effective_validity, base_months)
+            raw_price = float(plan.get("price", 0))
+            if effective_validity != base_validity and base_months > 0:
+                base_amount = round(raw_price / base_months * sel_months, 2)
+            else:
+                base_amount = raw_price
+
             tax_amount = 0.0
             if can_charge_gst and plan.get("tax_percentage", 0) > 0:
                 taxable = base_amount - discount
@@ -685,6 +697,7 @@ class CronJobService:
                 "plan_name": plan["name"],
                 "plan_description": plan.get("description"),
                 "is_custom": False,
+                "selected_validity": effective_validity,
                 "base_amount": round(base_amount, 2),
                 "discount": round(discount, 2),
                 "tax_amount": round(tax_amount, 2),
