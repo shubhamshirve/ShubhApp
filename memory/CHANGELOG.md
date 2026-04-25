@@ -2,7 +2,49 @@
 
 ## 2026-04-24
 
-### V8.31: WhatsApp Stats — Pagination Cap + View Status Modal
+### V8.32: Multi-Tenure Plan Support
+
+Operators can now create one plan with multiple enabled tenures (monthly / quarterly / half-yearly / yearly) and choose the tenant at subscriber assignment or invoice creation time — no need to create separate plans per period.
+
+#### Price formula
+`price_for_tenure = plan.price / base_validity_months × selected_tenure_months`
+_(plan.validity = base reference; plan.price = price for that base period)_
+
+| Base (monthly ₹500) | Quarterly | Half-Yearly | Yearly |
+|---|---|---|---|
+| ₹500 | ₹1,500 | ₹3,000 | ₹6,000 |
+
+#### Backend — `models.py`
+- `OperatorPlanCreate` + `OperatorPlanResponse`: added `available_validities: List[str]`.
+- `SubscriberPlan`: added `selected_validity: Optional[str]`.
+- `InvoiceLineItem`: added `selected_validity: Optional[str]`.
+
+#### Backend — `routers/operator.py`
+- `create_plan` / `update_plan`: persist `available_validities` (base validity always included).
+- `get_plans`: back-fills `available_validities = [validity]` for legacy plans with no field.
+- `create_subscriber` / `update_subscriber`: expiry date uses `selected_validity` (falls back to `plan.validity`).
+- Helper `_price_for_tenure(base_price, base_validity, selected_validity)` added.
+
+#### Backend — `services/invoice_helpers.py`
+- `build_invoice_payload`: when `selected_validity` differs from plan's base validity, auto-scales `base_amount` via `_price_for_tenure`. Stores `selected_validity` in enriched line item.
+
+#### Backend — `services/cron_service.py`
+- `_create_invoice_for_plans`: reads `selected_validity` from subscriber plan data; scales price accordingly.
+- `_group_by_validity` block: groups by `selected_validity` (not plan validity).
+
+#### Frontend — `Plans.jsx`
+- Base Validity dropdown (price reference) + **Available Tenures checkbox grid** (4 tiles with computed prices per tenure).
+- Plan table: shows Base Validity column + Available Tenures badges.
+
+#### Frontend — `Subscribers.jsx`
+- Plan assignment row: **Tenure dropdown** appears after plan select, listing only `available_validities`. Shows scaled price per tenure. Expiry auto-updates on tenure change.
+
+#### Frontend — `Invoices.jsx`
+- Plan line-item: **Tenure dropdown** after plan select. Price (`base_amount`) and `service_end_date` auto-recalc on tenure change.
+
+---
+
+
 
 **Backend** — `GET /api/admin/whatsapp-message-logs`:
 - `per_page` default changed from 50 → 20; max enforced at 20 via `Query(20, ge=1, le=20)`.
