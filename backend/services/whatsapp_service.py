@@ -538,6 +538,10 @@ async def log_whatsapp_message(
     """Log a WhatsApp message send attempt to the whatsapp_message_logs collection."""
     try:
         from utils import generate_id
+        now_iso = datetime.now(timezone.utc).isoformat()
+        # delivery_status starts as send-time status; webhook will upgrade it to
+        # 'delivered' / 'read' (or 'failed' downstream). Keeping a separate field
+        # so the original `status` (send-time) is preserved for historical filtering.
         log = {
             "id": generate_id(),
             "operator_id": operator_id,
@@ -545,13 +549,20 @@ async def log_whatsapp_message(
             "template_category": template_category,
             "recipient_phone": recipient_phone,
             "status": status,
+            "delivery_status": status,  # initial: 'sent' or 'failed'
             "message_id": message_id,
             "wa_id": wa_id,
             "error_message": error_message,
+            "error_code": None,
+            "error_title": None,
+            "delivered_at": None,
+            "read_at": None,
+            "failed_at": None,
+            "events": [{"status": status, "timestamp": now_iso, "source": "send_api"}],
             "invoice_id": invoice_id,
             "invoice_number": invoice_number,
             "trigger": trigger,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": now_iso,
         }
         await db.whatsapp_message_logs.insert_one(log)
     except Exception as e:

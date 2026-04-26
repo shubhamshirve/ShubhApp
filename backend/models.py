@@ -724,10 +724,11 @@ class PaymentGatewayConfig(SanitizedModel):
 # ============== WHATSAPP MODELS ==============
 
 class WhatsAppConfig(SanitizedModel):
-    _unsanitized_fields = {"access_token"}
+    _unsanitized_fields = {"access_token", "webhook_verify_token"}
     phone_number_id: str
     access_token: str
     business_account_id: Optional[str] = None
+    webhook_verify_token: Optional[str] = None
 
     @field_validator("phone_number_id")
     @classmethod

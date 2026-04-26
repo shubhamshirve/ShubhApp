@@ -1,0 +1,35 @@
+{
+  "summary": "Backend-only verification of WhatsApp Cloud API webhook status pipeline (V9.11). Created /app/backend/tests/test_whatsapp_webhook_status.py with 10 pytest cases covering all flows from the review request. All 10/10 tests PASS. Verified: (1) GET /api/webhooks/whatsapp returns 403 with wrong token and 200 (text/plain echo of hub.challenge) with correct token; (2) PUT /api/admin/whatsapp-config persists webhook_verify_token; (3) GET /api/admin/whatsapp-config returns webhook_verify_token_preview (masked, e.g. 'TEST****') and never leaks the raw token or access_token; (4) POST /api/webhooks/whatsapp with delivered → existing log row updated with delivery_status='delivered', delivered_at set, original status='sent' preserved, event appended to events[]; (5) read event after delivered → delivery_status='read', read_at + delivered_at set; (6) no-downgrade: a 'delivered' event arriving after 'read' DOES NOT overwrite delivery_status (forward-only state machine works); (7) failed event with errors[].code/title/error_data.details → delivery_status='failed', failed_at, error_code=131026, error_title and combined error_message correctly persisted; (8) orphan event for unknown message_id creates placeholder row with trigger='webhook_orphan' and delivery_status set; (9) GET /api/admin/whatsapp-message-logs?delivery_status=delivered returns only delivered rows; (10) ?delivery_status=read returns only read rows. Test data fully cleaned up post-run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "backend/.env DB_NAME mismatch", "issue": "backend/.env has DB_NAME=saas_billing_db but the running backend connects to saas_db (DB_NAME env is not propagated to the runtime, so database.py's default 'saas_db' is used). Live data — including the user that admin@saas.com authenticates against AND all whatsapp_message_logs writes — is in saas_db. saas_billing_db has stale data (1 user, 0 logs). Already flagged in iteration_20/21; still present. Recommend either deleting /app/backend/.env DB_NAME or aligning the default in database.py with .env."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_webhook_status.py",
+    "/app/test_reports/pytest/whatsapp_webhook_status_results.xml"
+  ],
+  "action_items": [
+    "(Low) Resolve DB_NAME mismatch between backend/.env (saas_billing_db) and runtime (saas_db). Causes confusion for test agents seeding via mongo direct.",
+    "(Optional code-quality) routers/webhooks.py _apply_whatsapp_status_event always sets delivered_at when the new_status='delivered' incoming event arrives even after a 'read' has been processed (line 125-126 only writes if !existing.delivered_at, so it's safe — but worth a unit test). Currently covered by test_no_downgrade_read_to_delivered.",
+    "(Optional) Add error_logs entry when an orphan webhook event arrives so admins can audit unexpected message_ids."
+  ],
+  "critical_code_review_comments": [
+    "routers/webhooks.py: forward-only _STATUS_RANK state machine is implemented correctly — failed always wins, otherwise rank-based monotonic upgrade. Verified by tests.",
+    "routers/webhooks.py L143-146: $push events[] always runs even on no-op rank events (e.g. duplicate 'delivered'). Acceptable for audit trail but could grow unbounded for chatty webhooks; consider de-dup by (status,timestamp,source) or a TTL/cap on events[].",
+    "services/whatsapp_service.py log_whatsapp_message: correctly seeds delivery_status, delivered_at/read_at/failed_at=None, error_code/title=None, events=[send_api event]. Field set matches webhook update path. Verified.",
+    "routers/admin.py L735-751 whatsapp-config GET: response correctly returns *_preview fields and excludes raw access_token / webhook_verify_token. No leak observed in tests.",
+    "routers/webhooks.py L92-117 orphan branch: trigger='webhook_orphan' set; recipient_phone derived from st.recipient_id. Good. status field set to 'sent' for non-failed orphans which is technically wrong (we never sent it from our side); 'unknown' would be more accurate, but 'sent' keeps the existing UI working.",
+    "Webhook POST always returns 200 even on bad JSON or processing errors — correct per Meta retry policy."
+  ],
+  "updated_files": ["/app/backend/tests/test_whatsapp_webhook_status.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "N/A (backend-only run)"},
+  "test_credentials": "admin@saas.com / admin123 (OK, matches /app/memory/test_credentials.md). Note that the active admin user is in saas_db, NOT saas_billing_db.",
+  "seed_data_creation": "Per-module: webhook_verify_token='TEST_verify_token_abc123' written to db.global_settings(type=platform_whatsapp). Per-test: 1-2 whatsapp_message_logs seeded directly to saas_db.whatsapp_message_logs with message_ids prefixed 'wamid.TEST_'. Teardown removed all TEST_ rows and reset the verify_token to empty (verified post-run: 0 TEST rows remaining, webhook_verify_token cleared).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "IMPORTANT: live DB at runtime is `saas_db` (backend default), NOT `saas_billing_db` (which is what backend/.env says — env not propagated). When seeding/inspecting via mongo, use db=saas_db. Test file /app/backend/tests/test_whatsapp_webhook_status.py is reusable: hardcodes DB_NAME='saas_db', loads BASE_URL from frontend/.env, snapshots and restores platform_whatsapp config, deletes any 'wamid.TEST_*' rows in fixture teardown. All 10 tests pass. The webhook GET handshake, status pipeline (sent→delivered→read), failed-with-error-codes, orphan creation, no-downgrade, and delivery_status query filter on /api/admin/whatsapp-message-logs are all verified end-to-end.",
+  "rca of the issue": "Initial test run had 6/10 failures because tests seeded rows into saas_billing_db (per backend/.env) while the running backend writes to saas_db (because DB_NAME env var is not exported into the supervisor-managed process — database.py falls back to its default 'saas_db'). Fixed by hardcoding DB_NAME='saas_db' in the test module. After the fix, all 10/10 tests pass. The webhook implementation itself is correct on first try — no backend bugs found."
+}

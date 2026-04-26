@@ -95,6 +95,44 @@ const TRIGGER_COLORS = {
   payment_confirmation: "bg-green-100 text-green-700",
 };
 
+const DELIVERY_STATUS_LABELS = {
+  sent: "Sent",
+  delivered: "Delivered",
+  read: "Read",
+  failed: "Failed",
+};
+
+function DeliveryStatusBadge({ status }) {
+  const base = "inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full";
+  if (status === "read") {
+    return (
+      <span className={`${base} bg-blue-50 text-blue-700`} title="Read by recipient">
+        <span className="font-bold tracking-tighter">✓✓</span> Read
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className={`${base} bg-slate-100 text-slate-600`} title="Delivered to device">
+        <span className="font-bold tracking-tighter">✓✓</span> Delivered
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className={`${base} bg-red-50 text-red-600`}>
+        <XCircle className="w-3 h-3" /> Failed
+      </span>
+    );
+  }
+  // sent (or undefined) — single tick
+  return (
+    <span className={`${base} bg-slate-50 text-slate-500`} title="Sent — awaiting delivery confirmation">
+      <span className="font-bold">✓</span> Sent
+    </span>
+  );
+}
+
 function StatCard({ title, value, subtitle, icon: Icon, color = "blue", trend = null }) {
   const colors = {
     blue: "bg-blue-50 text-blue-600",
@@ -189,6 +227,7 @@ export default function WhatsAppStats() {
 
   // Message logs filters
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterDeliveryStatus, setFilterDeliveryStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -219,6 +258,7 @@ export default function WhatsAppStats() {
       setLogsLoading(true);
       const params = new URLSearchParams({ page, per_page: 20 });
       if (filterStatus && filterStatus !== "all") params.append("status", filterStatus);
+      if (filterDeliveryStatus && filterDeliveryStatus !== "all") params.append("delivery_status", filterDeliveryStatus);
       if (filterCategory && filterCategory !== "all") params.append("template_category", filterCategory);
       if (filterSearch) params.append("search", filterSearch);
       if (filterDateFrom) params.append("date_from", filterDateFrom);
@@ -234,7 +274,7 @@ export default function WhatsAppStats() {
     } finally {
       setLogsLoading(false);
     }
-  }, [authAxios, filterStatus, filterCategory, filterSearch, filterDateFrom, filterDateTo]);
+  }, [authAxios, filterStatus, filterDeliveryStatus, filterCategory, filterSearch, filterDateFrom, filterDateTo]);
 
   const fetchErrorLogs = useCallback(async () => {
     try {
@@ -278,6 +318,7 @@ export default function WhatsAppStats() {
 
   const handleResetFilters = () => {
     setFilterStatus("all");
+    setFilterDeliveryStatus("all");
     setFilterCategory("all");
     setFilterSearch("");
     setFilterDateFrom("");
@@ -518,7 +559,7 @@ export default function WhatsAppStats() {
             </div>
 
             {/* Filters */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 mt-3">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <Input
@@ -527,14 +568,25 @@ export default function WhatsAppStats() {
                   onChange={(e) => setFilterSearch(e.target.value)}
                   className="pl-7 h-8 text-xs"
                   onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
+                  data-testid="whatsapp-logs-filter-search"
                 />
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="whatsapp-logs-filter-status"><SelectValue placeholder="Send Status" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="all">All Send Status</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterDeliveryStatus} onValueChange={setFilterDeliveryStatus}>
+                <SelectTrigger className="h-8 text-xs" data-testid="whatsapp-logs-filter-delivery"><SelectValue placeholder="Delivery" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Delivery</SelectItem>
+                  <SelectItem value="sent">Sent (no receipt)</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="read">Read</SelectItem>
+                  <SelectItem value="failed">Failed at delivery</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
@@ -563,7 +615,7 @@ export default function WhatsAppStats() {
                 placeholder="To date"
               />
               <div className="flex gap-1">
-                <Button size="sm" onClick={handleApplyFilters} className="h-8 px-3 gap-1 flex-1">
+                <Button size="sm" onClick={handleApplyFilters} className="h-8 px-3 gap-1 flex-1" data-testid="whatsapp-logs-filter-apply">
                   <Filter className="w-3 h-3" />
                   Apply
                 </Button>
@@ -638,16 +690,13 @@ export default function WhatsAppStats() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          {log.status === "sent" ? (
-                            <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Sent
-                            </span>
-                          ) : (
+                          {log.status === "failed" ? (
                             <span className="flex items-center gap-1 text-red-600 text-xs font-medium">
                               <XCircle className="w-3.5 h-3.5" />
                               Failed
                             </span>
+                          ) : (
+                            <DeliveryStatusBadge status={log.delivery_status || "sent"} />
                           )}
                         </TableCell>
                         <TableCell className="text-center">
@@ -849,7 +898,82 @@ export default function WhatsAppStats() {
                         {selectedLog.error_message}
                       </p>
                     )}
+                    {(selectedLog.error_code !== undefined && selectedLog.error_code !== null) && (
+                      <p className="text-[11px] text-red-500 mt-1 font-mono">
+                        Meta error code: {selectedLog.error_code}
+                        {selectedLog.error_title ? ` — ${selectedLog.error_title}` : ""}
+                      </p>
+                    )}
                   </div>
+                </div>
+              )}
+
+              {/* Delivery Timeline */}
+              {selectedLog.status === "sent" && (
+                <div className="bg-white border border-slate-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-slate-600 mb-3 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" /> Delivery Timeline
+                  </p>
+                  {(() => {
+                    const ds = selectedLog.delivery_status || "sent";
+                    const failed = ds === "failed";
+                    const timeline = [
+                      { key: "sent", label: "Sent", at: selectedLog.created_at, reached: true },
+                      { key: "delivered", label: "Delivered", at: selectedLog.delivered_at, reached: ["delivered", "read"].includes(ds) },
+                      { key: "read", label: "Read", at: selectedLog.read_at, reached: ds === "read" },
+                    ];
+                    return (
+                      <div className="space-y-2">
+                        {timeline.map((step) => (
+                          <div key={step.key} className="flex items-center gap-3">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                              step.reached
+                                ? (step.key === "read" ? "bg-blue-500 text-white" : "bg-green-500 text-white")
+                                : "bg-slate-200 text-slate-400"
+                            }`}>
+                              {step.key === "sent" ? "✓" : "✓✓"}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-xs font-medium ${step.reached ? "text-slate-700" : "text-slate-400"}`}>
+                                {step.label}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                {step.reached ? formatDate(step.at) : "Pending"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        {failed && (
+                          <div className="flex items-start gap-3 pt-2 border-t border-slate-100">
+                            <div className="w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shrink-0">
+                              <XCircle className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-xs font-medium text-red-700">Failed at delivery</p>
+                              <p className="text-[11px] text-red-500">{formatDate(selectedLog.failed_at)}</p>
+                              {(selectedLog.error_code !== undefined && selectedLog.error_code !== null) && (
+                                <p className="text-[11px] text-red-500 mt-0.5 font-mono">
+                                  Meta error code: {selectedLog.error_code}
+                                  {selectedLog.error_title ? ` — ${selectedLog.error_title}` : ""}
+                                </p>
+                              )}
+                              {selectedLog.error_message && !selectedLog.error_title && (
+                                <p className="text-[11px] text-red-500 mt-0.5 whitespace-pre-wrap break-words">
+                                  {selectedLog.error_message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {!failed && ds === "sent" && (
+                          <p className="text-[11px] text-slate-400 italic pt-1">
+                            Awaiting delivery confirmation from WhatsApp.{" "}
+                            {!selectedLog.delivered_at && "If delivery webhooks are not configured, only Sent will appear here."}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

@@ -736,14 +736,17 @@ async def update_global_reminder_settings(
 async def get_platform_whatsapp_config(current_user: dict = Depends(require_admin)):
     config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0})
     if not config:
-        return {"phone_number_id": "", "access_token_preview": "", "business_account_id": "", "is_configured": False}
+        return {"phone_number_id": "", "access_token_preview": "", "business_account_id": "", "webhook_verify_token_preview": "", "is_configured": False}
     # Mask the access_token for display
     token = config.get("access_token", "")
     masked_token = token[:8] + "****" if len(token) > 8 else ("****" if token else "")
+    verify_token = config.get("webhook_verify_token", "")
+    masked_verify = verify_token[:4] + "****" if len(verify_token) > 4 else ("****" if verify_token else "")
     return {
         "phone_number_id": config.get("phone_number_id", ""),
         "access_token_preview": masked_token,
         "business_account_id": config.get("business_account_id", ""),
+        "webhook_verify_token_preview": masked_verify,
         "is_configured": bool(token)
     }
 
@@ -819,6 +822,7 @@ async def update_platform_whatsapp_config(data: WhatsAppConfig, current_user: di
         "phone_number_id": data.phone_number_id,
         "access_token": data.access_token,
         "business_account_id": data.business_account_id or "",
+        "webhook_verify_token": data.webhook_verify_token or "",
         "updated_at": now.isoformat(),
         "updated_by": current_user["id"]
     }
@@ -1705,6 +1709,7 @@ async def get_whatsapp_message_logs(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=20),
     status: Optional[str] = None,
+    delivery_status: Optional[str] = None,
     template: Optional[str] = None,
     template_category: Optional[str] = None,
     operator_id: Optional[str] = None,
@@ -1717,6 +1722,9 @@ async def get_whatsapp_message_logs(
     query = {}
     if status:
         query["status"] = status
+    if delivery_status:
+        # delivery_status mirrors WhatsApp webhook statuses: sent | delivered | read | failed
+        query["delivery_status"] = delivery_status
     if template:
         query["template_name"] = {"$regex": template, "$options": "i"}
     if template_category:

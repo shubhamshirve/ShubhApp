@@ -127,11 +127,14 @@ const AdminSettings = () => {
     phone_number_id: "",
     access_token: "",
     business_account_id: "",
+    webhook_verify_token: "",
     access_token_preview: "",
+    webhook_verify_token_preview: "",
     is_configured: false,
   });
   const [waLoading, setWaLoading] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [showVerifyToken, setShowVerifyToken] = useState(false);
 
   // WhatsApp template settings state
   const [templateSettings, setTemplateSettings] = useState({
@@ -332,6 +335,7 @@ const AdminSettings = () => {
         phone_number_id: res.data.phone_number_id || "",
         business_account_id: res.data.business_account_id || "",
         access_token_preview: res.data.access_token_preview || "",
+        webhook_verify_token_preview: res.data.webhook_verify_token_preview || "",
         is_configured: res.data.is_configured || false,
       }));
     } catch { /* ignore */ }
@@ -371,7 +375,7 @@ const AdminSettings = () => {
     try {
       await authAxios.put("/admin/whatsapp-config", waConfig);
       toast.success("WhatsApp configuration updated");
-      setWaConfig(prev => ({ ...prev, access_token: "" })); // clear for security
+      setWaConfig(prev => ({ ...prev, access_token: "", webhook_verify_token: "" })); // clear for security
       fetchWaConfig();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update WhatsApp config");
@@ -1239,6 +1243,32 @@ const AdminSettings = () => {
                       </button>
                     </div>
                     <p className="text-xs text-slate-400">Leave blank to keep the existing token unchanged.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Webhook Verify Token</Label>
+                    <div className="relative">
+                      <Input
+                        type={showVerifyToken ? "text" : "password"}
+                        value={waConfig.webhook_verify_token}
+                        onChange={(e) => setWaConfig(prev => ({ ...prev, webhook_verify_token: e.target.value }))}
+                        placeholder={waConfig.webhook_verify_token_preview ? `Current: ${waConfig.webhook_verify_token_preview} (enter to change)` : "Any string — paste the same value into Meta's webhook setup"}
+                        className="pr-10"
+                        data-testid="wa-webhook-verify-token"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowVerifyToken(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showVerifyToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Used to verify the WhatsApp delivery status webhook. Configure on Meta:
+                      Webhook URL <code className="bg-slate-100 px-1 rounded">{`${(typeof window !== 'undefined' && window.location?.origin) || ''}/api/webhooks/whatsapp`}</code>,
+                      subscribe to the <strong>messages</strong> field.
+                    </p>
                   </div>
 
                   <div className="pt-2 flex items-center gap-3">
