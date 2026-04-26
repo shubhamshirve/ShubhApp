@@ -1,5 +1,43 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.10
+# Current Version: V9.11
+
+## 2026-04-26
+
+### V9.11 — WhatsApp delivery & read tracking via Cloud API webhook
+
+Surfaces real WhatsApp delivery state in the Admin → WhatsApp Stats → Message Logs → "View Status" modal.
+
+#### Backend
+- New webhook endpoint `GET/POST /api/webhooks/whatsapp` (`routers/webhooks.py`).
+  - GET: Meta verification handshake (`hub.mode`, `hub.challenge`, `hub.verify_token`) — echoes challenge as `text/plain` only when token matches stored value. Returns 403 otherwise.
+  - POST: parses `entry[].changes[].value.statuses[]` and updates the matching `whatsapp_message_logs` doc by `message_id`.
+- Forward-only state machine via `_STATUS_RANK` (sent → delivered → read; failed always wins). Never downgrades.
+- Sets `delivered_at`, `read_at`, `failed_at` per event. If `read` arrives without prior `delivered`, `delivered_at` is auto-filled.
+- Failed events capture Meta error info: `error_code`, `error_title`, combined `error_message` from `errors[].error_data.details`.
+- Each status push appends an audit record to `events[]` (status, timestamp, source).
+- Orphan events (unknown `message_id`) create a placeholder row with `trigger='webhook_orphan'` so admin still sees them.
+- Webhook always returns 200 to prevent Meta retry storms.
+- `services/whatsapp_service.log_whatsapp_message` now seeds `delivery_status`, `delivered_at`, `read_at`, `failed_at`, `error_code`, `error_title`, `events[]` on the initial send-time row.
+- `WhatsAppConfig` model adds `webhook_verify_token`. `GET /api/admin/whatsapp-config` returns masked `webhook_verify_token_preview`. `PUT` persists it; the raw token is never returned.
+- `GET /api/admin/whatsapp-message-logs` accepts `delivery_status` query param (`sent | delivered | read | failed`).
+
+#### Frontend
+- WhatsApp Stats → Message Logs:
+  - New "Delivery" filter dropdown (4 options: Sent / Delivered / Read / Failed).
+  - Status column now renders a `DeliveryStatusBadge` (✓ / ✓✓ grey / ✓✓ blue / Failed) reflecting `delivery_status`.
+  - "View Status" modal redesigned with a 3-step delivery timeline (Sent → Delivered → Read) plus an explicit "Failed at delivery" row showing `failed_at`, `error_code`, and `error_title` from Meta.
+  - Modal explains "Awaiting delivery confirmation" when no webhook callbacks yet received.
+- Admin → Settings → Platform WhatsApp Config: new "Webhook Verify Token" input (password-masked, current value shown as preview). Help text shows the exact webhook URL to paste into Meta.
+
+#### Backend tests (10/10 pass)
+- `/app/backend/tests/test_whatsapp_webhook_status.py` covers verify handshake (correct + wrong), config persistence + masking, sent → delivered → read pipeline, no-downgrade rule, failed-with-error-codes, orphan creation, and `delivery_status` query filter.
+
+#### Meta dashboard configuration (manual, one-time)
+1. Meta App Dashboard → WhatsApp → Configuration → Webhooks.
+2. Set Callback URL: `<REACT_APP_BACKEND_URL>/api/webhooks/whatsapp` (e.g. `https://changelog-review-13.preview.emergentagent.com/api/webhooks/whatsapp`).
+3. Set Verify Token: arbitrary string — paste the same value in Admin → Settings → Platform WhatsApp Config → Webhook Verify Token, save.
+4. Subscribe to the **messages** field on the WhatsApp Business Account.
+
 
 ## 2026-04-25
 
