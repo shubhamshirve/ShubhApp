@@ -863,7 +863,7 @@ export default function WhatsAppStats() {
 
       {/* ── Message Status Detail Dialog ────────────────────────────────── */}
       <Dialog open={!!selectedLog} onOpenChange={(v) => !v && setSelectedLog(null)}>
-        <DialogContent className="max-w-lg w-full">
+        <DialogContent className="max-w-lg w-full max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <MessageSquare className="w-4 h-4 text-green-600" />
