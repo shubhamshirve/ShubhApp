@@ -1,5 +1,5 @@
 # E-Bill — Product Requirements Document
-<!-- Current Version: V9.11 -->
+<!-- Current Version: V9.12 -->
 
 ## Product Summary
 
@@ -27,6 +27,7 @@ Multi-tenant SaaS billing platform for ISP, broadband, and cable operators. Supp
 - Password recovery via email OTP only (WhatsApp discontinued)
 - Public online payments store mode as `"online"`
 - Subscriber plans stored as embedded array (up to 5 per subscriber)
+- Subscriber `plan_expiry_date` syncs from invoice **creation/update** (not payment); hybrid rule: only move forward — `new_expiry = max(old_plan_expiry_date, line_item.service_end_date)`. New plans on an invoice are auto-added to `subscriber.plans[]`. Custom line items are skipped.
 - Bulk subscriber CSV: one row per subscriber, plan columns suffixed `_1` through `_5`
 - Wallet crediting is GST-exclusive
 - Operator payment gateway keys enforced on public payments (no platform fallback)
