@@ -255,6 +255,10 @@ export default function WhatsAppStats() {
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [clearingWebhookEvents, setClearingWebhookEvents] = useState(false);
 
+  // Diagnostics
+  const [diagRunning, setDiagRunning] = useState(false);
+  const [diagResult, setDiagResult] = useState(null);
+
   const fetchStats = useCallback(async () => {
     try {
       setStatsLoading(true);
@@ -318,6 +322,19 @@ export default function WhatsAppStats() {
       setWebhookEventsLoading(false);
     }
   }, [authAxios, webhookEventFilter]);
+
+  const runDiagnostics = useCallback(async () => {
+    try {
+      setDiagRunning(true);
+      setDiagResult(null);
+      const res = await authAxios.post("/admin/webhook-self-test");
+      setDiagResult(res.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Diagnostics failed");
+    } finally {
+      setDiagRunning(false);
+    }
+  }, [authAxios]);
 
   useEffect(() => {
     fetchStats();
@@ -942,22 +959,186 @@ export default function WhatsAppStats() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900" />
               </div>
             ) : webhookEvents.length === 0 ? (
-              <div className="text-center py-14">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl">📡</span>
+              <div className="p-6 space-y-6">
+                {/* ── Diagnostic Panel ───────────────────────────────── */}
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl mt-0.5">🔍</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-amber-800 text-sm">No webhook events received yet</p>
+                      <p className="text-amber-700 text-xs mt-1">
+                        Run the self-test below to identify what's misconfigured, then follow the step-by-step Meta setup guide.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={runDiagnostics}
+                      disabled={diagRunning}
+                      size="sm"
+                      className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white gap-1.5 h-8 text-xs"
+                    >
+                      {diagRunning ? (
+                        <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Running…</>
+                      ) : (
+                        <><span>🧪</span> Run Self-Test</>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Diagnostic Results */}
+                  {diagResult && (
+                    <div className="mt-4 space-y-2">
+                      <p className={`text-xs font-semibold ${diagResult.all_pass ? "text-green-700" : "text-red-700"}`}>
+                        {diagResult.all_pass ? "✅ All checks passed — webhook is correctly configured." : "⚠️ Some checks failed — see details below."}
+                      </p>
+                      {diagResult.results.map((r, i) => (
+                        <div key={i} className={`rounded-lg border px-3 py-2.5 text-xs ${r.pass ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 shrink-0">{r.pass ? "✅" : "❌"}</span>
+                            <div className="min-w-0">
+                              <p className={`font-medium ${r.pass ? "text-green-800" : "text-red-800"}`}>{r.check}</p>
+                              <p className={`mt-0.5 leading-relaxed ${r.pass ? "text-green-700" : "text-red-700"}`}>{r.detail}</p>
+                              {r.fix_steps && r.fix_steps.length > 0 && (
+                                <ul className="mt-1.5 space-y-1 list-disc list-inside text-red-700">
+                                  {r.fix_steps.map((s, j) => <li key={j}>{s}</li>)}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Webhook URL copy box */}
+                      {diagResult.public_webhook_url && (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                          <p className="text-xs font-semibold text-slate-700 mb-1">📋 Callback URL to paste in Meta:</p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-1.5 break-all text-slate-800 select-all font-mono">
+                              {diagResult.public_webhook_url}
+                            </code>
+                            <button
+                              onClick={() => { navigator.clipboard?.writeText(diagResult.public_webhook_url); toast.success("URL copied!"); }}
+                              className="shrink-0 text-xs text-blue-600 hover:underline font-medium"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="text-slate-500 font-medium">No webhook events received yet</p>
-                <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">
-                  When Meta sends delivery status updates (sent → delivered → read) they will appear here.
-                </p>
-                <p className="text-xs text-slate-400 mt-3">
-                  Make sure Meta's webhook is configured to POST to{" "}
-                  <code className="bg-slate-100 px-1 rounded">/api/webhooks/whatsapp</code>{" "}
-                  and subscribed to the <strong>messages</strong> field.
-                </p>
+
+                {/* ── Step-by-Step Meta Setup Guide ──────────────────── */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <p className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <span>📘</span> Step-by-Step Meta Webhook Setup Guide
+                  </p>
+                  <ol className="space-y-3">
+                    {[
+                      {
+                        step: "1",
+                        title: "Set the Webhook Verify Token in this app",
+                        body: "Go to Admin → Settings → WhatsApp Configuration. Set a Webhook Verify Token (any secret string, e.g. my-secret-123). Save the configuration.",
+                        icon: "⚙️",
+                      },
+                      {
+                        step: "2",
+                        title: "Open Meta for Developers",
+                        body: "Go to https://developers.facebook.com → Your App → WhatsApp → Configuration.",
+                        icon: "🌐",
+                        link: "https://developers.facebook.com",
+                        linkLabel: "Open Meta Developers →",
+                      },
+                      {
+                        step: "3",
+                        title: "Set the Callback URL",
+                        body: "Paste your app's webhook URL into the Callback URL field. Click 'Run Self-Test' above to see the exact URL. It looks like: https://your-domain.com/api/webhooks/whatsapp",
+                        icon: "🔗",
+                      },
+                      {
+                        step: "4",
+                        title: "Set the Verify Token",
+                        body: "Enter the SAME verify token you saved in Step 1. Click 'Verify and Save'. Meta will call your webhook URL with a GET request — if the token matches, verification succeeds.",
+                        icon: "🔑",
+                      },
+                      {
+                        step: "5",
+                        title: "Subscribe to the 'messages' field",
+                        body: "After verification, click 'Manage' next to the webhook. Enable (subscribe) the 'messages' field. This tells Meta to send delivery status callbacks (sent → delivered → read) to your webhook.",
+                        icon: "✉️",
+                      },
+                      {
+                        step: "6",
+                        title: "Verify App Mode — must be LIVE",
+                        body: "In Meta for Developers, ensure your app is set to LIVE mode (not Development). In Development mode, webhooks only fire for test phone numbers. Switch to Live mode from the top bar of your app dashboard.",
+                        icon: "🚀",
+                      },
+                      {
+                        step: "7",
+                        title: "Send a test message and check here",
+                        body: "Send a WhatsApp invoice message from the Invoices page. Come back here and click Refresh — you should see a new 'Status Update' event appear within a few seconds.",
+                        icon: "✅",
+                      },
+                    ].map((item) => (
+                      <li key={item.step} className="flex gap-3">
+                        <div className="shrink-0 w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600">
+                          {item.step}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                            <span>{item.icon}</span> {item.title}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{item.body}</p>
+                          {item.link && (
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-0.5 inline-block">
+                              {item.linkLabel}
+                            </a>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               </div>
             ) : (
               <div>
+                {/* Compact diagnostics bar when events present */}
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs text-slate-500">
+                    {diagResult ? (
+                      diagResult.all_pass
+                        ? <span className="text-green-700 font-medium">✅ Self-test passed — webhook is correctly configured</span>
+                        : <span className="text-red-700 font-medium">⚠️ Self-test found issues — click Diagnose to view</span>
+                    ) : (
+                      "Run a self-test to verify webhook configuration is correct"
+                    )}
+                  </p>
+                  <Button
+                    onClick={runDiagnostics}
+                    disabled={diagRunning}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5"
+                  >
+                    {diagRunning ? <RefreshCw className="w-3 h-3 animate-spin" /> : <span>🧪</span>}
+                    {diagRunning ? "Running…" : "Diagnose"}
+                  </Button>
+                </div>
+
+                {/* Show diagnostic results inline if issues found */}
+                {diagResult && !diagResult.all_pass && (
+                  <div className="px-4 py-3 bg-red-50 border-b border-red-100 space-y-2">
+                    {diagResult.results.filter(r => !r.pass).map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs">
+                        <span>❌</span>
+                        <div>
+                          <span className="font-medium text-red-800">{r.check}: </span>
+                          <span className="text-red-700">{r.detail}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>

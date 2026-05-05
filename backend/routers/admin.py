@@ -1818,6 +1818,170 @@ async def clear_webhook_events(current_user: dict = Depends(require_admin)):
     return {"message": f"Cleared {result.deleted_count} webhook events"}
 
 
+@router.post("/webhook-self-test")
+async def run_webhook_self_test(request: Request, current_user: dict = Depends(require_admin)):
+    """
+    Run a comprehensive self-test for the WhatsApp webhook configuration.
+    Checks:
+      1. webhook_verify_token configured in DB
+      2. Verification endpoint responds correctly (simulates Meta's GET handshake)
+      3. POST endpoint is reachable and returns 200
+      4. Phone number account status & mode (LIVE vs DEVELOPMENT)
+    """
+    import httpx
+    import secrets
+
+    config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0}) or {}
+    verify_token = config.get("webhook_verify_token") or ""
+    access_token = config.get("access_token") or ""
+    phone_number_id = config.get("phone_number_id") or ""
+
+    results: list[dict] = []
+
+    # ── Check 1: Verify token configured ────────────────────────────────────
+    token_ok = bool(verify_token)
+    results.append({
+        "check": "Webhook Verify Token configured",
+        "pass": token_ok,
+        "detail": (
+            f"Token is set ({verify_token[:4]}****)" if token_ok
+            else "No webhook_verify_token saved. Set it in Admin → Settings → WhatsApp Configuration, then paste the SAME value into Meta's webhook setup."
+        ),
+    })
+
+    # ── Check 2: Verification GET handshake (simulate Meta's request) ───────
+    probe_challenge = secrets.token_hex(8)
+    verify_pass = False
+    verify_detail = ""
+    if token_ok:
+        try:
+            local_base = "http://localhost:8001"
+            url = (
+                f"{local_base}/api/webhooks/whatsapp"
+                f"?hub.mode=subscribe"
+                f"&hub.challenge={probe_challenge}"
+                f"&hub.verify_token={verify_token}"
+            )
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+            if resp.status_code == 200 and resp.text.strip() == probe_challenge:
+                verify_pass = True
+                verify_detail = "Verification endpoint returned the correct challenge. Meta can verify this webhook."
+            else:
+                verify_detail = (
+                    f"Endpoint responded with HTTP {resp.status_code}, body='{resp.text[:80]}'. "
+                    "Expected 200 + the challenge string. Check that the verify token in DB matches what you configured in Meta."
+                )
+        except Exception as exc:
+            verify_detail = f"Could not reach local webhook endpoint: {exc}"
+    else:
+        verify_detail = "Skipped — set the verify token first."
+    results.append({
+        "check": "Verification handshake (simulates Meta's GET request)",
+        "pass": verify_pass,
+        "detail": verify_detail,
+    })
+
+    # ── Check 3: POST endpoint reachable ─────────────────────────────────────
+    post_pass = False
+    post_detail = ""
+    try:
+        local_base = "http://localhost:8001"
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(
+                f"{local_base}/api/webhooks/whatsapp",
+                json={"object": "whatsapp_business_account", "entry": []},
+                headers={"Content-Type": "application/json"},
+            )
+        if resp.status_code == 200:
+            post_pass = True
+            post_detail = "POST endpoint is reachable and returns 200 OK."
+        else:
+            post_detail = f"POST endpoint returned HTTP {resp.status_code}."
+    except Exception as exc:
+        post_detail = f"Could not reach POST endpoint: {exc}"
+    results.append({
+        "check": "Webhook POST endpoint reachable (server-side)",
+        "pass": post_pass,
+        "detail": post_detail,
+    })
+
+    # ── Check 4: Phone number / account mode ────────────────────────────────
+    mode_pass = False
+    mode_detail = ""
+    mode_label = "UNKNOWN"
+    warning = None
+    fix_steps: list[str] = []
+    if access_token and phone_number_id:
+        try:
+            from services.whatsapp_service import WhatsAppService
+            wa = WhatsAppService(phone_number_id, access_token)
+            phone_status = await wa.check_account_status()
+            throughput = (phone_status.get("throughput") or {}).get("level", "")
+            display_phone = phone_status.get("display_phone_number", "")
+            is_test_number = "555" in display_phone.replace(" ", "").replace("-", "")
+            if throughput == "STANDARD" and not is_test_number:
+                mode_pass = True
+                mode_label = "LIVE"
+                mode_detail = f"Account is in LIVE mode. Phone: {display_phone}. Throughput: STANDARD."
+            else:
+                mode_label = "DEVELOPMENT"
+                if is_test_number:
+                    mode_detail = (
+                        f"You are using Meta's TEST phone number ({display_phone}). "
+                        "Webhooks and messages only work for numbers you add as Test Numbers in Meta."
+                    )
+                    fix_steps = [
+                        "Add your own mobile number as a Test Number: Meta for Developers → Your App → WhatsApp → API Setup → 'To' field → Manage phone number list.",
+                        "OR add and verify your real business WhatsApp number in Meta Business Suite.",
+                    ]
+                else:
+                    mode_detail = f"Account throughput is '{throughput}' (not STANDARD). Status callbacks may be limited."
+                    fix_steps = ["Complete WhatsApp Business API verification in Meta Business Suite to upgrade to STANDARD throughput."]
+                warning = mode_detail
+        except Exception as exc:
+            mode_detail = f"Could not fetch account status: {exc}"
+    else:
+        mode_detail = "Skipped — WhatsApp not configured (missing access token or phone number ID)."
+    results.append({
+        "check": "Phone number account mode (LIVE vs DEVELOPMENT)",
+        "pass": mode_pass,
+        "mode": mode_label,
+        "detail": mode_detail,
+        "warning": warning,
+        "fix_steps": fix_steps,
+    })
+
+    # ── Public webhook URL (for pasting into Meta) ───────────────────────────
+    origin = str(request.base_url).rstrip("/")
+    # Use REACT_APP_BACKEND_URL env for the public-facing domain if available
+    import os
+    frontend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+    if frontend_url:
+        # Strip /api suffix if present — we want the app root
+        public_origin = frontend_url.rstrip("/")
+        if public_origin.endswith("/api"):
+            public_origin = public_origin[:-4]
+    else:
+        public_origin = origin
+    public_webhook_url = f"{public_origin}/api/webhooks/whatsapp"
+
+    all_pass = all(r["pass"] for r in results)
+    return {
+        "all_pass": all_pass,
+        "results": results,
+        "public_webhook_url": public_webhook_url,
+        "meta_setup_steps": [
+            "1. Go to Meta for Developers → Your App → WhatsApp → Configuration (or Webhooks).",
+            f"2. Set Callback URL to: {public_webhook_url}",
+            "3. Set Verify Token to the SAME value you saved in Admin → Settings → WhatsApp Configuration.",
+            "4. Click 'Verify and Save' — Meta will call your Callback URL with a GET request.",
+            "5. After verification, click 'Manage' and subscribe to the 'messages' field.",
+            "6. Also go to WhatsApp → Configuration and make sure webhook is subscribed at the WABA level.",
+        ],
+    }
+
+
 # ─── Error Logs ───────────────────────────────────────────────────────────────
 
 @router.get("/error-logs")
