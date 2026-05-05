@@ -726,7 +726,10 @@ class PaymentGatewayConfig(SanitizedModel):
 class WhatsAppConfig(SanitizedModel):
     _unsanitized_fields = {"access_token", "webhook_verify_token"}
     phone_number_id: str
-    access_token: str
+    # access_token is optional in the model so that the admin can update other fields
+    # (e.g. webhook_verify_token, business_account_id) without re-entering the token.
+    # The backend preserves the existing DB token when this is empty.
+    access_token: Optional[str] = None
     business_account_id: Optional[str] = None
     webhook_verify_token: Optional[str] = None
 

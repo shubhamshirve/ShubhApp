@@ -1,4 +1,4 @@
-"""Webhook handlers (Razorpay, etc.)."""
+"""Webhook handlers (Razorpay, WhatsApp, etc.)."""
 from fastapi import APIRouter, Request, Query, Response
 from datetime import datetime, timezone
 import json
@@ -27,9 +27,15 @@ async def whatsapp_webhook_verify(
     config = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0}) or {}
     expected = config.get("webhook_verify_token") or ""
     if hub_mode == "subscribe" and hub_verify_token and hub_verify_token == expected:
+        logger.info("WhatsApp webhook verification handshake succeeded")
         # Meta requires raw text/plain echo of the challenge
         return Response(content=hub_challenge or "", media_type="text/plain")
-    logger.warning("WhatsApp webhook verify failed: mode=%s token_match=%s", hub_mode, hub_verify_token == expected)
+    logger.warning(
+        "WhatsApp webhook verify failed: mode=%s token_match=%s expected_empty=%s",
+        hub_mode,
+        hub_verify_token == expected,
+        expected == ""
+    )
     return Response(content="forbidden", status_code=403, media_type="text/plain")
 
 
@@ -47,15 +53,31 @@ async def whatsapp_webhook_event(request: Request):
         logger.warning(f"WhatsApp webhook: invalid JSON ({e})")
         return {"status": "ignored"}
 
+    logger.info("WhatsApp webhook received: object=%s", payload.get("object", "unknown"))
+
+    processed = 0
     try:
         for entry in payload.get("entry") or []:
             for change in entry.get("changes") or []:
                 value = change.get("value") or {}
                 statuses = value.get("statuses") or []
+                if not statuses:
+                    # Could be an incoming message event — log and skip
+                    msgs = value.get("messages") or []
+                    if msgs:
+                        logger.info(
+                            "WhatsApp webhook: incoming message event received (not a status update), "
+                            "msg_count=%d", len(msgs)
+                        )
+                    continue
                 for st in statuses:
                     await _apply_whatsapp_status_event(st)
+                    processed += 1
     except Exception as e:
         logger.error(f"WhatsApp webhook processing error: {e}", exc_info=True)
+
+    if processed:
+        logger.info("WhatsApp webhook: processed %d status event(s)", processed)
     return {"status": "ok"}
 
 
@@ -64,7 +86,13 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
     msg_id = st.get("id") or ""
     new_status = (st.get("status") or "").lower()
     if not msg_id or new_status not in _STATUS_RANK:
+        logger.debug("Skipping status event: msg_id=%s status=%s", msg_id, new_status)
         return
+
+    logger.info(
+        "WhatsApp status event: msg_id=%s status=%s recipient=%s",
+        msg_id, new_status, st.get("recipient_id", "")
+    )
 
     ts_raw = st.get("timestamp")
     try:
@@ -89,7 +117,14 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
     }
 
     if not existing:
-        # Orphan event — create a placeholder row so the admin still sees it.
+        # Orphan event — no matching log found by message_id.
+        # This can happen if the message was sent before logging was set up,
+        # or if the message_id was not stored correctly.
+        logger.warning(
+            "WhatsApp webhook: ORPHAN event — no log found for msg_id=%s status=%s. "
+            "Creating placeholder row. Check that messages are being logged with correct message_id.",
+            msg_id, new_status
+        )
         from utils import generate_id
         orphan = {
             "id": generate_id(),
@@ -128,7 +163,9 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
         if not existing.get("delivered_at"):
             # Some carriers skip 'delivered'; mark it implicitly.
             set_doc["delivered_at"] = event_iso
-        set_doc["read_at"] = event_iso
+        # Only set read_at on the FIRST read event (do not overwrite with later duplicates).
+        if not existing.get("read_at"):
+            set_doc["read_at"] = event_iso
     if new_status == "failed":
         set_doc["failed_at"] = event_iso
         if err_code is not None:
@@ -143,7 +180,16 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
     update_ops = {"$push": {"events": event_record}}
     if set_doc:
         update_ops["$set"] = set_doc
-    await db.whatsapp_message_logs.update_one({"message_id": msg_id}, update_ops)
+    result = await db.whatsapp_message_logs.update_one({"message_id": msg_id}, update_ops)
+    logger.info(
+        "WhatsApp status update applied: msg_id=%s status=%s matched=%d modified=%d",
+        msg_id, new_status, result.matched_count, result.modified_count
+    )
+    if result.matched_count == 0:
+        logger.error(
+            "WhatsApp webhook: update matched 0 docs for msg_id=%s — "
+            "document may have been deleted after find_one", msg_id
+        )
 
 
 @router.post("/razorpay")

@@ -817,12 +817,25 @@ async def get_whatsapp_diagnostics(current_user: dict = Depends(require_admin)):
 @router.put("/whatsapp-config")
 async def update_platform_whatsapp_config(data: WhatsAppConfig, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc)
+    # Fetch existing config so we can preserve sensitive fields if not re-entered
+    existing_cfg = await db.global_settings.find_one({"type": "platform_whatsapp"}, {"_id": 0}) or {}
+
+    # Only overwrite access_token / webhook_verify_token when a new non-empty value is provided.
+    # This prevents accidental erasure when the admin updates other fields (e.g. business_account_id)
+    # without re-entering the token.
+    resolved_token = data.access_token if data.access_token else existing_cfg.get("access_token") or ""
+    resolved_verify = (
+        data.webhook_verify_token
+        if data.webhook_verify_token
+        else existing_cfg.get("webhook_verify_token") or ""
+    )
+
     config = {
         "type": "platform_whatsapp",
         "phone_number_id": data.phone_number_id,
-        "access_token": data.access_token,
+        "access_token": resolved_token,
         "business_account_id": data.business_account_id or "",
-        "webhook_verify_token": data.webhook_verify_token or "",
+        "webhook_verify_token": resolved_verify,
         "updated_at": now.isoformat(),
         "updated_by": current_user["id"]
     }
@@ -1757,6 +1770,15 @@ async def get_whatsapp_message_logs(
         "per_page": per_page,
         "total_pages": max(1, (total + per_page - 1) // per_page),
     }
+
+
+@router.get("/whatsapp-message-logs/{log_id}")
+async def get_whatsapp_message_log(log_id: str, current_user: dict = Depends(require_admin)):
+    """Fetch a single WhatsApp message log by its ID (for real-time status refresh)."""
+    log = await db.whatsapp_message_logs.find_one({"id": log_id}, {"_id": 0})
+    if not log:
+        raise HTTPException(status_code=404, detail="Log not found")
+    return log
 
 
 @router.delete("/whatsapp-message-logs")

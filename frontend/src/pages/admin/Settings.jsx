@@ -367,8 +367,14 @@ const AdminSettings = () => {
 
   const handleUpdateWhatsApp = async (e) => {
     e.preventDefault();
-    if (!waConfig.phone_number_id || !waConfig.access_token) {
-      toast.error("Phone Number ID and Access Token are required");
+    // access_token is only required for the first-time setup.
+    // When already configured, leaving it blank keeps the existing token.
+    if (!waConfig.phone_number_id) {
+      toast.error("Phone Number ID is required");
+      return;
+    }
+    if (!waConfig.is_configured && !waConfig.access_token) {
+      toast.error("Access Token is required for initial setup");
       return;
     }
     setWaLoading(true);
@@ -1230,7 +1236,7 @@ const AdminSettings = () => {
                         type={showToken ? "text" : "password"}
                         value={waConfig.access_token}
                         onChange={(e) => setWaConfig(prev => ({ ...prev, access_token: e.target.value }))}
-                        placeholder="Enter new access token to update"
+                        placeholder={waConfig.is_configured ? "Leave blank to keep existing token" : "Paste your permanent system user access token"}
                         className="pr-10"
                         data-testid="wa-access-token"
                       />
@@ -1242,7 +1248,11 @@ const AdminSettings = () => {
                         {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-400">Leave blank to keep the existing token unchanged.</p>
+                    <p className="text-xs text-slate-400">
+                      {waConfig.is_configured
+                        ? "Leave blank to keep the existing token. Enter a new token only if you need to rotate it."
+                        : "Required. Use a permanent (never-expiring) System User token from Meta Business Suite."}
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -1252,7 +1262,7 @@ const AdminSettings = () => {
                         type={showVerifyToken ? "text" : "password"}
                         value={waConfig.webhook_verify_token}
                         onChange={(e) => setWaConfig(prev => ({ ...prev, webhook_verify_token: e.target.value }))}
-                        placeholder={waConfig.webhook_verify_token_preview ? `Current: ${waConfig.webhook_verify_token_preview} (enter to change)` : "Any string — paste the same value into Meta's webhook setup"}
+                        placeholder={waConfig.webhook_verify_token_preview ? `Current: ${waConfig.webhook_verify_token_preview} — leave blank to keep` : "Any secret string you choose — paste it into Meta's webhook setup too"}
                         className="pr-10"
                         data-testid="wa-webhook-verify-token"
                       />
@@ -1264,11 +1274,16 @@ const AdminSettings = () => {
                         {showVerifyToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-400">
-                      Used to verify the WhatsApp delivery status webhook. Configure on Meta:
-                      Webhook URL <code className="bg-slate-100 px-1 rounded">{`${(typeof window !== 'undefined' && window.location?.origin) || ''}/api/webhooks/whatsapp`}</code>,
-                      subscribe to the <strong>messages</strong> field.
-                    </p>
+                    <div className="text-xs text-slate-400 space-y-1">
+                      <p>
+                        Leave blank to keep the existing token. Required to complete Meta's webhook verification.
+                      </p>
+                      <p>
+                        Webhook URL to configure in Meta →{" "}
+                        <code className="bg-slate-100 px-1 rounded select-all">{`${(typeof window !== 'undefined' && window.location?.origin) || ''}/api/webhooks/whatsapp`}</code>
+                      </p>
+                      <p>Subscribe to the <strong>messages</strong> field to receive delivery status updates.</p>
+                    </div>
                   </div>
 
                   <div className="pt-2 flex items-center gap-3">

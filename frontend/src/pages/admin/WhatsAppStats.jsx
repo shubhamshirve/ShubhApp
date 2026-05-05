@@ -240,6 +240,7 @@ export default function WhatsAppStats() {
   const [selectedError, setSelectedError] = useState(null);
   // Message status detail
   const [selectedLog, setSelectedLog] = useState(null);
+  const [logRefreshing, setLogRefreshing] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -324,6 +325,24 @@ export default function WhatsAppStats() {
     setFilterDateFrom("");
     setFilterDateTo("");
   };
+
+  const handleOpenLog = useCallback((log) => {
+    setSelectedLog(log);
+    setLogRefreshing(false);
+  }, []);
+
+  const refreshSelectedLog = useCallback(async () => {
+    if (!selectedLog?.id) return;
+    try {
+      setLogRefreshing(true);
+      const res = await authAxios.get(`/admin/whatsapp-message-logs/${selectedLog.id}`);
+      setSelectedLog(res.data);
+    } catch {
+      toast.error("Failed to refresh message status");
+    } finally {
+      setLogRefreshing(false);
+    }
+  }, [authAxios, selectedLog]);
 
   const sortedCategories = useMemo(() =>
     stats?.by_category
@@ -703,7 +722,7 @@ export default function WhatsAppStats() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedLog(log)}
+                            onClick={() => handleOpenLog(log)}
                             className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600"
                             title="View message status"
                           >
@@ -868,6 +887,16 @@ export default function WhatsAppStats() {
             <DialogTitle className="flex items-center gap-2 text-base">
               <MessageSquare className="w-4 h-4 text-green-600" />
               Message Status
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshSelectedLog}
+                disabled={logRefreshing}
+                className="ml-auto h-7 w-7 p-0 text-slate-400 hover:text-blue-600"
+                title="Refresh status from server"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${logRefreshing ? "animate-spin" : ""}`} />
+              </Button>
             </DialogTitle>
           </DialogHeader>
 
@@ -1036,7 +1065,10 @@ export default function WhatsAppStats() {
                 </div>
               )}
 
-              <div className="flex justify-end pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                <p className="text-[11px] text-slate-400 italic">
+                  {logRefreshing ? "Refreshing..." : "Click ↺ to get the latest delivery status"}
+                </p>
                 <Button variant="outline" size="sm" onClick={() => setSelectedLog(null)}>Close</Button>
               </div>
             </div>
