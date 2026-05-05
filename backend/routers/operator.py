@@ -82,6 +82,100 @@ async def _has_addon(operator_id: str, addon_code: str) -> bool:
     return False
 
 
+# ─── Subscriber plan sync (from invoice line items) ───────────────────────────
+def _to_ymd(value) -> Optional[str]:
+    """Coerce a date/datetime/ISO-string to a YYYY-MM-DD string."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().strftime("%Y-%m-%d")
+    if isinstance(value, date_type):
+        return value.strftime("%Y-%m-%d")
+    s = str(value)
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).date().strftime("%Y-%m-%d")
+    except ValueError:
+        return s[:10] if len(s) >= 10 else None
+
+
+async def _sync_subscriber_plans_from_invoice(subscriber_id: str, line_items: list) -> None:
+    """
+    Sync subscriber.plans[] from an invoice's line_items (creation/update path).
+    Rules (no payment dependency):
+      - For each plan-based line item:
+          * If subscriber already has the plan (matching plan_id):
+              - Update plan_expiry_date to MAX(old_expiry, service_end_date).
+              - If we extend the expiry, also bump plan_start_date to service_start_date
+                when it is later than the existing one.
+          * If subscriber does NOT have the plan: add it with start/expiry from the line item.
+      - Custom line items (no plan_id) are skipped.
+    """
+    if not subscriber_id or not line_items:
+        return
+
+    subscriber = await db.subscribers.find_one(
+        {"id": subscriber_id, "deleted_at": None}, {"_id": 0}
+    )
+    if not subscriber:
+        return
+
+    plans_updated: list = subscriber.get("plans", []) or []
+    changed = False
+
+    for item in line_items:
+        if item.get("is_custom"):
+            continue
+        pid = item.get("plan_id")
+        if not pid:
+            continue
+
+        new_start_str = _to_ymd(item.get("service_start_date"))
+        new_expiry_str = _to_ymd(item.get("service_end_date"))
+        if not new_expiry_str:
+            continue
+
+        # Find existing plan entry
+        existing_sp = next((sp for sp in plans_updated if sp.get("plan_id") == pid), None)
+
+        if existing_sp:
+            old_expiry_str = existing_sp.get("plan_expiry_date") or ""
+            # Hybrid: only move expiry forward
+            if not old_expiry_str or new_expiry_str > old_expiry_str:
+                existing_sp["plan_expiry_date"] = new_expiry_str
+                # Also update start date if line item's start is later than current start
+                old_start_str = existing_sp.get("plan_start_date") or ""
+                if new_start_str and (not old_start_str or new_start_str > old_start_str):
+                    existing_sp["plan_start_date"] = new_start_str
+                if existing_sp.get("status") != "active":
+                    existing_sp["status"] = "active"
+                # Keep selected_validity in sync if provided on the line item
+                if item.get("selected_validity"):
+                    existing_sp["selected_validity"] = item["selected_validity"]
+                changed = True
+        else:
+            # Add new plan entry to subscriber
+            op_plan = await db.operator_plans.find_one(
+                {"id": pid, "deleted_at": None}, {"_id": 0}
+            )
+            plan_name = (op_plan or {}).get("name") or item.get("plan_name") or ""
+            new_sp = {
+                "plan_id": pid,
+                "plan_name": plan_name,
+                "selected_validity": item.get("selected_validity") or (op_plan or {}).get("validity"),
+                "plan_start_date": new_start_str,
+                "plan_expiry_date": new_expiry_str,
+                "billing_date": None,
+                "discount": 0,
+                "status": "active",
+            }
+            plans_updated.append(new_sp)
+            changed = True
+
+    if changed:
+        await db.subscribers.update_one(
+            {"id": subscriber_id},
+            {"$set": {"plans": plans_updated, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
 
 
 # ─── Profile ─────────────────────────────────────────────────────────────────
@@ -1793,6 +1887,12 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     }
     await db.invoices.insert_one(invoice)
 
+    # Sync subscriber.plans from this invoice's line items (no payment dependency)
+    try:
+        await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"])
+    except Exception as sync_err:
+        logger.warning(f"Subscriber plan sync failed for invoice {invoice['id']}: {sync_err}")
+
     # Deduct Rs.10 from operator wallet for invoice generation
     try:
         from routers.wallet import deduct_wallet_for_invoice
@@ -1932,6 +2032,13 @@ async def update_invoice(
         "updated_at": now,
     }
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+
+    # Sync subscriber.plans from updated line items (no payment dependency)
+    try:
+        await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"])
+    except Exception as sync_err:
+        logger.warning(f"Subscriber plan sync failed for invoice {invoice_id}: {sync_err}")
+
     updated_invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     return _parse_invoice_document(updated_invoice)
 
@@ -1984,62 +2091,6 @@ async def update_invoice_status(
 
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
-    # ── Extend subscriber plan expiry dates when invoice is paid ─────────────
-    if status == "paid":
-        try:
-            subscriber = await db.subscribers.find_one(
-                {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
-            )
-            if subscriber and invoice.get("line_items"):
-                plans_updated = subscriber.get("plans", [])
-                changed = False
-                paid_date = datetime.fromisoformat(updates["paid_at"]).date()
-
-                for line_item in invoice["line_items"]:
-                    pid = line_item.get("plan_id")
-                    if not pid:
-                        continue
-                    op_plan = await db.operator_plans.find_one({"id": pid, "deleted_at": None}, {"_id": 0})
-                    if not op_plan:
-                        continue
-                    validity = op_plan.get("validity", "monthly")
-                    months = _VALIDITY_MONTHS.get(validity)
-
-                    for sp in plans_updated:
-                        if sp.get("plan_id") != pid:
-                            continue
-                        old_expiry_str = sp.get("plan_expiry_date")
-                        if old_expiry_str:
-                            try:
-                                old_expiry = datetime.strptime(old_expiry_str, "%Y-%m-%d").date()
-                                # Extend from old expiry or paid_date (whichever is later)
-                                base_date = old_expiry if old_expiry >= paid_date else paid_date
-                            except ValueError:
-                                base_date = paid_date
-                        else:
-                            base_date = paid_date
-
-                        # new_expiry = base_date + N months  (= next period's last day)
-                        # new_start  = base_date + 1 day     (= first day of next period)
-                        if months:
-                            new_expiry = base_date + relativedelta(months=months)
-                            new_start = base_date + timedelta(days=1)
-                        else:
-                            new_expiry = base_date + timedelta(days=30)
-                            new_start = base_date + timedelta(days=1)
-
-                        sp["plan_expiry_date"] = new_expiry.strftime("%Y-%m-%d")
-                        sp["plan_start_date"] = new_start.strftime("%Y-%m-%d")
-                        changed = True
-                        break  # each plan_id updated once
-
-                if changed:
-                    await db.subscribers.update_one(
-                        {"id": subscriber["id"]},
-                        {"$set": {"plans": plans_updated, "updated_at": now.isoformat()}}
-                    )
-        except Exception as expiry_err:
-            logger.warning(f"Failed to extend plan expiry for invoice {invoice_id}: {expiry_err}")
     if status == "paid":
         try:
             from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message

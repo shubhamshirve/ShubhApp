@@ -580,7 +580,7 @@ class JobQueueService:
     @staticmethod
     async def _run_bulk_notification(job: dict) -> dict:
         """Handler for bulk_notification."""
-        from services.whatsapp_service import WhatsAppService, build_wa_send_params
+        from services.whatsapp_service import WhatsAppService, build_wa_send_params, log_whatsapp_message
         from services.invoice_view_service import build_public_invoice_url_from_env
         from services.invoice_helpers import get_platform_whatsapp_config, get_whatsapp_template_settings
 
@@ -618,8 +618,9 @@ class JobQueueService:
                     inv_public_url = await build_public_invoice_url_from_env(invoice)
                     params = await build_wa_send_params(db, tmpl_doc, invoice, subscriber, invoice_public_url=inv_public_url)
 
+                    wa_result = None
                     if params["body_vars"]:
-                        await wa_service.send_template_message(
+                        wa_result = await wa_service.send_template_message(
                             recipient_phone=subscriber["whatsapp_number"],
                             template_name=invoice_template,
                             language_code=params["language_code"],
@@ -629,7 +630,7 @@ class JobQueueService:
                             button_params=params["btn_params"],
                         )
                     else:
-                        await wa_service.send_invoice_notification(
+                        wa_result = await wa_service.send_invoice_notification(
                             recipient_phone=subscriber["whatsapp_number"],
                             customer_name=subscriber["name"],
                             invoice_number=invoice["invoice_number"],
@@ -640,6 +641,27 @@ class JobQueueService:
                             payment_link=inv_public_url or invoice.get("payment_link"),
                             template_name_override=invoice_template,
                         )
+
+                    # Log the message send so webhook delivery/read updates can match by message_id
+                    try:
+                        wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "") if wa_result else ""
+                        wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "") if wa_result else ""
+                        await log_whatsapp_message(
+                            db,
+                            operator_id=operator_id,
+                            template_name=invoice_template,
+                            template_category="invoice_notification",
+                            recipient_phone=subscriber["whatsapp_number"],
+                            status="sent",
+                            message_id=wa_msg_id,
+                            wa_id=wa_wa_id,
+                            invoice_id=invoice["id"],
+                            invoice_number=invoice["invoice_number"],
+                            trigger="bulk_notification",
+                        )
+                    except Exception as log_e:
+                        logger.warning(f"Bulk-notification WA log failed for subscriber {subscriber_id}: {log_e}")
+
                     results["sent"] += 1
             except Exception as e:
                 results["failed"] += 1
