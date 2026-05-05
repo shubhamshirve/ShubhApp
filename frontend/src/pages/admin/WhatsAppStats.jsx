@@ -242,6 +242,19 @@ export default function WhatsAppStats() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [logRefreshing, setLogRefreshing] = useState(false);
 
+  // Tab
+  const [activeTab, setActiveTab] = useState("message-logs");
+
+  // Webhook events
+  const [webhookEvents, setWebhookEvents] = useState([]);
+  const [webhookEventsTotal, setWebhookEventsTotal] = useState(0);
+  const [webhookEventsPage, setWebhookEventsPage] = useState(1);
+  const [webhookEventsTotalPages, setWebhookEventsTotalPages] = useState(1);
+  const [webhookEventsLoading, setWebhookEventsLoading] = useState(false);
+  const [webhookEventFilter, setWebhookEventFilter] = useState("all");
+  const [expandedEventId, setExpandedEventId] = useState(null);
+  const [clearingWebhookEvents, setClearingWebhookEvents] = useState(false);
+
   const fetchStats = useCallback(async () => {
     try {
       setStatsLoading(true);
@@ -289,6 +302,23 @@ export default function WhatsAppStats() {
     }
   }, [authAxios]);
 
+  const fetchWebhookEvents = useCallback(async (page = 1, filter = webhookEventFilter) => {
+    try {
+      setWebhookEventsLoading(true);
+      const params = new URLSearchParams({ page, per_page: 20 });
+      if (filter && filter !== "all") params.append("event_type", filter);
+      const res = await authAxios.get(`/admin/webhook-events?${params.toString()}`);
+      setWebhookEvents(res.data.events || []);
+      setWebhookEventsTotal(res.data.total || 0);
+      setWebhookEventsPage(res.data.page || 1);
+      setWebhookEventsTotalPages(res.data.total_pages || 1);
+    } catch {
+      toast.error("Failed to load webhook events");
+    } finally {
+      setWebhookEventsLoading(false);
+    }
+  }, [authAxios, webhookEventFilter]);
+
   useEffect(() => {
     fetchStats();
     fetchErrorLogs();
@@ -297,6 +327,12 @@ export default function WhatsAppStats() {
   useEffect(() => {
     fetchLogs(1);
   }, [fetchLogs]);
+
+  useEffect(() => {
+    if (activeTab === "webhook-events") {
+      fetchWebhookEvents(1);
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClearMessageLogs = async () => {
     if (!window.confirm("Clear all WhatsApp message logs? This cannot be undone.")) return;
@@ -310,6 +346,20 @@ export default function WhatsAppStats() {
       toast.error("Failed to clear logs");
     } finally {
       setClearingLogs(false);
+    }
+  };
+
+  const handleClearWebhookEvents = async () => {
+    if (!window.confirm("Clear all webhook event logs? This cannot be undone.")) return;
+    try {
+      setClearingWebhookEvents(true);
+      const res = await authAxios.delete("/admin/webhook-events");
+      toast.success(res.data.message);
+      fetchWebhookEvents(1);
+    } catch {
+      toast.error("Failed to clear webhook events");
+    } finally {
+      setClearingWebhookEvents(false);
     }
   };
 
@@ -375,7 +425,12 @@ export default function WhatsAppStats() {
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => { fetchStats(); fetchLogs(logsPage); fetchErrorLogs(); }}
+              onClick={() => {
+                fetchStats();
+                fetchLogs(logsPage);
+                fetchErrorLogs();
+                if (activeTab === "webhook-events") fetchWebhookEvents(webhookEventsPage);
+              }}
               className="gap-2"
             >
               <RefreshCw className="w-4 h-4" />
@@ -566,7 +621,38 @@ export default function WhatsAppStats() {
           </div>
         )}
 
-        {/* Message Logs */}
+        {/* ── Tab Navigation ─────────────────────────────────────────────── */}
+        <div className="border-b border-slate-200">
+          <nav className="-mb-px flex gap-0 overflow-x-auto">
+            {[
+              { id: "message-logs", label: "Message Logs", count: logsTotal },
+              { id: "webhook-events", label: "Webhook Events", count: webhookEventsTotal },
+              { id: "error-logs", label: "Error Logs", count: errorLogs.length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? "border-green-600 text-green-700"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                    activeTab === tab.id ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {tab.count.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* ── Tab: Message Logs ──────────────────────────────────────────── */}
+        {activeTab === "message-logs" && (
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -801,8 +887,210 @@ export default function WhatsAppStats() {
             )}
           </CardContent>
         </Card>
+        )} {/* end message-logs tab */}
 
-        {/* WhatsApp Error Logs */}
+        {/* ── Tab: Webhook Events ────────────────────────────────────────── */}
+        {activeTab === "webhook-events" && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span className="text-green-600 font-mono text-xs bg-green-50 px-2 py-1 rounded border border-green-200">POST /api/webhooks/whatsapp</span>
+                Webhook Events
+                <span className="text-xs font-normal text-slate-400 ml-1">({webhookEventsTotal.toLocaleString()} received)</span>
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <select
+                  value={webhookEventFilter}
+                  onChange={(e) => {
+                    setWebhookEventFilter(e.target.value);
+                    fetchWebhookEvents(1, e.target.value);
+                  }}
+                  className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                >
+                  <option value="all">All Events</option>
+                  <option value="status_update">Status Updates</option>
+                  <option value="incoming_message">Incoming Messages</option>
+                  <option value="other">Other</option>
+                </select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchWebhookEvents(webhookEventsPage)}
+                  disabled={webhookEventsLoading}
+                  className="gap-1 h-8 text-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${webhookEventsLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearWebhookEvents}
+                  disabled={clearingWebhookEvents}
+                  className="gap-1 h-8 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {clearingWebhookEvents ? "Clearing..." : "Clear"}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {webhookEventsLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900" />
+              </div>
+            ) : webhookEvents.length === 0 ? (
+              <div className="text-center py-14">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">📡</span>
+                </div>
+                <p className="text-slate-500 font-medium">No webhook events received yet</p>
+                <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">
+                  When Meta sends delivery status updates (sent → delivered → read) they will appear here.
+                </p>
+                <p className="text-xs text-slate-400 mt-3">
+                  Make sure Meta's webhook is configured to POST to{" "}
+                  <code className="bg-slate-100 px-1 rounded">/api/webhooks/whatsapp</code>{" "}
+                  and subscribed to the <strong>messages</strong> field.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50">
+                        <TableHead className="w-36">Received At</TableHead>
+                        <TableHead className="w-32">Event Type</TableHead>
+                        <TableHead className="w-24 text-center">Events</TableHead>
+                        <TableHead>Status Details</TableHead>
+                        <TableHead className="w-16 text-center">Payload</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {webhookEvents.map((evt) => (
+                        <>
+                          <TableRow key={evt.id} className="hover:bg-slate-50">
+                            <TableCell className="text-xs text-slate-500 whitespace-nowrap">
+                              {formatDate(evt.received_at)}
+                            </TableCell>
+                            <TableCell>
+                              {evt.event_type === "status_update" ? (
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-green-50 text-green-700">
+                                  <span className="font-bold tracking-tighter">✓✓</span> Status Update
+                                </span>
+                              ) : evt.event_type === "incoming_message" ? (
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                                  💬 Incoming Msg
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
+                                  Other
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {evt.status_count > 0 ? (
+                                <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                  {evt.status_count}
+                                </span>
+                              ) : evt.incoming_message_count > 0 ? (
+                                <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                                  {evt.incoming_message_count} msg
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {evt.statuses && evt.statuses.length > 0 ? (
+                                <div className="space-y-1">
+                                  {evt.statuses.slice(0, 3).map((s, i) => (
+                                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                                      <DeliveryStatusBadge status={s.status} />
+                                      <code className="text-[10px] text-slate-400 font-mono truncate max-w-[160px]" title={s.msg_id}>
+                                        {s.msg_id ? s.msg_id.slice(0, 28) + "…" : "—"}
+                                      </code>
+                                      {s.recipient_id && (
+                                        <span className="text-[10px] text-slate-400">{s.recipient_id}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {evt.statuses.length > 3 && (
+                                    <p className="text-[10px] text-slate-400">+{evt.statuses.length - 3} more</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400">No status data</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setExpandedEventId(expandedEventId === evt.id ? null : evt.id)}
+                                className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600"
+                                title="View raw payload"
+                              >
+                                <Eye className={`w-4 h-4 ${expandedEventId === evt.id ? "text-blue-600" : ""}`} />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                          {expandedEventId === evt.id && (
+                            <TableRow key={`${evt.id}-expanded`}>
+                              <TableCell colSpan={5} className="bg-slate-50 p-0">
+                                <div className="p-4 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-semibold text-slate-600">Raw Webhook Payload</p>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard?.writeText(JSON.stringify(evt.raw_payload, null, 2));
+                                        toast.success("Payload copied to clipboard");
+                                      }}
+                                      className="text-xs text-blue-600 hover:underline"
+                                    >
+                                      Copy JSON
+                                    </button>
+                                  </div>
+                                  <pre className="bg-slate-900 text-green-300 text-[11px] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-72 overflow-y-auto leading-relaxed font-mono">
+                                    {JSON.stringify(evt.raw_payload, null, 2)}
+                                  </pre>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {webhookEventsTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                    <p className="text-xs text-slate-500">
+                      Page {webhookEventsPage} of {webhookEventsTotalPages} · {webhookEventsTotal.toLocaleString()} total
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button variant="outline" size="sm" onClick={() => fetchWebhookEvents(webhookEventsPage - 1)} disabled={webhookEventsPage <= 1} className="h-7 px-2">
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => fetchWebhookEvents(webhookEventsPage + 1)} disabled={webhookEventsPage >= webhookEventsTotalPages} className="h-7 px-2">
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        )} {/* end webhook-events tab */}
+
+        {/* ── Tab: Error Logs ────────────────────────────────────────────── */}
+        {activeTab === "error-logs" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -878,6 +1166,7 @@ export default function WhatsAppStats() {
             )}
           </CardContent>
         </Card>
+        )} {/* end error-logs tab */}
       </div>
 
       {/* ── Message Status Detail Dialog ────────────────────────────────── */}

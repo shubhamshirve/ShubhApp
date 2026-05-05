@@ -2866,26 +2866,38 @@ async def send_invoice_via_webjs(
     # Get operator details for company name
     operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
     company_name = operator.get("company_name", "Your Service Provider") if operator else "Your Service Provider"
-    
-    # Build invoice message
-    due_date = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y")
+
+    # Build public invoice URL (for online viewing)
+    from services.invoice_view_service import build_public_invoice_url_from_env
+    public_invoice_url = await build_public_invoice_url_from_env(invoice)
+
+    # Build invoice message — professional, WhatsApp-friendly format
+    due_date_str = ""
+    try:
+        due_date_str = datetime.fromisoformat(invoice["due_date"].replace('Z', '+00:00')).strftime("%d %b %Y")
+    except Exception:
+        due_date_str = invoice.get("due_date", "N/A")
     amount = f"₹{invoice['final_amount']:,.2f}"
-    
-    message = f"""*Invoice from {company_name}*
+    status = invoice.get("status", "pending")
+    status_label = "✅ Paid" if status == "paid" else "⚠️ Overdue" if status == "overdue" else "🕐 Pending"
 
-Invoice No: {invoice['invoice_number']}
-Amount Due: {amount}
-Due Date: {due_date}
+    message = (
+        f"Hello {subscriber['name']}! 👋\n\n"
+        f"Here is your invoice from *{company_name}*.\n\n"
+        f"🧾 *Invoice #{invoice['invoice_number']}*\n"
+        f"💰 Amount: *{amount}*\n"
+        f"📅 Due Date: {due_date_str}\n"
+        f"📊 Status: {status_label}\n"
+    )
 
-Dear {subscriber['name']},
-
-This is a reminder for your pending invoice. Please make the payment at your earliest convenience."""
+    if public_invoice_url:
+        message += f"\n📄 View your invoice online:\n{public_invoice_url}\n"
 
     # Add payment link if available
     if invoice.get("payment_link"):
-        message += f"\n\nPay online: {invoice['payment_link']}"
-    
-    message += "\n\nThank you for your business!"
+        message += f"\n💳 Pay online:\n{invoice['payment_link']}\n"
+
+    message += "\nFor any queries, feel free to reach out.\n\nThank you! 🙏"
     
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

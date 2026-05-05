@@ -55,26 +55,52 @@ async def whatsapp_webhook_event(request: Request):
 
     logger.info("WhatsApp webhook received: object=%s", payload.get("object", "unknown"))
 
+    received_at = datetime.now(timezone.utc)
     processed = 0
+    incoming_messages = 0
+    extracted_statuses = []  # collect for the raw log
+
     try:
         for entry in payload.get("entry") or []:
             for change in entry.get("changes") or []:
                 value = change.get("value") or {}
                 statuses = value.get("statuses") or []
-                if not statuses:
-                    # Could be an incoming message event — log and skip
-                    msgs = value.get("messages") or []
-                    if msgs:
-                        logger.info(
-                            "WhatsApp webhook: incoming message event received (not a status update), "
-                            "msg_count=%d", len(msgs)
-                        )
-                    continue
-                for st in statuses:
-                    await _apply_whatsapp_status_event(st)
-                    processed += 1
+                msgs = value.get("messages") or []
+                if statuses:
+                    for st in statuses:
+                        extracted_statuses.append({
+                            "msg_id": st.get("id", ""),
+                            "status": st.get("status", ""),
+                            "recipient_id": st.get("recipient_id", ""),
+                            "timestamp": st.get("timestamp", ""),
+                        })
+                        await _apply_whatsapp_status_event(st)
+                        processed += 1
+                if msgs:
+                    incoming_messages += len(msgs)
+                    logger.info(
+                        "WhatsApp webhook: incoming message event received (not a status update), "
+                        "msg_count=%d", len(msgs)
+                    )
     except Exception as e:
         logger.error(f"WhatsApp webhook processing error: {e}", exc_info=True)
+
+    # ── Persist raw event to webhook_events collection for audit / debugging ──
+    try:
+        from utils import generate_id
+        event_type = "status_update" if processed > 0 else ("incoming_message" if incoming_messages > 0 else "other")
+        await db.webhook_events.insert_one({
+            "id": generate_id(),
+            "received_at": received_at.isoformat(),
+            "object": payload.get("object", ""),
+            "event_type": event_type,
+            "status_count": processed,
+            "incoming_message_count": incoming_messages,
+            "statuses": extracted_statuses,
+            "raw_payload": payload,
+        })
+    except Exception as e:
+        logger.warning("Failed to persist webhook event log: %s", e)
 
     if processed:
         logger.info("WhatsApp webhook: processed %d status event(s)", processed)

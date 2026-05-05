@@ -1788,6 +1788,36 @@ async def clear_whatsapp_message_logs(current_user: dict = Depends(require_admin
     return {"message": f"Cleared {result.deleted_count} WhatsApp message logs"}
 
 
+@router.get("/webhook-events")
+async def get_webhook_events(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=50),
+    event_type: Optional[str] = None,
+    current_user: dict = Depends(require_admin),
+):
+    """Get paginated raw webhook events received from Meta WhatsApp Cloud API."""
+    query: dict = {}
+    if event_type and event_type != "all":
+        query["event_type"] = event_type
+    total = await db.webhook_events.count_documents(query)
+    skip = (page - 1) * per_page
+    events = await db.webhook_events.find(query, {"_id": 0}).sort("received_at", -1).skip(skip).limit(per_page).to_list(per_page)
+    return {
+        "events": events,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+    }
+
+
+@router.delete("/webhook-events")
+async def clear_webhook_events(current_user: dict = Depends(require_admin)):
+    """Clear all stored webhook events."""
+    result = await db.webhook_events.delete_many({})
+    return {"message": f"Cleared {result.deleted_count} webhook events"}
+
+
 # ─── Error Logs ───────────────────────────────────────────────────────────────
 
 @router.get("/error-logs")

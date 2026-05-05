@@ -638,20 +638,34 @@ const OperatorInvoices = () => {
       toast.error("Subscriber WhatsApp number not found");
       return;
     }
-    
+
     let phone = subscriber.whatsapp_number.replace(/[^0-9]/g, '');
     if (phone.length === 10) phone = "91" + phone;
-    
-    const message = encodeURIComponent(
-      `Hello ${subscriber.name},\n\n` +
-      `Invoice ${invoice.invoice_number}\n` +
-      `Amount: ₹${invoice.final_amount?.toLocaleString('en-IN')}\n` +
-      `Due Date: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-IN') : 'N/A'}\n` +
-      (invoice.payment_link ? `\nPay here: ${invoice.payment_link}\n` : '') +
-      `\nThank you!`
-    );
-    
-    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+
+    const companyName = invoiceSettings?.company_name || "Your Service Provider";
+    const publicInvoiceUrl = `${window.location.origin}/invoice/${invoice.invoice_number}`;
+    const dueDate = invoice.due_date
+      ? new Date(invoice.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      : 'N/A';
+    const amount = `₹${Number(invoice.final_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+    const statusLabel = invoice.status === 'paid' ? '✅ Paid' : invoice.status === 'overdue' ? '⚠️ Overdue' : '🕐 Pending';
+
+    let msg =
+      `Hello ${subscriber.name}! 👋\n\n` +
+      `Here is your invoice from *${companyName}*.\n\n` +
+      `🧾 *Invoice #${invoice.invoice_number}*\n` +
+      `💰 Amount: *${amount}*\n` +
+      `📅 Due Date: ${dueDate}\n` +
+      `📊 Status: ${statusLabel}\n\n` +
+      `📄 View your invoice online:\n${publicInvoiceUrl}\n`;
+
+    if (invoice.payment_link) {
+      msg += `\n💳 Pay online:\n${invoice.payment_link}\n`;
+    }
+
+    msg += `\nFor any queries, feel free to reach out.\n\nThank you! 🙏`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
     toast.success("WhatsApp Web opened");
   };
 
