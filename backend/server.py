@@ -318,7 +318,17 @@ async def seed_data():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start scheduled jobs: daily backup, invoice generation, reminders, expiry check."""
+    """Start scheduled jobs and ensure DB indexes exist."""
+    # ── Ensure MongoDB indexes for performance ──────────────────────────────
+    try:
+        from pymongo import ASCENDING
+        # Fast message_id lookup in webhook handler (critical for status updates)
+        await db.whatsapp_message_logs.create_index([("message_id", ASCENDING)], background=True)
+        await db.webhook_events.create_index([("received_at", ASCENDING)], background=True)
+        logger.info("MongoDB indexes ensured for whatsapp_message_logs and webhook_events")
+    except Exception as idx_err:
+        logger.warning("Index creation warning (non-fatal): %s", idx_err)
+
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
     from services.cron_service import (

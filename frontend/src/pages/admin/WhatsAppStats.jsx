@@ -1104,15 +1104,33 @@ export default function WhatsAppStats() {
               <div>
                 {/* Compact diagnostics bar when events present */}
                 <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-xs text-slate-500">
-                    {diagResult ? (
-                      diagResult.all_pass
-                        ? <span className="text-green-700 font-medium">✅ Self-test passed — webhook is correctly configured</span>
-                        : <span className="text-red-700 font-medium">⚠️ Self-test found issues — click Diagnose to view</span>
-                    ) : (
-                      "Run a self-test to verify webhook configuration is correct"
-                    )}
-                  </p>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <p className="text-xs text-slate-500">
+                      {diagResult ? (
+                        diagResult.all_pass
+                          ? <span className="text-green-700 font-medium">✅ Self-test passed — webhook correctly configured</span>
+                          : <span className="text-red-700 font-medium">⚠️ Self-test found issues — click Diagnose</span>
+                      ) : (
+                        "Run a self-test to verify webhook configuration"
+                      )}
+                    </p>
+                    {/* orphan summary across all loaded events */}
+                    {(() => {
+                      const totalOrphans = webhookEvents.reduce((acc, e) => acc + (e.orphan_count || 0), 0);
+                      const totalMatched = webhookEvents.reduce((acc, e) => acc + (e.matched_count || 0), 0);
+                      if (totalOrphans > 0) return (
+                        <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                          ⚠ {totalOrphans} orphan{totalOrphans > 1 ? "s" : ""} — status NOT applied
+                        </span>
+                      );
+                      if (totalMatched > 0) return (
+                        <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                          ✓ {totalMatched} status{totalMatched > 1 ? "es" : ""} applied
+                        </span>
+                      );
+                      return null;
+                    })()}
+                  </div>
                   <Button
                     onClick={runDiagnostics}
                     disabled={diagRunning}
@@ -1124,6 +1142,21 @@ export default function WhatsAppStats() {
                     {diagRunning ? "Running…" : "Diagnose"}
                   </Button>
                 </div>
+
+                {/* Orphan explanation banner */}
+                {webhookEvents.some(e => (e.orphan_count || 0) > 0) && (
+                  <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800 space-y-1.5">
+                    <p className="font-semibold flex items-center gap-1.5">⚠️ Orphan Events Detected — Status Updates Not Being Applied</p>
+                    <p>Webhook events are being <strong>received</strong> but the <code className="bg-red-100 px-1 rounded">message_id</code> in these events does not match any record in the Message Logs.</p>
+                    <p className="font-medium mt-1">Most likely causes:</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-red-700">
+                      <li>Messages were sent from a <strong>different phone number / WABA</strong> than the one sending the webhooks. Verify that the Phone Number ID in Settings matches the number used to send messages.</li>
+                      <li>The message was sent <strong>before logging was implemented</strong> in the current app version.</li>
+                      <li>The <code className="bg-red-100 px-1 rounded">log_whatsapp_message()</code> call failed silently when the message was sent — check backend error logs.</li>
+                    </ol>
+                    <p className="mt-1 text-red-600">→ To confirm: Compare the <code className="bg-red-100 px-1 rounded">msg_id</code> shown in the orphan event with the message_id in Message Logs for the same recipient.</p>
+                  </div>
+                )}
 
                 {/* Show diagnostic results inline if issues found */}
                 {diagResult && !diagResult.all_pass && (
@@ -1191,12 +1224,18 @@ export default function WhatsAppStats() {
                                   {evt.statuses.slice(0, 3).map((s, i) => (
                                     <div key={i} className="flex items-center gap-2 flex-wrap">
                                       <DeliveryStatusBadge status={s.status} />
-                                      <code className="text-[10px] text-slate-400 font-mono truncate max-w-[160px]" title={s.msg_id}>
-                                        {s.msg_id ? s.msg_id.slice(0, 28) + "…" : "—"}
+                                      <code className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]" title={s.msg_id}>
+                                        {s.msg_id ? s.msg_id.slice(0, 26) + "…" : "—"}
                                       </code>
                                       {s.recipient_id && (
                                         <span className="text-[10px] text-slate-400">{s.recipient_id}</span>
                                       )}
+                                      {/* ✓ matched vs ⚠ orphan indicator */}
+                                      {s.matched === true ? (
+                                        <span className="text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded" title="Log found and delivery_status updated">✓ matched</span>
+                                      ) : s.matched === false ? (
+                                        <span className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded" title="No message log found for this ID — status was NOT applied">⚠ orphan</span>
+                                      ) : null}
                                     </div>
                                   ))}
                                   {evt.statuses.length > 3 && (

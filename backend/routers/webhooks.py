@@ -58,6 +58,8 @@ async def whatsapp_webhook_event(request: Request):
     received_at = datetime.now(timezone.utc)
     processed = 0
     incoming_messages = 0
+    matched_count = 0
+    orphan_count = 0
     extracted_statuses = []  # collect for the raw log
 
     try:
@@ -68,13 +70,18 @@ async def whatsapp_webhook_event(request: Request):
                 msgs = value.get("messages") or []
                 if statuses:
                     for st in statuses:
+                        matched = await _apply_whatsapp_status_event(st)
+                        if matched:
+                            matched_count += 1
+                        else:
+                            orphan_count += 1
                         extracted_statuses.append({
                             "msg_id": st.get("id", ""),
                             "status": st.get("status", ""),
                             "recipient_id": st.get("recipient_id", ""),
                             "timestamp": st.get("timestamp", ""),
+                            "matched": matched,
                         })
-                        await _apply_whatsapp_status_event(st)
                         processed += 1
                 if msgs:
                     incoming_messages += len(msgs)
@@ -95,6 +102,8 @@ async def whatsapp_webhook_event(request: Request):
             "object": payload.get("object", ""),
             "event_type": event_type,
             "status_count": processed,
+            "matched_count": matched_count,
+            "orphan_count": orphan_count,
             "incoming_message_count": incoming_messages,
             "statuses": extracted_statuses,
             "raw_payload": payload,
@@ -103,17 +112,32 @@ async def whatsapp_webhook_event(request: Request):
         logger.warning("Failed to persist webhook event log: %s", e)
 
     if processed:
-        logger.info("WhatsApp webhook: processed %d status event(s)", processed)
+        logger.info(
+            "WhatsApp webhook: processed %d status event(s) — matched=%d orphan=%d",
+            processed, matched_count, orphan_count
+        )
+        if orphan_count > 0:
+            logger.warning(
+                "WhatsApp webhook: %d ORPHAN event(s) — message_id not found in DB. "
+                "These status updates could NOT be applied to any message log. "
+                "Possible causes: (1) message sent before logging was set up, "
+                "(2) log_whatsapp_message() failed silently when sending, "
+                "(3) wrong phone_number_id/WABA receiving events for messages sent by a different number.",
+                orphan_count
+            )
     return {"status": "ok"}
 
 
-async def _apply_whatsapp_status_event(st: dict) -> None:
-    """Update one whatsapp_message_logs row for a single status event."""
+async def _apply_whatsapp_status_event(st: dict) -> bool:
+    """
+    Update one whatsapp_message_logs row for a single status event.
+    Returns True if an existing log was found and updated, False if an orphan was created.
+    """
     msg_id = st.get("id") or ""
     new_status = (st.get("status") or "").lower()
     if not msg_id or new_status not in _STATUS_RANK:
         logger.debug("Skipping status event: msg_id=%s status=%s", msg_id, new_status)
-        return
+        return False
 
     logger.info(
         "WhatsApp status event: msg_id=%s status=%s recipient=%s",
@@ -175,7 +199,7 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
             "created_at": event_iso,
         }
         await db.whatsapp_message_logs.insert_one(orphan)
-        return
+        return False  # ← orphan, not matched
 
     # Only move delivery_status forward (sent → delivered → read; failed always wins).
     current_rank = _STATUS_RANK.get(existing.get("delivery_status") or "sent", 1)
@@ -216,6 +240,8 @@ async def _apply_whatsapp_status_event(st: dict) -> None:
             "WhatsApp webhook: update matched 0 docs for msg_id=%s — "
             "document may have been deleted after find_one", msg_id
         )
+        return False  # shouldn't happen, but cover the race condition case
+    return True  # successfully updated existing log
 
 
 @router.post("/razorpay")
