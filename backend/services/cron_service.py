@@ -719,7 +719,9 @@ class CronJobService:
         from utils import generate_invoice_number_atomic
         invoice_num = await generate_invoice_number_atomic(self.db)
 
-        due_date = now + timedelta(days=7)
+        # Due date = 1 day before the service start date (matching auto-invoice behavior)
+        first_service_start = datetime.fromisoformat(line_items[0]["service_start_date"])
+        due_date = first_service_start - timedelta(days=1)
         invoice = {
             "id": generate_id(),
             "invoice_number": invoice_num,

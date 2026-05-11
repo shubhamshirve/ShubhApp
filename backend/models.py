@@ -415,6 +415,7 @@ class OperatorPlanResponse(SanitizedModel):
 class InvoiceLineItem(SanitizedModel):
     plan_id: Optional[str] = None
     plan_name: Optional[str] = None
+    plan_description: Optional[str] = None  # Plan description from operator_plans
     selected_validity: Optional[str] = None  # tenure used for this line item
     description: Optional[str] = None  # Used for custom items when plan_id is None
     is_custom: bool = False  # True for custom/ad-hoc line items not linked to a plan
