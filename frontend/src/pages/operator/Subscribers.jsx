@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban, History, Clock, FileText } from "lucide-react";
 import { sanitize } from "../../utils/sanitize";
 
 const OperatorSubscribers = () => {
@@ -57,6 +57,11 @@ const OperatorSubscribers = () => {
   const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
   const [subFieldErrors, setSubFieldErrors] = useState({});
   const fileInputRef = useRef(null);
+
+  // Expiry audit state
+  const [showExpiryAudit, setShowExpiryAudit] = useState(false);
+  const [expiryAuditData, setExpiryAuditData] = useState(null);
+  const [expiryAuditLoading, setExpiryAuditLoading] = useState(false);
 
   // Helpers for expiry-date approach
   // start + N calendar months - 1 day  (e.g. Apr 21 + 1mo → May 20)
@@ -251,6 +256,21 @@ const OperatorSubscribers = () => {
       fetchSubscribers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to activate subscriber");
+    }
+  };
+
+  const openExpiryAudit = async (subscriber) => {
+    setExpiryAuditData(null);
+    setShowExpiryAudit(true);
+    setExpiryAuditLoading(true);
+    try {
+      const res = await authAxios.get(`/operator/subscribers/${subscriber.id}/expiry-audit`);
+      setExpiryAuditData(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to load expiry history");
+      setShowExpiryAudit(false);
+    } finally {
+      setExpiryAuditLoading(false);
     }
   };
 
@@ -606,6 +626,10 @@ const OperatorSubscribers = () => {
                             <DropdownMenuItem onClick={() => openEditDialog(subscriber)}>
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openExpiryAudit(subscriber)}>
+                              <History className="w-4 h-4 mr-2 text-blue-600" />
+                              Expiry History
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -992,6 +1016,107 @@ const OperatorSubscribers = () => {
             Upgrade Plan
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Expiry Audit Dialog */}
+    <Dialog open={showExpiryAudit} onOpenChange={(o) => { setShowExpiryAudit(o); if (!o) setExpiryAuditData(null); }}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="w-5 h-5 text-blue-600" />
+            Plan Expiry History
+            {expiryAuditData && (
+              <span className="text-sm font-normal text-slate-500 ml-1">— {expiryAuditData.subscriber_name}</span>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            Timeline of plan expiry changes triggered by invoices
+          </DialogDescription>
+        </DialogHeader>
+
+        {expiryAuditLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        ) : expiryAuditData ? (
+          expiryAuditData.events.length === 0 ? (
+            <div className="text-center py-10 text-slate-500">
+              <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+              <p className="text-sm">No invoice-based expiry changes found.</p>
+              <p className="text-xs mt-1 text-slate-400">Expiry history is derived from invoices with service dates.</p>
+            </div>
+          ) : (
+            <div className="relative mt-2">
+              {/* Timeline */}
+              <div className="space-y-0">
+                {expiryAuditData.events.map((ev, idx) => {
+                  const statusColors = {
+                    paid: "bg-green-100 text-green-700 border-green-200",
+                    pending: "bg-amber-100 text-amber-700 border-amber-200",
+                    cancelled: "bg-red-100 text-red-700 border-red-200",
+                    overdue: "bg-orange-100 text-orange-700 border-orange-200",
+                  };
+                  const badgeCls = statusColors[ev.invoice_status] || "bg-slate-100 text-slate-600 border-slate-200";
+                  const validityLabel = ev.selected_validity
+                    ? ev.selected_validity.replace("_", "-").replace(/\b\w/g, c => c.toUpperCase())
+                    : "";
+                  return (
+                    <div key={idx} className="flex gap-4 group">
+                      {/* Timeline connector */}
+                      <div className="flex flex-col items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${idx === 0 ? "bg-blue-600" : "bg-slate-200"}`}>
+                          <FileText className={`w-4 h-4 ${idx === 0 ? "text-white" : "text-slate-500"}`} />
+                        </div>
+                        {idx < expiryAuditData.events.length - 1 && (
+                          <div className="w-0.5 flex-1 bg-slate-200 my-1" />
+                        )}
+                      </div>
+
+                      {/* Event card */}
+                      <div className={`flex-1 pb-4 ${idx < expiryAuditData.events.length - 1 ? "" : ""}`}>
+                        <div className="bg-white border border-slate-200 rounded-lg p-3 hover:border-slate-300 transition-colors">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="font-medium text-slate-800 text-sm">{ev.plan_name}</p>
+                              {validityLabel && (
+                                <span className="text-xs text-slate-500">{validityLabel}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${badgeCls} capitalize`}>
+                                {ev.invoice_status}
+                              </span>
+                              <span className="font-mono text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                {ev.invoice_number}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <p className="text-slate-400">Service Start</p>
+                              <p className="font-medium text-slate-700">{ev.service_start_date || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Service End / New Expiry</p>
+                              <p className="font-medium text-blue-700">{ev.service_end_date || "—"}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 text-xs text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Invoice created: {new Date(ev.invoice_created_at).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        ) : null}
       </DialogContent>
     </Dialog>
     </>

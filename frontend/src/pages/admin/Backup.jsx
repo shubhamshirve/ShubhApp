@@ -30,9 +30,14 @@ const DEFAULT_PLATFORM_SETTINGS = {
   cron_backup_time: "03:00",
 };
 
+const PAGE_SIZE = 10;
+
 const AdminBackup = () => {
   const { authAxios } = useAuth();
   const [backups, setBackups] = useState([]);
+  const [totalBackups, setTotalBackups] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [platformSettings, setPlatformSettings] = useState(DEFAULT_PLATFORM_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -41,7 +46,7 @@ const AdminBackup = () => {
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchBackups(), fetchSettings()]).finally(() => setLoading(false));
+    Promise.all([fetchBackups(1), fetchSettings()]).finally(() => setLoading(false));
   }, []);
 
   const fetchSettings = async () => {
@@ -56,10 +61,13 @@ const AdminBackup = () => {
     }
   };
 
-  const fetchBackups = async () => {
+  const fetchBackups = async (page = currentPage) => {
     try {
-      const res = await authAxios.get("/admin/backup/list");
-      setBackups(res.data);
+      const res = await authAxios.get("/admin/backup/list", { params: { page, per_page: PAGE_SIZE } });
+      setBackups(res.data.backups || []);
+      setTotalBackups(res.data.total || 0);
+      setCurrentPage(res.data.page || page);
+      setTotalPages(res.data.total_pages || 1);
     } catch {
       toast.error("Failed to load backups");
     }
@@ -70,7 +78,7 @@ const AdminBackup = () => {
     try {
       const res = await authAxios.post("/admin/backup/create");
       toast.success(`Backup created: ${res.data.backup.filename}`);
-      fetchBackups();
+      fetchBackups(1);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Backup failed");
     } finally {
@@ -83,7 +91,7 @@ const AdminBackup = () => {
     try {
       await authAxios.delete(`/admin/backup/${id}`);
       toast.success("Backup deleted");
-      fetchBackups();
+      fetchBackups(currentPage);
     } catch {
       toast.error("Failed to delete backup");
     }
@@ -144,7 +152,7 @@ const AdminBackup = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <p className="text-slate-500">Manage database backups and restore points</p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchBackups}>
+            <Button variant="outline" size="sm" onClick={() => fetchBackups(currentPage)}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
@@ -164,7 +172,7 @@ const AdminBackup = () => {
             <CardContent className="p-4 flex items-center gap-3">
               <Database className="w-8 h-8 text-blue-600" />
               <div>
-                <p className="text-2xl font-bold text-blue-700">{backups.length}</p>
+                <p className="text-2xl font-bold text-blue-700">{totalBackups}</p>
                 <p className="text-sm text-blue-600">Total Backups</p>
               </div>
             </CardContent>
@@ -271,6 +279,34 @@ const AdminBackup = () => {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-slate-500">
+              Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, totalBackups)} of {totalBackups} backups
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { const p = currentPage - 1; setCurrentPage(p); fetchBackups(p); }}
+                disabled={currentPage <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-slate-600">Page {currentPage} of {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { const p = currentPage + 1; setCurrentPage(p); fetchBackups(p); }}
+                disabled={currentPage >= totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Restore Password Dialog */}

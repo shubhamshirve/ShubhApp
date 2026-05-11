@@ -143,6 +143,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/wallet",       label: "Wallet",       icon: Wallet,          always: true, operatorOnly: true },
     { href: "/operator/announcements",label: "Announcements",icon: Bell,            feature: "announcement" },
     { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },
+    { href: "/operator/whatsapp-stats",label: "WA Stats",    icon: Activity,        feature: "whatsapp_notifications" },
     { href: "/operator/staff",        label: "Staff",        icon: UserCog,         feature: "staff_management", operatorOnly: true },
     { href: "/operator/reports",      label: "Reports",      icon: BarChart3,       always: true },
     { href: "/operator/support",      label: "Support",      icon: MessageSquare,   always: true },

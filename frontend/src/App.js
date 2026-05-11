@@ -33,6 +33,7 @@ import AdminWallets from "./pages/admin/Wallets";
 import AdminSupport from "./pages/admin/Support";
 import OperatorWallet from "./pages/operator/Wallet";
 import OperatorSupport from "./pages/operator/Support";
+import OperatorWhatsAppStats from "./pages/operator/WhatsAppStats";
 import PublicInvoice from "./pages/PublicInvoice";
 
 // Theme Context
@@ -368,6 +369,11 @@ function App() {
           <Route path="/operator/support" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorSupport />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/whatsapp-stats" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorWhatsAppStats />
             </ProtectedRoute>
           } />
           {/* Default Route */}

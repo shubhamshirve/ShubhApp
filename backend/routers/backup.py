@@ -127,11 +127,26 @@ async def create_backup(current_user: dict = Depends(require_admin)):
 
 
 @router.get("/list")
-async def list_backups(current_user: dict = Depends(require_admin)):
-    """List all available backups."""
+async def list_backups(
+    page: int = 1,
+    per_page: int = 10,
+    current_user: dict = Depends(require_admin),
+):
+    """List all available backups with optional pagination."""
+    from fastapi import Query as FQuery
     await _sync_backups_from_disk()
-    backups = await db.backups.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    return backups
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    total = await db.backups.count_documents({})
+    skip = (page - 1) * per_page
+    backups = await db.backups.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+    return {
+        "backups": backups,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+    }
 
 
 @router.post("/restore/{backup_id}")

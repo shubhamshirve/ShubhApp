@@ -1777,6 +1777,56 @@ async def activate_subscriber(subscriber_id: str, current_user: dict = Depends(r
     return {"message": "Subscriber activated"}
 
 
+@router.get("/subscribers/{subscriber_id}/expiry-audit")
+async def get_subscriber_expiry_audit(subscriber_id: str, current_user: dict = Depends(require_operator)):
+    """
+    Return the timeline of plan-expiry changes for a subscriber,
+    derived from their invoices' line items (service_end_date).
+    """
+    operator_id = current_user.get("operator_id")
+    # Verify subscriber belongs to operator
+    subscriber = await db.subscribers.find_one(
+        {"id": subscriber_id, "operator_id": operator_id, "deleted_at": None},
+        {"_id": 0, "name": 1, "plans": 1}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    # Fetch all invoices for this subscriber (any status)
+    invoices = await db.invoices.find(
+        {"subscriber_id": subscriber_id, "operator_id": operator_id, "deleted_at": None},
+        {"_id": 0, "id": 1, "invoice_number": 1, "created_at": 1, "updated_at": 1,
+         "status": 1, "line_items": 1, "paid_at": 1}
+    ).sort("created_at", -1).to_list(200)
+
+    events = []
+    for inv in invoices:
+        for item in inv.get("line_items", []):
+            if item.get("is_custom") or not item.get("plan_id"):
+                continue
+            service_end = item.get("service_end_date")
+            if not service_end:
+                continue
+            service_end_str = _to_ymd(service_end)
+            events.append({
+                "invoice_id": inv["id"],
+                "invoice_number": inv.get("invoice_number", ""),
+                "invoice_status": inv.get("status", ""),
+                "invoice_created_at": inv.get("created_at", ""),
+                "plan_id": item.get("plan_id"),
+                "plan_name": item.get("plan_name", item.get("description", "")),
+                "selected_validity": item.get("selected_validity", ""),
+                "service_start_date": _to_ymd(item.get("service_start_date")),
+                "service_end_date": service_end_str,
+            })
+
+    return {
+        "subscriber_id": subscriber_id,
+        "subscriber_name": subscriber.get("name", ""),
+        "events": events,  # already sorted newest-first from invoices sort
+    }
+
+
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
 PAYMENT_MODES = {"cash", "own_upi", "bank_transfer", "cheque"}
@@ -2548,6 +2598,114 @@ async def get_operator_audit_logs(
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [AuditLogResponse(**{**log, "created_at": datetime.fromisoformat(log["created_at"])}) for log in logs]
 
+
+# ─── Operator WhatsApp Stats ──────────────────────────────────────────────────
+
+@router.get("/whatsapp-stats")
+async def get_operator_whatsapp_stats(current_user: dict = Depends(require_operator)):
+    """Get aggregated WhatsApp message sending statistics for this operator's subscribers."""
+    from datetime import timedelta
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Use admin WhatsApp stats endpoint")
+    operator_id = current_user["operator_id"]
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%dT00:00:00")
+    month_str = now.strftime("%Y-%m-01T00:00:00")
+    base_q = {"operator_id": operator_id}
+
+    total = await db.whatsapp_message_logs.count_documents(base_q)
+    total_today = await db.whatsapp_message_logs.count_documents({**base_q, "created_at": {"$gte": today_str}})
+    total_month = await db.whatsapp_message_logs.count_documents({**base_q, "created_at": {"$gte": month_str}})
+    total_sent = await db.whatsapp_message_logs.count_documents({**base_q, "status": "sent"})
+    total_failed = await db.whatsapp_message_logs.count_documents({**base_q, "status": "failed"})
+
+    categories_pipeline = [
+        {"$match": base_q},
+        {"$group": {"_id": "$template_category", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    categories_agg = await db.whatsapp_message_logs.aggregate(categories_pipeline).to_list(20)
+    by_category = {c["_id"]: c["count"] for c in categories_agg if c["_id"]}
+
+    trigger_pipeline = [
+        {"$match": base_q},
+        {"$group": {"_id": "$trigger", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    trigger_agg = await db.whatsapp_message_logs.aggregate(trigger_pipeline).to_list(10)
+    by_trigger = {t["_id"]: t["count"] for t in trigger_agg if t["_id"]}
+
+    seven_days_ago = (now - timedelta(days=6)).strftime("%Y-%m-%dT00:00:00")
+    recent_pipeline = [
+        {"$match": {**base_q, "created_at": {"$gte": seven_days_ago}}},
+        {"$group": {
+            "_id": {"$substr": ["$created_at", 0, 10]},
+            "sent": {"$sum": {"$cond": [{"$eq": ["$status", "sent"]}, 1, 0]}},
+            "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}}
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    recent_agg = await db.whatsapp_message_logs.aggregate(recent_pipeline).to_list(7)
+    recent_7_days = [{"date": r["_id"], "sent": r["sent"], "failed": r["failed"]} for r in recent_agg]
+
+    return {
+        "total": total,
+        "today": total_today,
+        "this_month": total_month,
+        "sent": total_sent,
+        "failed": total_failed,
+        "success_rate": round(total_sent / total * 100, 1) if total > 0 else 0,
+        "by_category": by_category,
+        "by_trigger": by_trigger,
+        "recent_7_days": recent_7_days,
+    }
+
+
+@router.get("/whatsapp-message-logs")
+async def get_operator_whatsapp_message_logs(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=20),
+    status: Optional[str] = None,
+    template_category: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: dict = Depends(require_operator),
+):
+    """Get paginated WhatsApp message logs for this operator's subscribers."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Use admin WhatsApp logs endpoint")
+    operator_id = current_user["operator_id"]
+    query: dict = {"operator_id": operator_id}
+    if status:
+        query["status"] = status
+    if template_category:
+        query["template_category"] = template_category
+    if search:
+        query["$or"] = [
+            {"recipient_phone": {"$regex": search, "$options": "i"}},
+            {"template_name": {"$regex": search, "$options": "i"}},
+            {"invoice_number": {"$regex": search, "$options": "i"}},
+        ]
+    if date_from or date_to:
+        date_filter: dict = {}
+        if date_from:
+            date_filter["$gte"] = date_from
+        if date_to:
+            date_filter["$lte"] = date_to + "T23:59:59"
+        query["created_at"] = date_filter
+
+    total = await db.whatsapp_message_logs.count_documents(query)
+    skip = (page - 1) * per_page
+    logs = await db.whatsapp_message_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+    }
 
 
 # ─── WhatsApp Notifications (uses platform global WhatsApp config) ────────────
