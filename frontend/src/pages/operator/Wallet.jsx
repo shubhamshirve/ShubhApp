@@ -123,15 +123,17 @@ export default function WalletPage() {
     }
   };
 
+  const CREDIT_TYPES = ["topup", "credit", "subscription_credit", "referral_reward", "admin_credit", "trial_bonus"];
+
   const getTxIcon = (type) => {
-    if (["topup", "credit", "subscription_credit", "referral_reward"].includes(type)) {
+    if (CREDIT_TYPES.includes(type)) {
       return <ArrowUpRight className="w-4 h-4 text-green-600" />;
     }
     return <ArrowDownLeft className="w-4 h-4 text-red-500" />;
   };
 
   const getTxColor = (type) => {
-    if (["topup", "credit", "subscription_credit", "referral_reward"].includes(type)) {
+    if (CREDIT_TYPES.includes(type)) {
       return "text-green-700";
     }
     return "text-red-600";
@@ -141,6 +143,8 @@ export default function WalletPage() {
     const map = {
       topup: { label: "Topup", variant: "default" },
       credit: { label: "Credit", variant: "default" },
+      admin_credit: { label: "Admin Credit", variant: "default" },
+      trial_bonus: { label: "Trial Bonus", variant: "default" },
       subscription_credit: { label: "Subscription", variant: "secondary" },
       referral_reward: { label: "Referral Reward", variant: "outline" },
       deduction: { label: "Deduction", variant: "destructive" },
