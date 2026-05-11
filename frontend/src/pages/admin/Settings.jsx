@@ -322,8 +322,9 @@ const AdminSettings = () => {
 
   const fetchBackups = async () => {
     try {
-      const res = await authAxios.get("/admin/backup/list");
-      setBackups(res.data);
+      const res = await authAxios.get("/admin/backup/list", { params: { per_page: 100 } });
+      // Support both paginated response and legacy flat array
+      setBackups(Array.isArray(res.data) ? res.data : (res.data.backups || []));
     } catch { /* ignore */ }
   };
 
