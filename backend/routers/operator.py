@@ -2666,6 +2666,7 @@ async def get_operator_whatsapp_message_logs(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=20),
     status: Optional[str] = None,
+    delivery_status: Optional[str] = None,
     template_category: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -2679,6 +2680,8 @@ async def get_operator_whatsapp_message_logs(
     query: dict = {"operator_id": operator_id}
     if status:
         query["status"] = status
+    if delivery_status:
+        query["delivery_status"] = delivery_status
     if template_category:
         query["template_category"] = template_category
     if search:
