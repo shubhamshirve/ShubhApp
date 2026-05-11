@@ -1,5 +1,28 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.11
+# Current Version: V9.12
+
+## 2026-05-11
+
+### V9.12 — Feature Pack: Subscriber Expiry Audit, Backup Pagination, Operator WA Stats
+
+#### 1. Subscriber Plan Expiry Audit Trail (Operator)
+- **New endpoint** `GET /api/operator/subscribers/{subscriber_id}/expiry-audit` — returns timeline of plan expiry changes derived from the subscriber's invoice line items.
+- **Frontend**: Added "Expiry History" option in the subscriber row dropdown (⋮ menu). Opens a timeline dialog showing plan name, service period (start → end), invoice number (badge), invoice status, and timestamp.
+- Empty state shown when no invoice-based expiry events found.
+
+#### 2. Backup List Pagination (Admin)
+- **Backend**: `GET /api/admin/backup/list` now accepts `page` (default 1) and `per_page` (default 10, max 100) query params. Returns `{ backups, total, page, per_page, total_pages }` instead of a flat array.
+- **Frontend** (`admin/Backup.jsx`): Added pagination controls below the backup table (Previous/Next buttons with "Page X of Y"). Total count card updated to reflect `total` from API.
+
+#### 3. Operator WhatsApp Stats Page
+- **New endpoints**:
+  - `GET /api/operator/whatsapp-stats` — stats filtered by operator's own messages (total, today, this month, sent/failed, success rate, by_category, by_trigger, recent 7-day chart).
+  - `GET /api/operator/whatsapp-message-logs` — paginated message logs with filters (status, category, date range, search).
+- **New page** `frontend/src/pages/operator/WhatsAppStats.jsx` — stat cards, 7-day bar chart, by-category breakdown, paginated logs table with filters.
+- **Navigation**: Added "WA Stats" link to operator sidebar (visible only when `whatsapp_notifications` feature is active).
+- **Route**: `/operator/whatsapp-stats` (accessible by operator and staff).
+
+
 
 ## 2026-04-26
 
