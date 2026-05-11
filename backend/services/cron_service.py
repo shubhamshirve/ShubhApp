@@ -469,6 +469,8 @@ class CronJobService:
             line_items.append({
                 "plan_id": plan["id"],
                 "plan_name": plan["name"],
+                "plan_description": plan.get("description"),
+                "is_custom": False,
                 "selected_validity": effective_validity,
                 "base_amount": base_amount,
                 "discount": discount,
@@ -487,7 +489,8 @@ class CronJobService:
             return None
 
         first_service_start = datetime.fromisoformat(line_items[0]["service_start_date"])
-        due_date = first_service_start + timedelta(days=5)
+        # Due date = 1 day before the new service period starts
+        due_date = first_service_start - timedelta(days=1)
 
         from utils import generate_invoice_number_atomic
         invoice_number = await generate_invoice_number_atomic(self.db)
