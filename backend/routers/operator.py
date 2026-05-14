@@ -98,15 +98,14 @@ def _to_ymd(value) -> Optional[str]:
         return s[:10] if len(s) >= 10 else None
 
 
-async def _sync_subscriber_plans_from_invoice(subscriber_id: str, line_items: list) -> None:
+async def _sync_subscriber_plans_from_invoice(subscriber_id: str, line_items: list, force: bool = False) -> None:
     """
     Sync subscriber.plans[] from an invoice's line_items (creation/update path).
     Rules (no payment dependency):
       - For each plan-based line item:
           * If subscriber already has the plan (matching plan_id):
-              - Update plan_expiry_date to MAX(old_expiry, service_end_date).
-              - If we extend the expiry, also bump plan_start_date to service_start_date
-                when it is later than the existing one.
+              - Normal mode: Update plan_expiry_date to MAX(old_expiry, service_end_date).
+              - Force mode (invoice edit): Always apply new service_start + service_end dates.
           * If subscriber does NOT have the plan: add it with start/expiry from the line item.
       - Custom line items (no plan_id) are skipped.
     """
@@ -139,16 +138,17 @@ async def _sync_subscriber_plans_from_invoice(subscriber_id: str, line_items: li
 
         if existing_sp:
             old_expiry_str = existing_sp.get("plan_expiry_date") or ""
-            # Hybrid: only move expiry forward
-            if not old_expiry_str or new_expiry_str > old_expiry_str:
+            # Force mode (invoice edit): always apply new dates
+            # Normal mode: only extend expiry forward (never shorten)
+            should_update = force or not old_expiry_str or new_expiry_str > old_expiry_str
+            if should_update:
                 existing_sp["plan_expiry_date"] = new_expiry_str
-                # Also update start date if line item's start is later than current start
                 old_start_str = existing_sp.get("plan_start_date") or ""
-                if new_start_str and (not old_start_str or new_start_str > old_start_str):
+                # Force: always set start; Normal: only move start forward
+                if new_start_str and (force or not old_start_str or new_start_str > old_start_str):
                     existing_sp["plan_start_date"] = new_start_str
                 if existing_sp.get("status") != "active":
                     existing_sp["status"] = "active"
-                # Keep selected_validity in sync if provided on the line item
                 if item.get("selected_validity"):
                     existing_sp["selected_validity"] = item["selected_validity"]
                 changed = True
@@ -1414,18 +1414,8 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
             if operator:
                 from services.cron_service import CronJobService
                 svc = CronJobService(db)
-                # Group plans by EFFECTIVE validity (selected_validity > plan.validity)
-                # so that subscribers assigned a non-default tenure are billed correctly.
-                from collections import defaultdict
-                validity_groups: dict = defaultdict(list)
-                for ep in enriched_plans:
-                    op_plan = await db.operator_plans.find_one({"id": ep["plan_id"], "deleted_at": None}, {"_id": 0})
-                    if op_plan:
-                        effective_v = ep.get("selected_validity") or op_plan.get("validity", "monthly")
-                        validity_groups[effective_v].append(ep)
-
-                for validity, group_plans in validity_groups.items():
-                    await svc._create_first_invoice(operator, subscriber, group_plans)
+                # All plans in a single invoice — no per-validity grouping
+                await svc._create_first_invoice(operator, subscriber, enriched_plans)
         except Exception as inv_err:
             logger.error(f"First invoice creation failed for {subscriber['id']}: {inv_err}", exc_info=True)
 
@@ -2083,9 +2073,9 @@ async def update_invoice(
     }
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
-    # Sync subscriber.plans from updated line items (no payment dependency)
+    # Sync subscriber.plans from updated line items — force mode so new dates always apply
     try:
-        await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"])
+        await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"], force=True)
     except Exception as sync_err:
         logger.warning(f"Subscriber plan sync failed for invoice {invoice_id}: {sync_err}")
 
