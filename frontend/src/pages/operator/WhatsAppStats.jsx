@@ -201,12 +201,13 @@ function DeliveryTimelineModal({ log, onClose }) {
         {/* Meta grid */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs border-t pt-3 mt-1">
           {[
-            ["Recipient",  log.recipient_phone],
-            ["Category",   CATEGORY_LABELS[log.template_category] || log.template_category],
-            ["Template",   log.template_name],
-            ["Trigger",    TRIGGER_LABELS[log.trigger] || log.trigger || "—"],
-            ["Invoice #",  log.invoice_number || "—"],
-            ["Sent At",    formatDate(log.created_at)],
+            ["Subscriber",  log.subscriber_name || "—"],
+            ["Recipient",   log.recipient_phone],
+            ["Category",    CATEGORY_LABELS[log.template_category] || log.template_category],
+            ["Template",    log.template_name],
+            ["Trigger",     TRIGGER_LABELS[log.trigger] || log.trigger || "—"],
+            ["Invoice #",   log.invoice_number || "—"],
+            ["Sent At",     formatDate(log.created_at)],
           ].map(([label, val]) => (
             <div key={label}>
               <p className="text-slate-400">{label}</p>
@@ -515,7 +516,7 @@ export default function OperatorWhatsAppStats() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Phone</TableHead>
+                    <TableHead>Subscriber</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Trigger</TableHead>
                     <TableHead>Invoice</TableHead>
@@ -543,7 +544,14 @@ export default function OperatorWhatsAppStats() {
                         <TableCell className="text-xs text-slate-500 whitespace-nowrap">
                           {new Date(log.created_at).toLocaleString()}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{log.recipient_phone}</TableCell>
+                        <TableCell>
+                          <div>
+                            {log.subscriber_name && (
+                              <p className="text-sm font-medium text-slate-800 leading-tight">{log.subscriber_name}</p>
+                            )}
+                            <p className="font-mono text-xs text-slate-500">{log.recipient_phone}</p>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CATEGORY_COLORS[log.template_category] || "bg-slate-100 text-slate-700"}`}>
                             {CATEGORY_LABELS[log.template_category] || log.template_category}

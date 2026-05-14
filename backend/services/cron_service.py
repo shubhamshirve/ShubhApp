@@ -608,6 +608,8 @@ class CronJobService:
                         invoice_id=invoice["id"],
                         invoice_number=invoice_number,
                         trigger="auto_invoice",
+                        subscriber_id=subscriber["id"],
+                        subscriber_name=subscriber.get("name"),
                     )
                 except Exception as log_e:
                     logger.warning(f"WhatsApp message log failed: {log_e}")
@@ -799,6 +801,8 @@ class CronJobService:
                         invoice_id=invoice["id"],
                         invoice_number=invoice["invoice_number"],
                         trigger="first_invoice",
+                        subscriber_id=subscriber["id"],
+                        subscriber_name=subscriber.get("name"),
                     )
                 except Exception as log_e:
                     logger.warning(f"WhatsApp log failed for first invoice {invoice['id']}: {log_e}")

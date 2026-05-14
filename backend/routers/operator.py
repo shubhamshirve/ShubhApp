@@ -2002,6 +2002,8 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
                         invoice_id=invoice["id"],
                         invoice_number=invoice["invoice_number"],
                         trigger="auto_invoice_create",
+                        subscriber_id=subscriber["id"],
+                        subscriber_name=subscriber.get("name"),
                     )
                 except Exception as _log_err:
                     logger.warning(f"Auto-invoice WA log failed: {_log_err}")
@@ -2073,6 +2075,35 @@ async def update_invoice(
     }
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
+    # Audit log — capture old vs new line item dates & amounts
+    try:
+        old_items_summary = [
+            {"plan": i.get("plan_name"), "amount": i.get("final_amount"),
+             "start": _to_ymd(i.get("service_start_date")), "end": _to_ymd(i.get("service_end_date"))}
+            for i in invoice.get("line_items", [])
+        ]
+        new_items_summary = [
+            {"plan": i.get("plan_name"), "amount": i.get("final_amount"),
+             "start": _to_ymd(i.get("service_start_date")), "end": _to_ymd(i.get("service_end_date"))}
+            for i in payload["line_items"]
+        ]
+        await log_audit(
+            current_user["id"], current_user["name"], current_user["role"],
+            "update", "invoice",
+            old_value={"invoice_number": invoice["invoice_number"],
+                       "final_amount": invoice.get("final_amount"),
+                       "due_date": _to_ymd(invoice.get("due_date")),
+                       "line_items": old_items_summary},
+            new_value={"invoice_number": invoice["invoice_number"],
+                       "final_amount": payload["final_amount"],
+                       "due_date": _to_ymd(payload["due_date"]),
+                       "line_items": new_items_summary},
+            operator_id=current_user["operator_id"],
+            ip_address=current_user.get("_ip_address"),
+        )
+    except Exception as _ae:
+        logger.warning(f"Audit log failed for invoice update {invoice_id}: {_ae}")
+
     # Sync subscriber.plans from updated line items — force mode so new dates always apply
     try:
         await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"], force=True)
@@ -2131,6 +2162,25 @@ async def update_invoice_status(
 
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
+    # Audit log for status change
+    try:
+        await log_audit(
+            current_user["id"], current_user["name"], current_user["role"],
+            "status_change", "invoice",
+            old_value={"invoice_number": invoice["invoice_number"],
+                       "subscriber_name": invoice.get("subscriber_name"),
+                       "status": invoice["status"]},
+            new_value={"invoice_number": invoice["invoice_number"],
+                       "subscriber_name": invoice.get("subscriber_name"),
+                       "status": status,
+                       **({"paid_at": updates["paid_at"], "payment_mode": updates.get("payment_mode")} if status == "paid" else {}),
+                       **({"cancelled_at": updates["cancelled_at"]} if status == "cancelled" else {})},
+            operator_id=current_user.get("operator_id"),
+            ip_address=current_user.get("_ip_address"),
+        )
+    except Exception as _ae:
+        logger.warning(f"Audit log failed for invoice status change {invoice_id}: {_ae}")
+
     if status == "paid":
         try:
             from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
@@ -2188,6 +2238,8 @@ async def update_invoice_status(
                         invoice_id=invoice["id"],
                         invoice_number=invoice["invoice_number"],
                         trigger="payment_confirmation",
+                        subscriber_id=subscriber["id"],
+                        subscriber_name=subscriber.get("name"),
                     )
         except Exception as wa_err:
             logger.warning(f"WhatsApp payment confirmation failed for invoice {invoice_id}: {wa_err}")
@@ -2691,6 +2743,26 @@ async def get_operator_whatsapp_message_logs(
     total = await db.whatsapp_message_logs.count_documents(query)
     skip = (page - 1) * per_page
     logs = await db.whatsapp_message_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    # Enrich logs that are missing subscriber_name — look up via invoice's subscriber_id
+    sub_cache: dict = {}
+    for log in logs:
+        if log.get("subscriber_name"):
+            continue
+        # Try subscriber_id on the log first, then via invoice
+        sid = log.get("subscriber_id")
+        if not sid and log.get("invoice_id"):
+            inv = await db.invoices.find_one({"id": log["invoice_id"]}, {"subscriber_id": 1, "subscriber_name": 1, "_id": 0})
+            if inv:
+                sid = inv.get("subscriber_id")
+                if not sid:
+                    log["subscriber_name"] = inv.get("subscriber_name", "")
+                    continue
+        if sid:
+            if sid not in sub_cache:
+                sub = await db.subscribers.find_one({"id": sid, "deleted_at": None}, {"name": 1, "_id": 0})
+                sub_cache[sid] = sub.get("name", "") if sub else ""
+            log["subscriber_name"] = sub_cache[sid]
 
     return {
         "logs": logs,
