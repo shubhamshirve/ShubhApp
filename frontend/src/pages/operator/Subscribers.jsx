@@ -38,6 +38,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban, History, Clock, FileText } from "lucide-react";
 import { sanitize } from "../../utils/sanitize";
+import SubscriberLedger from "../../components/SubscriberLedger";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
@@ -62,6 +63,10 @@ const OperatorSubscribers = () => {
   const [showExpiryAudit, setShowExpiryAudit] = useState(false);
   const [expiryAuditData, setExpiryAuditData] = useState(null);
   const [expiryAuditLoading, setExpiryAuditLoading] = useState(false);
+
+  // Ledger state
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [ledgerSubscriber, setLedgerSubscriber] = useState(null);
 
   // Helpers for expiry-date approach
   // start + N calendar months - 1 day  (e.g. Apr 21 + 1mo → May 20)
@@ -649,6 +654,10 @@ const OperatorSubscribers = () => {
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setLedgerSubscriber(subscriber); setLedgerOpen(true); }}>
+                              <FileText className="w-4 h-4 mr-2 text-blue-600" />
+                              View Ledger
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openExpiryAudit(subscriber)}>
                               <History className="w-4 h-4 mr-2 text-blue-600" />
                               Expiry History
@@ -1141,6 +1150,14 @@ const OperatorSubscribers = () => {
         ) : null}
       </DialogContent>
     </Dialog>
+
+    {/* Subscriber Ledger */}
+    <SubscriberLedger
+      subscriberId={ledgerSubscriber?.id}
+      subscriberName={ledgerSubscriber?.name}
+      open={ledgerOpen}
+      onClose={() => { setLedgerOpen(false); setLedgerSubscriber(null); }}
+    />
     </>
   );
 };

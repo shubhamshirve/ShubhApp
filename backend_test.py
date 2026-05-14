@@ -1,10 +1,10 @@
 """
 Backend API Testing for E-Bill Platform
-Test: One invoice per plan invoice flow
+Test: Subscriber Ledger Endpoint
 """
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Backend URL from environment
 BACKEND_URL = "https://whatsapp-stats-view.preview.emergentagent.com/api"
@@ -18,6 +18,7 @@ class Colors:
     RED = '\033[91m'
     YELLOW = '\033[93m'
     BLUE = '\033[94m'
+    CYAN = '\033[96m'
     END = '\033[0m'
 
 def print_success(msg):
@@ -31,6 +32,11 @@ def print_info(msg):
 
 def print_warning(msg):
     print(f"{Colors.YELLOW}⚠ {msg}{Colors.END}")
+
+def print_section(msg):
+    print(f"\n{Colors.CYAN}{'='*80}")
+    print(f"{msg}")
+    print(f"{'='*80}{Colors.END}\n")
 
 def login_as_operator():
     """Login as operator and return access token"""
@@ -47,316 +53,222 @@ def login_as_operator():
         print_error(f"Login failed: {response.status_code} - {response.text}")
         return None
 
-def get_plans(token):
-    """Get operator plans"""
-    print_info("Fetching operator plans...")
+def get_subscribers(token):
+    """Get list of subscribers"""
+    print_info("Fetching subscribers...")
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
+    response = requests.get(f"{BACKEND_URL}/operator/subscribers", headers=headers)
     if response.status_code == 200:
-        plans = response.json()
-        print_success(f"Found {len(plans)} plans")
-        return plans
+        subscribers = response.json()
+        print_success(f"Found {len(subscribers)} subscribers")
+        return subscribers
     else:
-        print_error(f"Failed to fetch plans: {response.status_code}")
+        print_error(f"Failed to fetch subscribers: {response.status_code}")
         return []
 
-def create_test_plans_if_needed(token):
-    """Create test plans with different validities if they don't exist"""
-    plans = get_plans(token)
-    
-    # Check if we have monthly and quarterly plans
-    monthly_plan = None
-    quarterly_plan = None
-    
-    for plan in plans:
-        if plan.get("validity") == "monthly" and not monthly_plan:
-            monthly_plan = plan
-        elif plan.get("validity") == "quarterly" and not quarterly_plan:
-            quarterly_plan = plan
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Create monthly plan if needed
-    if not monthly_plan:
-        print_info("Creating monthly test plan...")
-        response = requests.post(
-            f"{BACKEND_URL}/operator/plans",
-            headers=headers,
-            json={
-                "name": "Monthly Test Plan",
-                "price": 500,
-                "validity": "monthly",
-                "tax_percentage": 0,
-                "tax_type": "none",
-                "description": "Monthly test plan for invoice testing"
-            }
-        )
-        if response.status_code == 200:
-            monthly_plan = response.json()
-            print_success(f"Created monthly plan: {monthly_plan['name']}")
-        else:
-            print_error(f"Failed to create monthly plan: {response.status_code}")
-    
-    # Create quarterly plan if needed
-    if not quarterly_plan:
-        print_info("Creating quarterly test plan...")
-        response = requests.post(
-            f"{BACKEND_URL}/operator/plans",
-            headers=headers,
-            json={
-                "name": "Quarterly Test Plan",
-                "price": 1400,
-                "validity": "quarterly",
-                "tax_percentage": 0,
-                "tax_type": "none",
-                "description": "Quarterly test plan for invoice testing"
-            }
-        )
-        if response.status_code == 200:
-            quarterly_plan = response.json()
-            print_success(f"Created quarterly plan: {quarterly_plan['name']}")
-        else:
-            print_error(f"Failed to create quarterly plan: {response.status_code}")
-    
-    return monthly_plan, quarterly_plan
-
-def create_subscriber_with_two_plans(token, monthly_plan, quarterly_plan):
-    """Create subscriber with 2 plans and generate_first_invoice=true"""
-    print_info("Creating subscriber with 2 plans (generate_first_invoice=true)...")
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Use 2026-06-01 as start date as per test requirements
-    start_date = "2026-06-01"
-    
-    subscriber_data = {
-        "name": "Two Plan Invoice Test",
-        "whatsapp_number": "919700000001",
-        "plans": [
-            {
-                "plan_id": monthly_plan["id"],
-                "plan_start_date": start_date,
-                "selected_validity": "monthly"
-            },
-            {
-                "plan_id": quarterly_plan["id"],
-                "plan_start_date": start_date,
-                "selected_validity": "quarterly"
-            }
-        ],
-        "generate_first_invoice": True
-    }
-    
-    response = requests.post(
-        f"{BACKEND_URL}/operator/subscribers",
-        headers=headers,
-        json=subscriber_data
-    )
-    
-    if response.status_code == 200:
-        subscriber = response.json()
-        print_success(f"Created subscriber: {subscriber['name']} (ID: {subscriber['id']})")
-        return subscriber
-    else:
-        print_error(f"Failed to create subscriber: {response.status_code} - {response.text}")
-        return None
-
-def get_invoices_for_subscriber(token, subscriber_id):
-    """Get all invoices for a subscriber"""
-    print_info(f"Fetching invoices for subscriber {subscriber_id}...")
+def get_subscriber_ledger(token, subscriber_id):
+    """Get subscriber ledger"""
+    print_info(f"Fetching ledger for subscriber {subscriber_id}...")
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(
-        f"{BACKEND_URL}/operator/invoices",
-        headers=headers,
-        params={"subscriber_id": subscriber_id}
-    )
-    
-    if response.status_code == 200:
-        invoices = response.json()
-        print_success(f"Found {len(invoices)} invoices")
-        return invoices
-    else:
-        print_error(f"Failed to fetch invoices: {response.status_code}")
-        return []
-
-def get_subscriber_details(token, subscriber_id):
-    """Get subscriber details"""
-    print_info(f"Fetching subscriber details...")
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(
-        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}",
+        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}/ledger",
         headers=headers
     )
     
     if response.status_code == 200:
-        subscriber = response.json()
-        return subscriber
+        ledger = response.json()
+        print_success(f"Ledger fetched successfully")
+        return ledger
     else:
-        print_error(f"Failed to fetch subscriber: {response.status_code}")
+        print_error(f"Failed to fetch ledger: {response.status_code} - {response.text}")
         return None
 
-def get_expiry_audit(token, subscriber_id):
-    """Get expiry audit trail for subscriber"""
-    print_info(f"Fetching expiry audit trail...")
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(
-        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}/expiry-audit",
-        headers=headers
-    )
+def verify_subscriber_object(subscriber):
+    """Verify subscriber object structure"""
+    print_info("Verifying subscriber object structure...")
     
-    if response.status_code == 200:
-        audit = response.json()
-        return audit
+    errors = []
+    
+    # Check required fields
+    if "name" not in subscriber:
+        errors.append("Missing 'name' field")
     else:
-        print_error(f"Failed to fetch expiry audit: {response.status_code}")
-        return None
-
-def verify_invoice_count(invoices, expected_count):
-    """Verify number of invoices created"""
-    print_info(f"Verifying invoice count...")
-    actual_count = len(invoices)
-    if actual_count == expected_count:
-        print_success(f"Invoice count correct: {actual_count} invoices (expected {expected_count})")
-        return True
+        print_success(f"Subscriber name: {subscriber['name']}")
+    
+    if "whatsapp_number" not in subscriber:
+        errors.append("Missing 'whatsapp_number' field")
     else:
-        print_error(f"Invoice count mismatch: {actual_count} invoices (expected {expected_count})")
-        return False
-
-def verify_line_items_per_invoice(invoices):
-    """Verify each invoice has exactly 1 line item"""
-    print_info(f"Verifying line items per invoice...")
-    all_correct = True
-    for i, invoice in enumerate(invoices, 1):
-        line_items_count = len(invoice.get("line_items", []))
-        if line_items_count == 1:
-            print_success(f"Invoice {i} ({invoice['invoice_number']}): 1 line item ✓")
-        else:
-            print_error(f"Invoice {i} ({invoice['invoice_number']}): {line_items_count} line items (expected 1)")
-            all_correct = False
-    return all_correct
-
-def verify_service_dates(invoices, subscriber, monthly_plan, quarterly_plan):
-    """Verify service_end_date matches plan_expiry_date"""
-    print_info(f"Verifying service dates match plan expiry dates...")
+        print_success(f"WhatsApp number: {subscriber['whatsapp_number']}")
     
-    # Get subscriber plan expiry dates
-    plan_expiry_map = {}
-    for plan in subscriber.get("plans", []):
-        plan_id = plan.get("plan_id")
-        plan_expiry_date = plan.get("plan_expiry_date")
-        if plan_id and plan_expiry_date:
-            plan_expiry_map[plan_id] = plan_expiry_date
-    
-    all_correct = True
-    for invoice in invoices:
-        line_items = invoice.get("line_items", [])
-        if len(line_items) == 1:
-            line_item = line_items[0]
-            plan_id = line_item.get("plan_id")
-            service_end_date = line_item.get("service_end_date", "")[:10]  # Get YYYY-MM-DD part
-            
-            if plan_id in plan_expiry_map:
-                expected_expiry = plan_expiry_map[plan_id]
-                if service_end_date == expected_expiry:
-                    print_success(f"Invoice {invoice['invoice_number']}: service_end_date ({service_end_date}) matches plan_expiry_date ✓")
-                else:
-                    print_error(f"Invoice {invoice['invoice_number']}: service_end_date ({service_end_date}) != plan_expiry_date ({expected_expiry})")
-                    all_correct = False
-            else:
-                print_warning(f"Invoice {invoice['invoice_number']}: plan_id {plan_id} not found in subscriber plans")
-    
-    return all_correct
-
-def verify_due_dates(invoices):
-    """Verify due_date = service_start_date - 1 day"""
-    print_info(f"Verifying due dates...")
-    
-    all_correct = True
-    for invoice in invoices:
-        line_items = invoice.get("line_items", [])
-        if len(line_items) == 1:
-            line_item = line_items[0]
-            service_start_str = line_item.get("service_start_date", "")[:10]
-            due_date_str = invoice.get("due_date", "")[:10]
-            
-            try:
-                service_start = datetime.strptime(service_start_str, "%Y-%m-%d")
-                due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-                expected_due_date = service_start - timedelta(days=1)
-                
-                if due_date == expected_due_date:
-                    print_success(f"Invoice {invoice['invoice_number']}: due_date ({due_date_str}) = service_start - 1 day ✓")
-                else:
-                    print_error(f"Invoice {invoice['invoice_number']}: due_date ({due_date_str}) != service_start - 1 day (expected {expected_due_date.strftime('%Y-%m-%d')})")
-                    all_correct = False
-            except Exception as e:
-                print_error(f"Invoice {invoice['invoice_number']}: Error parsing dates - {e}")
-                all_correct = False
-    
-    return all_correct
-
-def verify_expiry_audit_events(audit, expected_count):
-    """Verify expiry audit trail has correct number of events"""
-    print_info(f"Verifying expiry audit events...")
-    
-    events = audit.get("events", [])
-    actual_count = len(events)
-    
-    if actual_count == expected_count:
-        print_success(f"Expiry audit events correct: {actual_count} events (expected {expected_count})")
-        return True
+    if "plans" not in subscriber:
+        errors.append("Missing 'plans' field")
     else:
-        print_error(f"Expiry audit events mismatch: {actual_count} events (expected {expected_count})")
-        return False
-
-def print_invoice_summary(invoices):
-    """Print detailed invoice summary"""
-    print("\n" + "="*80)
-    print("INVOICE SUMMARY")
-    print("="*80)
-    
-    for i, invoice in enumerate(invoices, 1):
-        print(f"\nInvoice {i}:")
-        print(f"  Invoice Number: {invoice['invoice_number']}")
-        print(f"  Status: {invoice['status']}")
-        print(f"  Due Date: {invoice.get('due_date', '')[:10]}")
-        print(f"  Total Amount: ₹{invoice['final_amount']}")
-        print(f"  Line Items: {len(invoice.get('line_items', []))}")
+        plans = subscriber["plans"]
+        print_success(f"Plans array present with {len(plans)} plan(s)")
         
-        for j, item in enumerate(invoice.get("line_items", []), 1):
-            print(f"    Line Item {j}:")
-            print(f"      Plan: {item.get('plan_name')}")
-            print(f"      Validity: {item.get('selected_validity')}")
-            print(f"      Amount: ₹{item.get('final_amount')}")
-            print(f"      Service Start: {item.get('service_start_date', '')[:10]}")
-            print(f"      Service End: {item.get('service_end_date', '')[:10]}")
+        # Verify each plan has days_remaining field
+        for i, plan in enumerate(plans, 1):
+            if "days_remaining" not in plan:
+                errors.append(f"Plan {i} missing 'days_remaining' field")
+            else:
+                days_remaining = plan["days_remaining"]
+                if days_remaining is None or isinstance(days_remaining, int):
+                    print_success(f"  Plan {i}: days_remaining = {days_remaining} (type: {type(days_remaining).__name__})")
+                else:
+                    errors.append(f"Plan {i} 'days_remaining' is not null or int: {type(days_remaining).__name__}")
     
-    print("="*80 + "\n")
+    return errors
 
-def print_subscriber_summary(subscriber):
-    """Print subscriber plan details"""
-    print("\n" + "="*80)
-    print("SUBSCRIBER PLAN DETAILS")
-    print("="*80)
+def verify_invoices_array(invoices):
+    """Verify invoices array structure"""
+    print_info("Verifying invoices array structure...")
     
-    print(f"Subscriber: {subscriber['name']}")
-    print(f"ID: {subscriber['id']}")
+    errors = []
+    
+    if not isinstance(invoices, list):
+        errors.append("'invoices' is not an array")
+        return errors
+    
+    print_success(f"Invoices array present with {len(invoices)} invoice(s)")
+    
+    if len(invoices) > 0:
+        # Verify each invoice has required fields
+        for i, invoice in enumerate(invoices, 1):
+            invoice_errors = []
+            
+            if "invoice_number" not in invoice:
+                invoice_errors.append("Missing 'invoice_number'")
+            
+            if "status" not in invoice:
+                invoice_errors.append("Missing 'status'")
+            
+            if "final_amount" not in invoice:
+                invoice_errors.append("Missing 'final_amount'")
+            
+            if "line_items" not in invoice:
+                invoice_errors.append("Missing 'line_items'")
+            
+            if invoice_errors:
+                errors.append(f"Invoice {i} ({invoice.get('invoice_number', 'unknown')}): {', '.join(invoice_errors)}")
+            else:
+                print_success(f"  Invoice {i}: {invoice['invoice_number']} - {invoice['status']} - ₹{invoice['final_amount']} - {len(invoice['line_items'])} line item(s)")
+    else:
+        print_info("  No invoices found (empty array is valid)")
+    
+    return errors
+
+def verify_summary_object(summary):
+    """Verify summary object structure"""
+    print_info("Verifying summary object structure...")
+    
+    errors = []
+    required_fields = [
+        "total_invoiced", "total_paid", "total_pending", "total_overdue",
+        "invoice_count", "paid_count", "pending_count", "overdue_count",
+        "last_payment"
+    ]
+    
+    for field in required_fields:
+        if field not in summary:
+            errors.append(f"Missing '{field}' field")
+        else:
+            value = summary[field]
+            if field == "last_payment":
+                if value is None:
+                    print_success(f"  {field}: null (no payments yet)")
+                elif isinstance(value, dict):
+                    print_success(f"  {field}: object with keys {list(value.keys())}")
+                    # Verify last_payment object structure
+                    if "date" not in value:
+                        errors.append("last_payment missing 'date' field")
+                    if "mode" not in value:
+                        errors.append("last_payment missing 'mode' field")
+                    if "amount" not in value:
+                        errors.append("last_payment missing 'amount' field")
+                    if "invoice_number" not in value:
+                        errors.append("last_payment missing 'invoice_number' field")
+                else:
+                    errors.append(f"'last_payment' is not null or object: {type(value).__name__}")
+            else:
+                print_success(f"  {field}: {value}")
+    
+    return errors
+
+def verify_ledger_response(ledger):
+    """Verify complete ledger response structure"""
+    print_section("VERIFYING LEDGER RESPONSE STRUCTURE")
+    
+    all_errors = []
+    
+    # Check top-level structure
+    if "subscriber" not in ledger:
+        all_errors.append("Missing 'subscriber' object")
+    else:
+        errors = verify_subscriber_object(ledger["subscriber"])
+        all_errors.extend(errors)
+    
+    print()
+    
+    if "invoices" not in ledger:
+        all_errors.append("Missing 'invoices' array")
+    else:
+        errors = verify_invoices_array(ledger["invoices"])
+        all_errors.extend(errors)
+    
+    print()
+    
+    if "summary" not in ledger:
+        all_errors.append("Missing 'summary' object")
+    else:
+        errors = verify_summary_object(ledger["summary"])
+        all_errors.extend(errors)
+    
+    return all_errors
+
+def print_ledger_summary(ledger, subscriber_name):
+    """Print a formatted summary of the ledger"""
+    print_section(f"LEDGER SUMMARY FOR: {subscriber_name}")
+    
+    subscriber = ledger.get("subscriber", {})
+    invoices = ledger.get("invoices", [])
+    summary = ledger.get("summary", {})
+    
+    print(f"Subscriber: {subscriber.get('name', 'N/A')}")
+    print(f"WhatsApp: {subscriber.get('whatsapp_number', 'N/A')}")
     print(f"Plans: {len(subscriber.get('plans', []))}")
     
     for i, plan in enumerate(subscriber.get("plans", []), 1):
-        print(f"\n  Plan {i}:")
-        print(f"    Plan ID: {plan.get('plan_id')}")
-        print(f"    Validity: {plan.get('selected_validity')}")
-        print(f"    Start Date: {plan.get('plan_start_date')}")
-        print(f"    Expiry Date: {plan.get('plan_expiry_date')}")
-        print(f"    Status: {plan.get('status')}")
+        days = plan.get("days_remaining")
+        status = plan.get("status", "unknown")
+        print(f"  Plan {i}: {status}, days_remaining: {days}")
     
-    print("="*80 + "\n")
+    print(f"\nInvoices: {len(invoices)}")
+    for i, invoice in enumerate(invoices[:5], 1):  # Show first 5
+        print(f"  {i}. {invoice.get('invoice_number')} - {invoice.get('status')} - ₹{invoice.get('final_amount')}")
+    
+    if len(invoices) > 5:
+        print(f"  ... and {len(invoices) - 5} more")
+    
+    print(f"\nFinancial Summary:")
+    print(f"  Total Invoiced: ₹{summary.get('total_invoiced', 0)}")
+    print(f"  Total Paid: ₹{summary.get('total_paid', 0)}")
+    print(f"  Total Pending: ₹{summary.get('total_pending', 0)}")
+    print(f"  Total Overdue: ₹{summary.get('total_overdue', 0)}")
+    print(f"  Invoice Count: {summary.get('invoice_count', 0)}")
+    print(f"  Paid Count: {summary.get('paid_count', 0)}")
+    print(f"  Pending Count: {summary.get('pending_count', 0)}")
+    print(f"  Overdue Count: {summary.get('overdue_count', 0)}")
+    
+    last_payment = summary.get('last_payment')
+    if last_payment:
+        print(f"  Last Payment: ₹{last_payment.get('amount')} on {last_payment.get('date')} via {last_payment.get('mode')} (Invoice: {last_payment.get('invoice_number')})")
+    else:
+        print(f"  Last Payment: None")
+    
+    print()
 
 def main():
-    print("\n" + "="*80)
-    print("E-BILL PLATFORM - ONE INVOICE PER PLAN TEST")
-    print("="*80 + "\n")
+    print_section("E-BILL PLATFORM - SUBSCRIBER LEDGER ENDPOINT TEST")
     
     # Step 1: Login
     token = login_as_operator()
@@ -366,82 +278,76 @@ def main():
     
     print()
     
-    # Step 2: Get/Create plans
-    monthly_plan, quarterly_plan = create_test_plans_if_needed(token)
-    if not monthly_plan or not quarterly_plan:
-        print_error("Cannot proceed without both monthly and quarterly plans")
-        return
-    
-    print_info(f"Using plans:")
-    print(f"  - Monthly: {monthly_plan['name']} (ID: {monthly_plan['id']}, Price: ₹{monthly_plan['price']})")
-    print(f"  - Quarterly: {quarterly_plan['name']} (ID: {quarterly_plan['id']}, Price: ₹{quarterly_plan['price']})")
-    print()
-    
-    # Step 3: Create subscriber with 2 plans
-    subscriber = create_subscriber_with_two_plans(token, monthly_plan, quarterly_plan)
-    if not subscriber:
-        print_error("Cannot proceed without subscriber")
+    # Step 2: Get subscribers
+    subscribers = get_subscribers(token)
+    if not subscribers:
+        print_error("No subscribers found")
         return
     
     print()
     
-    # Step 4: Get invoices
-    invoices = get_invoices_for_subscriber(token, subscriber["id"])
-    if not invoices:
-        print_error("No invoices found - test failed")
-        return
+    # Test results
+    test_results = []
     
-    print()
+    # Step 3: Test with first subscriber (may have no invoices)
+    print_section("TEST 1: FIRST SUBSCRIBER (MAY HAVE NO INVOICES)")
+    first_subscriber = subscribers[0]
+    print_info(f"Testing with: {first_subscriber['name']} (ID: {first_subscriber['id']})")
     
-    # Step 5: Get subscriber details
-    subscriber_details = get_subscriber_details(token, subscriber["id"])
-    if not subscriber_details:
-        print_error("Cannot fetch subscriber details")
-        return
+    ledger1 = get_subscriber_ledger(token, first_subscriber["id"])
+    if ledger1:
+        errors1 = verify_ledger_response(ledger1)
+        print_ledger_summary(ledger1, first_subscriber['name'])
+        
+        if errors1:
+            print_error(f"Test 1 FAILED with {len(errors1)} error(s):")
+            for error in errors1:
+                print_error(f"  - {error}")
+            test_results.append(("First Subscriber Ledger", False))
+        else:
+            print_success("Test 1 PASSED: All fields present and correct")
+            test_results.append(("First Subscriber Ledger", True))
+    else:
+        print_error("Test 1 FAILED: Could not fetch ledger")
+        test_results.append(("First Subscriber Ledger", False))
     
-    print()
+    # Step 4: Test with "Two Plan Invoice Test" subscriber if it exists
+    two_plan_subscriber = None
+    for sub in subscribers:
+        if "Two Plan Invoice Test" in sub.get("name", ""):
+            two_plan_subscriber = sub
+            break
     
-    # Step 6: Get expiry audit
-    audit = get_expiry_audit(token, subscriber["id"])
-    
-    print()
-    
-    # Print summaries
-    print_invoice_summary(invoices)
-    print_subscriber_summary(subscriber_details)
-    
-    # Run verifications
-    print("\n" + "="*80)
-    print("VERIFICATION RESULTS")
-    print("="*80 + "\n")
-    
-    results = []
-    
-    # Test 1: Invoice count
-    results.append(("Invoice Count (2 invoices)", verify_invoice_count(invoices, 2)))
-    
-    # Test 2: Line items per invoice
-    results.append(("Line Items (1 per invoice)", verify_line_items_per_invoice(invoices)))
-    
-    # Test 3: Service dates match plan expiry
-    results.append(("Service End Dates Match Plan Expiry", verify_service_dates(invoices, subscriber_details, monthly_plan, quarterly_plan)))
-    
-    # Test 4: Due dates
-    results.append(("Due Dates (service_start - 1 day)", verify_due_dates(invoices)))
-    
-    # Test 5: Expiry audit events
-    if audit:
-        results.append(("Expiry Audit Events (2 events)", verify_expiry_audit_events(audit, 2)))
+    if two_plan_subscriber:
+        print_section("TEST 2: TWO PLAN INVOICE TEST SUBSCRIBER (HAS INVOICES)")
+        print_info(f"Testing with: {two_plan_subscriber['name']} (ID: {two_plan_subscriber['id']})")
+        
+        ledger2 = get_subscriber_ledger(token, two_plan_subscriber["id"])
+        if ledger2:
+            errors2 = verify_ledger_response(ledger2)
+            print_ledger_summary(ledger2, two_plan_subscriber['name'])
+            
+            if errors2:
+                print_error(f"Test 2 FAILED with {len(errors2)} error(s):")
+                for error in errors2:
+                    print_error(f"  - {error}")
+                test_results.append(("Two Plan Subscriber Ledger", False))
+            else:
+                print_success("Test 2 PASSED: All fields present and correct")
+                test_results.append(("Two Plan Subscriber Ledger", True))
+        else:
+            print_error("Test 2 FAILED: Could not fetch ledger")
+            test_results.append(("Two Plan Subscriber Ledger", False))
+    else:
+        print_warning("'Two Plan Invoice Test' subscriber not found, skipping Test 2")
     
     # Final summary
-    print("\n" + "="*80)
-    print("FINAL TEST RESULTS")
-    print("="*80 + "\n")
+    print_section("FINAL TEST RESULTS")
     
-    passed = sum(1 for _, result in results if result)
-    total = len(results)
+    passed = sum(1 for _, result in test_results if result)
+    total = len(test_results)
     
-    for test_name, result in results:
+    for test_name, result in test_results:
         status = "PASS" if result else "FAIL"
         color = Colors.GREEN if result else Colors.RED
         print(f"{color}{status}{Colors.END} - {test_name}")

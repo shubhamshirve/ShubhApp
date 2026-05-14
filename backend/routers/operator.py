@@ -1820,6 +1820,81 @@ async def get_subscriber_expiry_audit(subscriber_id: str, current_user: dict = D
     }
 
 
+@router.get("/subscribers/{subscriber_id}/ledger")
+async def get_subscriber_ledger(subscriber_id: str, current_user: dict = Depends(require_operator)):
+    """
+    Return full subscriber ledger: subscriber info, all invoices, and financial summary.
+    """
+    operator_id = current_user.get("operator_id")
+
+    subscriber = await db.subscribers.find_one(
+        {"id": subscriber_id, "operator_id": operator_id, "deleted_at": None}, {"_id": 0}
+    )
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    # Enrich plans with days_remaining
+    from datetime import date as date_t
+    today = date_t.today()
+    enriched_plans = []
+    for p in subscriber.get("plans", []):
+        plan_copy = dict(p)
+        expiry_str = p.get("plan_expiry_date")
+        if expiry_str:
+            try:
+                expiry_date = date_t.fromisoformat(expiry_str[:10])
+                plan_copy["days_remaining"] = (expiry_date - today).days
+            except Exception:
+                plan_copy["days_remaining"] = None
+        else:
+            plan_copy["days_remaining"] = None
+        enriched_plans.append(plan_copy)
+
+    # Fetch all invoices for this subscriber
+    raw_invoices = await db.invoices.find(
+        {"subscriber_id": subscriber_id, "operator_id": operator_id, "deleted_at": None},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+
+    invoices = [_parse_invoice_document(inv) for inv in raw_invoices]
+
+    # Financial summary
+    total_invoiced = sum(inv.get("final_amount", 0) for inv in raw_invoices)
+    total_paid     = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "paid")
+    total_pending  = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "pending")
+    total_overdue  = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "overdue")
+
+    paid_invoices = [inv for inv in raw_invoices if inv.get("status") == "paid" and inv.get("paid_at")]
+    last_payment = None
+    if paid_invoices:
+        latest_paid = max(paid_invoices, key=lambda x: x.get("paid_at", ""))
+        last_payment = {
+            "date": _to_ymd(latest_paid.get("paid_at")),
+            "mode": latest_paid.get("payment_mode"),
+            "amount": latest_paid.get("final_amount"),
+            "invoice_number": latest_paid.get("invoice_number"),
+        }
+
+    return {
+        "subscriber": {
+            **{k: v for k, v in subscriber.items() if k != "plans"},
+            "plans": enriched_plans,
+        },
+        "invoices": invoices,
+        "summary": {
+            "total_invoiced": round(total_invoiced, 2),
+            "total_paid":     round(total_paid, 2),
+            "total_pending":  round(total_pending, 2),
+            "total_overdue":  round(total_overdue, 2),
+            "invoice_count":  len(raw_invoices),
+            "paid_count":     len([i for i in raw_invoices if i.get("status") == "paid"]),
+            "pending_count":  len([i for i in raw_invoices if i.get("status") == "pending"]),
+            "overdue_count":  len([i for i in raw_invoices if i.get("status") == "overdue"]),
+            "last_payment":   last_payment,
+        },
+    }
+
+
 # ─── Invoices ─────────────────────────────────────────────────────────────────
 
 PAYMENT_MODES = {"cash", "own_upi", "bank_transfer", "cheque"}
