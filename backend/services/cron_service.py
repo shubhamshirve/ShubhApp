@@ -166,31 +166,20 @@ class CronJobService:
                         if not plans_to_bill:
                             continue
 
-                        # Group by EFFECTIVE validity (selected_validity > plan.validity)
-                        from collections import defaultdict
-                        validity_groups: dict = defaultdict(list)
-                        for p in plans_to_bill:
-                            # selected_validity on the subscriber plan overrides the plan's base validity
-                            effective_v = p.get("selected_validity") or None
-                            if not effective_v:
-                                op_plan_cached = await self.db.operator_plans.find_one(
-                                    {"id": p.get("plan_id"), "deleted_at": None}, {"_id": 0}
-                                )
-                                effective_v = (op_plan_cached or {}).get("validity", "monthly")
-                            validity_groups[effective_v].append(p)
-
-                        VALIDITY_ORDER = ["monthly", "quarterly", "half_yearly", "yearly"]
-                        for validity in VALIDITY_ORDER:
-                            group_plans = validity_groups.get(validity)
-                            if not group_plans:
-                                continue
-                            invoice = await self._create_auto_invoice(operator, subscriber, group_plans)
-                            if invoice:
-                                results["invoices_generated"] += 1
-                                logger.info(
-                                    f"Generated {validity} invoice "
-                                    f"{invoice['invoice_number']} for {subscriber['name']}"
-                                )
+                        # One invoice per plan — clear 1-to-1 expiry tracking
+                        for plan_entry in plans_to_bill:
+                            try:
+                                invoice = await self._create_auto_invoice(operator, subscriber, [plan_entry])
+                                if invoice:
+                                    results["invoices_generated"] += 1
+                                    logger.info(
+                                        f"Generated invoice {invoice['invoice_number']} "
+                                        f"for {subscriber['name']} / plan {plan_entry.get('plan_id')}"
+                                    )
+                            except Exception as _plan_err:
+                                error_msg = f"Error generating invoice for {subscriber['name']} plan {plan_entry.get('plan_id')}: {str(_plan_err)}"
+                                logger.error(error_msg)
+                                results["errors"].append(error_msg)
 
                     except Exception as e:
                         error_msg = f"Error generating invoice for {subscriber['name']}: {str(e)}"

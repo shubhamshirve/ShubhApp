@@ -1414,8 +1414,12 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
             if operator:
                 from services.cron_service import CronJobService
                 svc = CronJobService(db)
-                # All plans in a single invoice — no per-validity grouping
-                await svc._create_first_invoice(operator, subscriber, enriched_plans)
+                # One invoice per plan — keeps expiry tracking clean
+                for plan_entry in enriched_plans:
+                    try:
+                        await svc._create_first_invoice(operator, subscriber, [plan_entry])
+                    except Exception as _inv_plan_err:
+                        logger.error(f"First invoice creation failed for plan {plan_entry.get('plan_id')}: {_inv_plan_err}", exc_info=True)
         except Exception as inv_err:
             logger.error(f"First invoice creation failed for {subscriber['id']}: {inv_err}", exc_info=True)
 
