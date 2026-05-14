@@ -1675,13 +1675,12 @@ async def update_subscriber(subscriber_id: str, data: SubscriberCreate, current_
         plan_dict["selected_validity"] = validity
 
         if p.plan_start_date and (not existing_plan or existing_plan.get("plan_start_date") != p.plan_start_date):
-            # Start date changed or new plan — recalculate expiry
-            validity = op_plan.get("validity", "monthly")
+            # Start date changed or new plan — recalculate expiry using the EFFECTIVE validity
             try:
                 start = datetime.strptime(p.plan_start_date, "%Y-%m-%d").date()
             except ValueError:
                 start = now_dt.date()
-            expiry = _calc_plan_expiry(start, validity)
+            expiry = _calc_plan_expiry(start, plan_dict["selected_validity"])
             plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
             plan_dict["billing_date"] = start.day
         elif existing_plan and existing_plan.get("plan_expiry_date") and not p.plan_start_date:

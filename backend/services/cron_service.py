@@ -545,7 +545,39 @@ class CronJobService:
             logger.error(f"Failed to create payment link: {str(e)}")
         
         await self.db.invoices.insert_one(invoice)
-        
+
+        # ── Sync subscriber plan expiry from this new invoice ─────────────────
+        try:
+            sub_doc = await self.db.subscribers.find_one({"id": subscriber["id"], "deleted_at": None}, {"_id": 0})
+            if sub_doc:
+                plans_updated = list(sub_doc.get("plans") or [])
+                changed = False
+                for item in invoice["line_items"]:
+                    if item.get("is_custom") or not item.get("plan_id"):
+                        continue
+                    raw_end = item.get("service_end_date") or ""
+                    raw_start = item.get("service_start_date") or ""
+                    new_expiry = raw_end[:10] if len(raw_end) >= 10 else None
+                    new_start  = raw_start[:10] if len(raw_start) >= 10 else None
+                    if not new_expiry:
+                        continue
+                    existing_sp = next((sp for sp in plans_updated if sp.get("plan_id") == item["plan_id"]), None)
+                    if existing_sp:
+                        existing_sp["plan_expiry_date"] = new_expiry
+                        if new_start:
+                            existing_sp["plan_start_date"] = new_start
+                        existing_sp["status"] = "active"
+                        if item.get("selected_validity"):
+                            existing_sp["selected_validity"] = item["selected_validity"]
+                        changed = True
+                if changed:
+                    await self.db.subscribers.update_one(
+                        {"id": subscriber["id"]},
+                        {"$set": {"plans": plans_updated, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+        except Exception as sync_e:
+            logger.warning(f"Plan sync failed for auto-invoice {invoice.get('id')}: {sync_e}")
+
         try:
             from routers.wallet import deduct_wallet_for_invoice
             await deduct_wallet_for_invoice(operator["id"], invoice["id"])
@@ -745,6 +777,38 @@ class CronJobService:
         }
         await self.db.invoices.insert_one(invoice)
         logger.info(f"Created first invoice {invoice['invoice_number']} for {subscriber['name']}")
+
+        # ── Sync subscriber plan expiry from this invoice ──────────────────────
+        try:
+            sub_doc = await self.db.subscribers.find_one({"id": subscriber["id"], "deleted_at": None}, {"_id": 0})
+            if sub_doc:
+                plans_updated = list(sub_doc.get("plans") or [])
+                changed = False
+                for item in invoice["line_items"]:
+                    if item.get("is_custom") or not item.get("plan_id"):
+                        continue
+                    raw_end   = item.get("service_end_date") or ""
+                    raw_start = item.get("service_start_date") or ""
+                    new_expiry = raw_end[:10]   if len(raw_end)   >= 10 else None
+                    new_start  = raw_start[:10] if len(raw_start) >= 10 else None
+                    if not new_expiry:
+                        continue
+                    existing_sp = next((sp for sp in plans_updated if sp.get("plan_id") == item["plan_id"]), None)
+                    if existing_sp:
+                        existing_sp["plan_expiry_date"] = new_expiry
+                        if new_start:
+                            existing_sp["plan_start_date"] = new_start
+                        existing_sp["status"] = "active"
+                        if item.get("selected_validity"):
+                            existing_sp["selected_validity"] = item["selected_validity"]
+                        changed = True
+                if changed:
+                    await self.db.subscribers.update_one(
+                        {"id": subscriber["id"]},
+                        {"$set": {"plans": plans_updated, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+        except Exception as sync_e:
+            logger.warning(f"Plan sync failed for first invoice {invoice.get('id')}: {sync_e}")
 
         # ── Send invoice via WhatsApp (same pattern as _create_invoice_for_plans) ──
         try:

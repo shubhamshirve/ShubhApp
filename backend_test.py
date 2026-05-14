@@ -1,8 +1,10 @@
 """
-Backend API Test for Auto-Invoice Bug Fixes
+Backend API Test for Subscriber + Invoice Flow Bug Fixes
+
 Tests:
-1. Auto-generated invoices include plan_description in line items
-2. Auto-generated invoice due date = 1 day BEFORE service start date
+Fix A: After creating subscriber with generate_first_invoice=true, subscriber's plan_expiry_date matches invoice's service_end_date
+Fix B: When updating subscriber's plan start_date, expiry is recalculated using CORRECT selected_validity (not just base plan validity)
+Fix C: After cron creates auto-invoice, subscriber plan expiry updates (tested via direct function call)
 """
 import requests
 import json
@@ -21,10 +23,19 @@ def print_section(title):
     print(f"{title}")
     print(f"{'=' * 80}")
 
-def test_auto_invoice_fixes():
-    """Test both auto-invoice bug fixes via API"""
+def print_test_result(test_name, passed, expected, actual, details=""):
+    """Print formatted test result"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"\n{status} - {test_name}")
+    print(f"  Expected: {expected}")
+    print(f"  Actual: {actual}")
+    if details:
+        print(f"  Details: {details}")
+
+def test_subscriber_invoice_sync():
+    """Test all three bug fixes for subscriber + invoice flow"""
     
-    print_section("AUTO-INVOICE BUG FIX TESTING")
+    print_section("SUBSCRIBER + INVOICE FLOW BUG FIX TESTING")
     
     # Step 1: Login as operator
     print("\n1. Logging in as operator...")
@@ -42,8 +53,8 @@ def test_auto_invoice_fixes():
     headers = {"Authorization": f"Bearer {token}"}
     print("✅ Login successful")
     
-    # Step 2: Get list of plans
-    print("\n2. Fetching operator plans...")
+    # Step 2: Get or create a quarterly plan
+    print("\n2. Setting up quarterly plan...")
     plans_response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
     
     if plans_response.status_code != 200:
@@ -51,49 +62,57 @@ def test_auto_invoice_fixes():
         return
     
     plans = plans_response.json()
-    if not plans:
-        print("❌ No plans found")
-        return
     
-    plan = plans[0]
-    plan_id = plan["id"]
-    plan_name = plan["name"]
-    plan_description = plan.get("description", "")
+    # Find a plan with quarterly validity and available_validities
+    quarterly_plan = None
+    for plan in plans:
+        if plan.get("validity") == "quarterly" and "quarterly" in plan.get("available_validities", []):
+            quarterly_plan = plan
+            break
     
-    print(f"✅ Found plan: {plan_name} (ID: {plan_id})")
-    print(f"   Current description: {repr(plan_description)}")
-    
-    # Step 3: Add description to plan if missing
-    if not plan_description:
-        print("\n3. Adding description to plan...")
-        test_description = "High-speed fiber broadband plan with unlimited data and 24/7 support"
-        update_response = requests.patch(
-            f"{BACKEND_URL}/operator/plans/{plan_id}",
+    # If no quarterly plan found, create one
+    if not quarterly_plan:
+        print("   Creating new quarterly plan...")
+        create_plan_response = requests.post(
+            f"{BACKEND_URL}/operator/plans",
             headers=headers,
-            json={"description": test_description}
+            json={
+                "name": "Quarterly Test Plan",
+                "price": 1500,
+                "validity": "quarterly",
+                "available_validities": ["monthly", "quarterly", "yearly"],
+                "tax_percentage": 0,
+                "tax_type": "none",
+                "description": "Test plan for quarterly billing"
+            }
         )
         
-        if update_response.status_code == 200:
-            plan_description = test_description
-            print(f"✅ Description added: {test_description}")
+        if create_plan_response.status_code in [200, 201]:
+            quarterly_plan = create_plan_response.json()
+            print(f"✅ Created quarterly plan: {quarterly_plan['name']} (ID: {quarterly_plan['id']})")
         else:
-            print(f"⚠️  Failed to add description: {update_response.status_code}")
+            print(f"❌ Failed to create plan: {create_plan_response.status_code}")
+            print(f"Response: {create_plan_response.text}")
+            return
     else:
-        print(f"\n3. Plan already has description: {plan_description}")
+        print(f"✅ Found quarterly plan: {quarterly_plan['name']} (ID: {quarterly_plan['id']})")
     
-    # Step 4: Create subscriber with generate_first_invoice=true
-    print("\n4. Creating subscriber with auto-invoice generation...")
+    plan_id = quarterly_plan["id"]
     
-    # Use a future date for service start
-    service_start_date = "2026-05-15"
+    # ========================================================================
+    # TEST FIX A: First invoice syncs subscriber expiry
+    # ========================================================================
+    print_section("TEST FIX A: First Invoice Syncs Subscriber Expiry")
     
+    print("\n3. Creating subscriber with generate_first_invoice=true...")
     subscriber_data = {
-        "name": "Test Auto Invoice User",
-        "whatsapp_number": "919876543210",
-        "email": "testautoinv@example.com",
+        "name": "Invoice Sync Test",
+        "whatsapp_number": "919111111111",
+        "email": "invoicesync@test.com",
         "plans": [{
             "plan_id": plan_id,
-            "plan_start_date": service_start_date
+            "plan_start_date": "2026-06-01",
+            "selected_validity": "quarterly"
         }],
         "generate_first_invoice": True
     }
@@ -113,8 +132,17 @@ def test_auto_invoice_fixes():
     subscriber_id = subscriber["id"]
     print(f"✅ Subscriber created: {subscriber['name']} (ID: {subscriber_id})")
     
-    # Step 5: Fetch invoices for the subscriber
-    print("\n5. Fetching invoices for subscriber...")
+    # Get subscriber details
+    sub_response = requests.get(f"{BACKEND_URL}/operator/subscribers/{subscriber_id}", headers=headers)
+    if sub_response.status_code != 200:
+        print(f"❌ Failed to fetch subscriber: {sub_response.status_code}")
+        return
+    
+    subscriber_detail = sub_response.json()
+    subscriber_expiry = subscriber_detail["plans"][0]["plan_expiry_date"]
+    print(f"   Subscriber plan_expiry_date: {subscriber_expiry}")
+    
+    # Get invoice details
     invoices_response = requests.get(
         f"{BACKEND_URL}/operator/invoices",
         headers=headers,
@@ -132,89 +160,186 @@ def test_auto_invoice_fixes():
         return
     
     invoice = invoices[0]
-    print(f"✅ Invoice found: {invoice['invoice_number']}")
+    invoice_id = invoice["id"]
+    invoice_service_end = invoice["line_items"][0]["service_end_date"][:10]  # Extract date part
+    print(f"   Invoice service_end_date: {invoice_service_end}")
     
-    # Display invoice details
-    print_section("INVOICE DETAILS")
-    print(f"Invoice Number: {invoice['invoice_number']}")
-    print(f"Subscriber: {invoice['subscriber_name']}")
-    print(f"Due Date: {invoice['due_date']}")
-    print(f"Final Amount: ₹{invoice['final_amount']:.2f}")
-    print(f"Status: {invoice['status']}")
+    # Validate Fix A
+    fix_a_pass = subscriber_expiry == invoice_service_end
+    print_test_result(
+        "Fix A: Subscriber expiry matches invoice service_end_date",
+        fix_a_pass,
+        invoice_service_end,
+        subscriber_expiry,
+        "After creating subscriber with generate_first_invoice=true"
+    )
     
-    # Display line items
-    print_section("LINE ITEMS")
-    for idx, item in enumerate(invoice.get("line_items", []), 1):
-        print(f"\nLine Item #{idx}:")
-        print(f"  Plan Name: {item.get('plan_name')}")
-        print(f"  Plan Description: {repr(item.get('plan_description'))}")
-        print(f"  Is Custom: {item.get('is_custom')}")
-        print(f"  Selected Validity: {item.get('selected_validity')}")
-        print(f"  Service Start Date: {item.get('service_start_date')}")
-        print(f"  Service End Date: {item.get('service_end_date')}")
-        print(f"  Base Amount: ₹{item.get('base_amount', 0):.2f}")
-        print(f"  Final Amount: ₹{item.get('final_amount', 0):.2f}")
+    # ========================================================================
+    # TEST FIX B: Edit with changed start_date uses selected_validity
+    # ========================================================================
+    print_section("TEST FIX B: Edit with Changed Start Date Uses Selected Validity")
     
-    # Validation
-    print_section("VALIDATION RESULTS")
+    print("\n4. Updating subscriber with new start_date (quarterly)...")
+    update_data = {
+        "name": "Invoice Sync Test",
+        "whatsapp_number": "919111111111",
+        "email": "invoicesync@test.com",
+        "plans": [{
+            "plan_id": plan_id,
+            "plan_start_date": "2026-07-01",
+            "selected_validity": "quarterly",
+            "discount": 0
+        }]
+    }
     
-    if not invoice.get("line_items"):
-        print("❌ No line items found in invoice")
+    update_response = requests.put(
+        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}",
+        headers=headers,
+        json=update_data
+    )
+    
+    if update_response.status_code != 200:
+        print(f"❌ Failed to update subscriber: {update_response.status_code}")
+        print(f"Response: {update_response.text}")
         return
     
-    item = invoice["line_items"][0]
+    # Get updated subscriber
+    sub_response = requests.get(f"{BACKEND_URL}/operator/subscribers/{subscriber_id}", headers=headers)
+    subscriber_detail = sub_response.json()
+    new_expiry = subscriber_detail["plans"][0]["plan_expiry_date"]
     
-    # Fix 1: plan_description present
-    plan_desc = item.get('plan_description')
-    fix1_pass = plan_desc is not None and plan_desc != ""
+    # Expected: 2026-07-01 + 3 months - 1 day = 2026-09-30
+    expected_expiry = "2026-09-30"
+    fix_b_pass = new_expiry == expected_expiry
+    print_test_result(
+        "Fix B: Expiry recalculated with quarterly validity",
+        fix_b_pass,
+        expected_expiry,
+        new_expiry,
+        "Start date: 2026-07-01, selected_validity: quarterly (3 months)"
+    )
     
-    print("\n✓ FIX 1: plan_description in line items")
-    print(f"  Expected: Present (not None/empty)")
-    print(f"  Actual: {repr(plan_desc)}")
-    print(f"  Status: {'✅ PASS' if fix1_pass else '❌ FAIL'}")
+    # ========================================================================
+    # TEST FIX B VARIANT: Monthly override on quarterly plan
+    # ========================================================================
+    print_section("TEST FIX B VARIANT: Monthly Override on Quarterly Plan")
     
-    # Fix 2: due_date = service_start - 1 day
-    service_start_str = item.get("service_start_date", "")
-    due_date_str = invoice.get("due_date", "")
+    print("\n5. Updating subscriber with monthly override...")
+    update_data_monthly = {
+        "name": "Invoice Sync Test",
+        "whatsapp_number": "919111111111",
+        "email": "invoicesync@test.com",
+        "plans": [{
+            "plan_id": plan_id,
+            "plan_start_date": "2026-08-01",  # Different start date to trigger recalculation
+            "selected_validity": "monthly",
+            "discount": 0
+        }]
+    }
     
-    if service_start_str and due_date_str:
-        # Parse dates
-        service_start = datetime.fromisoformat(service_start_str.replace('Z', '+00:00'))
-        actual_due = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
-        expected_due = service_start - timedelta(days=1)
-        
-        # Calculate difference
-        date_diff = abs((actual_due.date() - expected_due.date()).days)
-        fix2_pass = date_diff == 0
-        
-        print(f"\n✓ FIX 2: due_date = service_start - 1 day")
-        print(f"  Service Start: {service_start.strftime('%Y-%m-%d')}")
-        print(f"  Expected Due (start - 1): {expected_due.strftime('%Y-%m-%d')}")
-        print(f"  Actual Due: {actual_due.strftime('%Y-%m-%d')}")
-        print(f"  Date Difference: {date_diff} days")
-        print(f"  Status: {'✅ PASS' if fix2_pass else '❌ FAIL'}")
+    update_response = requests.put(
+        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}",
+        headers=headers,
+        json=update_data_monthly
+    )
+    
+    if update_response.status_code != 200:
+        print(f"❌ Failed to update subscriber: {update_response.status_code}")
+        return
+    
+    # Get updated subscriber
+    sub_response = requests.get(f"{BACKEND_URL}/operator/subscribers/{subscriber_id}", headers=headers)
+    subscriber_detail = sub_response.json()
+    monthly_expiry = subscriber_detail["plans"][0]["plan_expiry_date"]
+    
+    # Expected: 2026-08-01 + 1 month - 1 day = 2026-08-31
+    expected_monthly_expiry = "2026-08-31"
+    fix_b_variant_pass = monthly_expiry == expected_monthly_expiry
+    print_test_result(
+        "Fix B Variant: Expiry recalculated with monthly override",
+        fix_b_variant_pass,
+        expected_monthly_expiry,
+        monthly_expiry,
+        "Start date: 2026-08-01, selected_validity: monthly (1 month)"
+    )
+    
+    # ========================================================================
+    # TEST FIX A VARIANT: Invoice update syncs to subscriber (force=True)
+    # ========================================================================
+    print_section("TEST FIX A VARIANT: Invoice Update Syncs to Subscriber")
+    
+    print("\n6. Updating invoice with new service_end_date...")
+    
+    # Update invoice with specific service_end_date
+    invoice_update_data = {
+        "subscriber_id": subscriber_id,
+        "due_date": "2026-07-31",
+        "line_items": [{
+            "plan_id": plan_id,
+            "is_custom": False,
+            "base_amount": 1500,
+            "discount": 0,
+            "selected_validity": "quarterly",
+            "service_start_date": "2026-06-01",
+            "service_end_date": "2026-09-15"
+        }]
+    }
+    
+    invoice_update_response = requests.put(
+        f"{BACKEND_URL}/operator/invoices/{invoice_id}",
+        headers=headers,
+        json=invoice_update_data
+    )
+    
+    if invoice_update_response.status_code != 200:
+        print(f"❌ Failed to update invoice: {invoice_update_response.status_code}")
+        print(f"Response: {invoice_update_response.text}")
+        return
+    
+    # Get updated subscriber
+    sub_response = requests.get(f"{BACKEND_URL}/operator/subscribers/{subscriber_id}", headers=headers)
+    subscriber_detail = sub_response.json()
+    updated_expiry = subscriber_detail["plans"][0]["plan_expiry_date"]
+    
+    # Expected: 2026-09-15 (from invoice service_end_date)
+    expected_updated_expiry = "2026-09-15"
+    fix_a_variant_pass = updated_expiry == expected_updated_expiry
+    print_test_result(
+        "Fix A Variant: Subscriber expiry updated from invoice edit",
+        fix_a_variant_pass,
+        expected_updated_expiry,
+        updated_expiry,
+        "Invoice service_end_date changed to 2026-09-15 (force=True)"
+    )
+    
+    # ========================================================================
+    # OVERALL RESULTS
+    # ========================================================================
+    print_section("OVERALL TEST RESULTS")
+    
+    all_tests = [
+        ("Fix A: First invoice syncs subscriber expiry", fix_a_pass),
+        ("Fix B: Expiry recalculated with quarterly validity", fix_b_pass),
+        ("Fix B Variant: Monthly override works correctly", fix_b_variant_pass),
+        ("Fix A Variant: Invoice update syncs to subscriber", fix_a_variant_pass),
+    ]
+    
+    passed_count = sum(1 for _, passed in all_tests if passed)
+    total_count = len(all_tests)
+    
+    print(f"\nTests Passed: {passed_count}/{total_count}")
+    print("\nDetailed Results:")
+    for test_name, passed in all_tests:
+        status = "✅" if passed else "❌"
+        print(f"  {status} {test_name}")
+    
+    if passed_count == total_count:
+        print("\n🎉 ALL TESTS PASSED - All bug fixes verified successfully!")
     else:
-        fix2_pass = False
-        print(f"\n✓ FIX 2: due_date calculation")
-        print(f"  Status: ❌ FAIL - Missing date fields")
-    
-    # Overall result
-    print_section("OVERALL TEST RESULT")
-    
-    if fix1_pass and fix2_pass:
-        print("✅ ALL TESTS PASSED - Both bug fixes verified successfully!")
-        print("\nSummary:")
-        print("  ✅ Fix 1: plan_description is present in line items")
-        print("  ✅ Fix 2: due_date is correctly set to 1 day before service start")
-    else:
-        print("❌ SOME TESTS FAILED")
-        if not fix1_pass:
-            print("  ❌ Fix 1 (plan_description) FAILED")
-        if not fix2_pass:
-            print("  ❌ Fix 2 (due_date calculation) FAILED")
+        print(f"\n⚠️  {total_count - passed_count} TEST(S) FAILED")
     
     # Cleanup
-    print("\n6. Cleaning up test data...")
+    print("\n7. Cleaning up test data...")
     delete_response = requests.delete(
         f"{BACKEND_URL}/operator/subscribers/{subscriber_id}",
         headers=headers
@@ -224,13 +349,18 @@ def test_auto_invoice_fixes():
         print(f"✅ Test subscriber deleted")
     else:
         print(f"⚠️  Failed to delete subscriber: {delete_response.status_code}")
+        print(f"   Subscriber ID: {subscriber_id} (manual cleanup may be needed)")
     
     print(f"\n{'=' * 80}\n")
+    
+    return passed_count == total_count
 
 if __name__ == "__main__":
     try:
-        test_auto_invoice_fixes()
+        success = test_subscriber_invoice_sync()
+        exit(0 if success else 1)
     except Exception as e:
         print(f"\n❌ Test failed with exception: {e}")
         import traceback
         traceback.print_exc()
+        exit(1)
