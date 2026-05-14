@@ -274,22 +274,44 @@ const OperatorSubscribers = () => {
     }
   };
 
-  const openEditDialog = (subscriber) => {
+  const openEditDialog = async (subscriber) => {
     setEditingSubscriber(subscriber);
-    setFormData({
-      name: subscriber.name,
-      whatsapp_number: subscriber.whatsapp_number,
-      email: subscriber.email || "",
-      address: subscriber.address || "",
-      generate_first_invoice: false,
-      plans: subscriber.plans.map(p => ({
-        plan_id: p.plan_id,
-        plan_start_date: p.plan_start_date || todayStr(),
-        plan_expiry_date: p.plan_expiry_date || "",
-        discount: p.discount || 0
-      }))
-    });
     setShowDialog(true);
+    // Fetch fresh subscriber data so plan dates reflect latest invoice syncs
+    try {
+      const res = await authAxios.get(`/operator/subscribers/${subscriber.id}`);
+      const fresh = res.data;
+      setFormData({
+        name: fresh.name,
+        whatsapp_number: fresh.whatsapp_number,
+        email: fresh.email || "",
+        address: fresh.address || "",
+        generate_first_invoice: false,
+        plans: (fresh.plans || []).map(p => ({
+          plan_id: p.plan_id,
+          plan_start_date: p.plan_start_date || todayStr(),
+          plan_expiry_date: p.plan_expiry_date || "",
+          discount: p.discount || 0,
+          selected_validity: p.selected_validity || "",
+        }))
+      });
+    } catch {
+      // Fallback to cached data if fetch fails
+      setFormData({
+        name: subscriber.name,
+        whatsapp_number: subscriber.whatsapp_number,
+        email: subscriber.email || "",
+        address: subscriber.address || "",
+        generate_first_invoice: false,
+        plans: (subscriber.plans || []).map(p => ({
+          plan_id: p.plan_id,
+          plan_start_date: p.plan_start_date || todayStr(),
+          plan_expiry_date: p.plan_expiry_date || "",
+          discount: p.discount || 0,
+          selected_validity: p.selected_validity || "",
+        }))
+      });
+    }
   };
 
   const resetForm = () => {
