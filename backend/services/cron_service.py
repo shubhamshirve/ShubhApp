@@ -309,7 +309,7 @@ class CronJobService:
         for op in active_operators:
             await self.db.operators.update_one(
                 {"id": op["id"]},
-                {"$set": {"is_read_only": True, "updated_at": now.isoformat()}}
+                {"$set": {"status": "expired", "is_read_only": True, "updated_at": now.isoformat()}}
             )
             results["set_read_only"] += 1
         
@@ -1345,7 +1345,7 @@ async def run_daily_expiry_check(db):
     for op in active_operators:
         await db.operators.update_one(
             {"id": op["id"]},
-            {"$set": {"is_read_only": True, "updated_at": now.isoformat()}}
+            {"$set": {"status": "expired", "is_read_only": True, "updated_at": now.isoformat()}}
         )
         results["set_read_only"] += 1
         # Send expiry WA

@@ -672,8 +672,6 @@ async def create_checkout_order(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot checkout")
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
@@ -682,6 +680,10 @@ async def create_checkout_order(
     description = base_amount = receipt_prefix = ""
     base_amount = 0
     selected_addon_codes = [c.strip() for c in addon_codes.split(",") if c.strip()] if addon_codes else []
+
+    # Block read-only operators from purchasing add-ons, but allow subscription renewals
+    if item_type == "addon" and await check_operator_read_only(current_user["operator_id"]):
+        raise HTTPException(status_code=403, detail="Account is in read-only mode. Please renew your subscription first.")
 
     if item_type == "addon":
         # Block addon purchase on trial plan
@@ -994,10 +996,26 @@ async def get_operator_subscription(current_user: dict = Depends(require_operato
     if current_plan_id and saas_plan:
         # Check if the current plan ID matches one in available plans
         plan_id_valid = any(p["id"] == current_plan_id for p in available_plans)
+
+    # Compute effective status: if stored as "active" but subscription has actually expired,
+    # return "expired" so the frontend displays the correct state without waiting for the cron job
+    raw_status = operator.get("status", "unknown")
+    effective_status = raw_status
+    if raw_status == "active":
+        subscription_ends = operator.get("subscription_ends_at")
+        if subscription_ends:
+            if isinstance(subscription_ends, str):
+                subscription_ends_dt = datetime.fromisoformat(subscription_ends)
+            else:
+                subscription_ends_dt = subscription_ends
+            if subscription_ends_dt.tzinfo is None:
+                subscription_ends_dt = subscription_ends_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > subscription_ends_dt:
+                effective_status = "expired"
     
     return {
         "operator_id": operator["id"], "company_name": operator.get("company_name", ""),
-        "status": operator.get("status", "unknown"),
+        "status": effective_status,
         "saas_plan_id": current_plan_id,
         "saas_plan_name": operator.get("saas_plan_name") or (saas_plan["name"] if saas_plan else None),
         "saas_plan_price": saas_plan.get("monthly_price") if saas_plan else None,
@@ -1042,8 +1060,7 @@ async def renew_operator_subscription(
 ):
     if current_user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot renew")
-    if await check_operator_read_only(current_user["operator_id"]):
-        raise HTTPException(status_code=403, detail="Account is in read-only mode")
+    # Read-only operators are explicitly allowed to renew — that's how they exit read-only mode
     operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
     if not operator:
         raise HTTPException(status_code=404, detail="Operator not found")
