@@ -16,6 +16,7 @@ dnspython==2.8.0
 
 # --- Data Validation ---
 pydantic[email]==2.12.5
+pydantic-core==2.41.5
 email-validator==2.3.0
 annotated-types==0.7.0
 
