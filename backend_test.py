@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 
 # Backend URL from environment
-BACKEND_URL = "https://extend-plan-access.preview.emergentagent.com/api"
+BACKEND_URL = "https://daily-ops-alerts.preview.emergentagent.com/api"
 
 # Test credentials
 OPERATOR_EMAIL = "operator@test.com"

@@ -1453,7 +1453,7 @@ async def run_daily_operator_report(db):
         return {**results, "skipped": 1, "reason": "operator_daily_report_template not assigned"}
 
     operators = await db.operators.find(
-        {"status": {"$in": ["active", "trial"]}, "deleted_at": None}, {"_id": 0}
+        {"status": "active", "deleted_at": None}, {"_id": 0}
     ).to_list(5000)
 
     for op in operators:
