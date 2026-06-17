@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 
 # Backend URL
-BACKEND_URL = "https://daily-ops-alerts.preview.emergentagent.com/api"
+BACKEND_URL = "https://billing-enhancer.preview.emergentagent.com/api"
 
 # Test credentials
 OPERATOR_EMAIL = "operator@test.com"
