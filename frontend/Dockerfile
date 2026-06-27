@@ -25,12 +25,12 @@ RUN pnpm build
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Runtime stage — serve the static build
+# pnpm is only needed to BUILD; the runtime just needs `serve` (installed via npm)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine
 
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate && \
-    pnpm add -g serve && \
-    apk add --no-cache curl
+RUN apk add --no-cache curl && \
+    npm install -g serve --prefer-offline
 
 COPY --from=builder /app/build ./build
 
