@@ -1,0 +1,220 @@
+# ============================================================================
+# eBill — Production Compose (GHCR Images + Watchtower)
+# ============================================================================
+# Usage:
+#   First-time setup:  make ghcr-login && make deploy-ghcr
+#   Enable auto-deploy (Watchtower): make watchtower-up
+#   Manual deploy:     make deploy-ghcr
+#
+# Key difference from docker-compose.prod.yml:
+#   - Backend & Frontend use pre-built GHCR images (no build on VPS)
+#   - Watchtower service polls GHCR every 5min and auto-updates containers
+# ============================================================================
+
+services:
+  # Initialize .env file if missing
+  init-env:
+    image: alpine:3.20
+    restart: "no"
+    working_dir: /app
+    environment:
+      DOMAIN: ${DOMAIN}
+      SERVER_IP: ${SERVER_IP}
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+    command: ["/bin/sh", "/app/docker/init-env.sh", "/app"]
+    volumes:
+      - ./:/app
+    networks:
+      - ebill
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 64M
+
+  # MongoDB
+  mongodb:
+    image: mongo:4.4
+    restart: always
+    depends_on:
+      init-env:
+        condition: service_completed_successfully
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ebill
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongo localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.8"
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # FastAPI Backend — pre-built image from GHCR
+  backend:
+    image: ghcr.io/shubhamshirve/shubhapp-backend:latest
+    restart: always
+    depends_on:
+      init-env:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    environment:
+      DB_NAME: ${DB_NAME:-saas_db}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD}
+    expose:
+      - "8000"
+    networks:
+      - ebill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.8"
+          memory: 512M
+        reservations:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # React Frontend — pre-built image from GHCR
+  frontend:
+    image: ghcr.io/shubhamshirve/shubhapp-frontend:latest
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    networks:
+      - ebill
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Caddy reverse proxy
+  caddy:
+    image: caddy:2.8-alpine
+    restart: always
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ebill
+    environment:
+      DOMAIN: ${DOMAIN}
+      SERVER_IP: ${SERVER_IP}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # Watchtower — auto-pulls updated GHCR images (Option C)
+  # Requires: docker login ghcr.io (run: make ghcr-login)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_LABEL_ENABLE: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.docker/config.json:/config.json:ro
+    networks:
+      - ebill
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 32M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+volumes:
+  mongo_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  ebill:
+    driver: bridge

@@ -50,6 +50,16 @@ Multi-tenant SaaS billing platform for ISP, broadband, and cable operators. Supp
 | Reminder Processing | 10:00 |
 | Wallet Balance Check | 09:00 |
 
+## CI/CD Architecture (GHCR)
+
+- **Branch:** `live` (triggers GitHub Actions)
+- **Pipeline:** Lint → Build Backend (parallel) + Build Frontend (parallel) → SSH Deploy to VPS
+- **Registry:** GHCR (`ghcr.io/shubhamshirve/shubhapp-backend` + `-frontend`)
+- **VPS Deploy (Option B):** GitHub Actions SSHes in, runs `docker pull` + `docker compose up` (no build on VPS)
+- **Watchtower (Option C):** Polls GHCR every 5 min, auto-restarts updated containers
+- **Key files:** `.github/workflows/deploy.yml`, `docker-compose.ghcr.yml`, `Makefile`, `DEPLOYMENT.md`
+- **Required GitHub Secrets:** `CR_PAT`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`, `REACT_APP_BACKEND_URL`
+
 ## Current Gaps
 
 - Payment receipt generation and delivery

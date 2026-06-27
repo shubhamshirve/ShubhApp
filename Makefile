@@ -12,24 +12,81 @@ export BUILDKIT_PROGRESS=plain
 COMPOSE_FILE ?= docker-compose.prod.yml
 DC = docker compose -f $(COMPOSE_FILE)
 
+# GHCR config
+GHCR_USER     ?= shubhamshirve
+GHCR_REGISTRY  = ghcr.io
+IMAGE_PREFIX   = $(GHCR_REGISTRY)/$(GHCR_USER)/shubhapp
+
 # Colours
 GREEN  = \033[0;32m
 YELLOW = \033[0;33m
+CYAN   = \033[0;36m
 NC     = \033[0m
 
-.PHONY: help build up down restart logs deploy clean pull backup status shell-backend shell-frontend
+.PHONY: help build up down restart logs deploy deploy-ghcr pull pull-images \
+        pull-ghcr ghcr-login watchtower-up watchtower-down watchtower-logs \
+        rollback-ghcr clean backup status shell-backend shell-frontend
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
-	  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-22s$(NC) %s\n", $$1, $$2}'
 
-# ── Build ────────────────────────────────────────────────────────────────────
-build: ## Build all images (uses BuildKit cache)
-	@echo "$(YELLOW)Building images...$(NC)"
+# ── GHCR Authentication ───────────────────────────────────────────────────────
+ghcr-login: ## Login to GHCR — requires: export CR_PAT=ghp_your_token
+	@test -n "$(CR_PAT)" || (echo "$(YELLOW)Error: CR_PAT not set$(NC)" && \
+	  echo "Run: export CR_PAT=ghp_your_token  (read:packages scope)" && exit 1)
+	@echo "$(CYAN)Logging in to $(GHCR_REGISTRY)...$(NC)"
+	@echo "$(CR_PAT)" | docker login $(GHCR_REGISTRY) -u $(GHCR_USER) --password-stdin
+	@echo "$(GREEN)GHCR login successful. Watchtower will use these credentials.$(NC)"
+
+# ── GHCR Pull images ─────────────────────────────────────────────────────────
+pull-images: ## Pull latest images from GHCR (no restart)
+	@echo "$(CYAN)Pulling latest GHCR images...$(NC)"
+	docker pull $(IMAGE_PREFIX)-backend:latest
+	docker pull $(IMAGE_PREFIX)-frontend:latest
+	@echo "$(GREEN)Images pulled.$(NC)"
+
+# ── GHCR Deploy (Option B — manual) ─────────────────────────────────────────
+deploy-ghcr: pull pull-images ## Pull latest code + GHCR images + restart (no build on VPS)
+	@echo "$(CYAN)Starting services with GHCR images...$(NC)"
+	docker compose -f docker-compose.ghcr.yml up -d --no-build --remove-orphans
+	docker image prune -f
+	@echo "$(GREEN)GHCR deployment complete!$(NC)"
+
+pull-ghcr: deploy-ghcr ## Alias for deploy-ghcr
+
+# ── Watchtower (Option C — auto-deploy) ──────────────────────────────────────
+watchtower-up: ## Start Watchtower (auto-pulls GHCR images every 5 min)
+	@echo "$(CYAN)Starting Watchtower...$(NC)"
+	@echo "$(YELLOW)Note: Run 'make ghcr-login' first if using private GHCR packages.$(NC)"
+	docker compose -f docker-compose.ghcr.yml up -d watchtower
+	@echo "$(GREEN)Watchtower running. Polls GHCR every 5 minutes.$(NC)"
+
+watchtower-down: ## Stop Watchtower
+	@echo "$(YELLOW)Stopping Watchtower...$(NC)"
+	docker compose -f docker-compose.ghcr.yml stop watchtower
+	docker compose -f docker-compose.ghcr.yml rm -f watchtower
+
+watchtower-logs: ## Tail Watchtower logs
+	docker compose -f docker-compose.ghcr.yml logs -f --tail=50 watchtower
+
+# ── Rollback ─────────────────────────────────────────────────────────────────
+rollback-ghcr: ## Rollback to a specific image tag — usage: make rollback-ghcr TAG=abc1234
+	@test -n "$(TAG)" || (echo "$(YELLOW)Usage: make rollback-ghcr TAG=<git-sha>$(NC)" && exit 1)
+	@echo "$(YELLOW)Rolling back to tag: $(TAG)$(NC)"
+	docker pull $(IMAGE_PREFIX)-backend:$(TAG)
+	docker pull $(IMAGE_PREFIX)-frontend:$(TAG)
+	docker tag $(IMAGE_PREFIX)-backend:$(TAG) $(IMAGE_PREFIX)-backend:latest
+	docker tag $(IMAGE_PREFIX)-frontend:$(TAG) $(IMAGE_PREFIX)-frontend:latest
+	docker compose -f docker-compose.ghcr.yml up -d --no-build --remove-orphans
+	@echo "$(GREEN)Rollback to $(TAG) complete!$(NC)"
+
+# ── Build (local / staging only — NOT for 1GB VPS) ───────────────────────────
+build: ## Build all images locally (not for 1GB RAM VPS — use deploy-ghcr instead)
+	@echo "$(YELLOW)Warning: Building locally. Use deploy-ghcr for 1GB VPS.$(NC)"
 	$(DC) build --parallel
 
 build-no-cache: ## Force-rebuild all images without cache
-	@echo "$(YELLOW)Rebuilding all images from scratch...$(NC)"
 	$(DC) build --no-cache --parallel
 
 build-backend: ## Rebuild backend image only
@@ -39,7 +96,7 @@ build-frontend: ## Rebuild frontend image only
 	$(DC) build frontend
 
 # ── Service lifecycle ─────────────────────────────────────────────────────────
-up: ## Start all services in detached mode
+up: ## Start all services (uses COMPOSE_FILE, default: docker-compose.prod.yml)
 	@echo "$(GREEN)Starting services...$(NC)"
 	$(DC) up -d
 
@@ -50,40 +107,34 @@ down: ## Stop and remove containers
 restart: ## Restart all services
 	$(DC) restart
 
-restart-backend: ## Restart backend service only
+restart-backend: ## Restart backend only
 	$(DC) restart backend
 
-restart-frontend: ## Restart frontend service only
+restart-frontend: ## Restart frontend only
 	$(DC) restart frontend
 
 status: ## Show service status
-	$(DC) ps
+	docker compose -f docker-compose.ghcr.yml ps
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
-logs: ## Tail logs from all services
-	$(DC) logs -f --tail=100
+logs: ## Tail all service logs
+	docker compose -f docker-compose.ghcr.yml logs -f --tail=100
 
 logs-backend: ## Tail backend logs
-	$(DC) logs -f --tail=100 backend
+	docker compose -f docker-compose.ghcr.yml logs -f --tail=100 backend
 
 logs-frontend: ## Tail frontend logs
-	$(DC) logs -f --tail=100 frontend
+	docker compose -f docker-compose.ghcr.yml logs -f --tail=100 frontend
 
 logs-mongo: ## Tail MongoDB logs
-	$(DC) logs -f --tail=50 mongodb
+	docker compose -f docker-compose.ghcr.yml logs -f --tail=50 mongodb
 
-# ── Deploy ────────────────────────────────────────────────────────────────────
-deploy: pull build up ## Full deploy: pull latest code, build images, start services
-	@echo "$(GREEN)Deployment complete!$(NC)"
+# ── Git Pull ──────────────────────────────────────────────────────────────────
+pull: ## Pull latest code from live branch
+	git pull origin live
 
-pull: ## Pull latest code from git
-	git pull origin main
-
-rollback: ## Roll back to previous Docker image
-	@echo "$(YELLOW)Rolling back services...$(NC)"
-	$(DC) down
-	docker image ls --format '{{.Repository}}:{{.Tag}}' | grep ebill | head -5
-	@echo "Run: docker tag <old-image> <current-image> then make up"
+# ── Legacy deploy (keep for compatibility) ────────────────────────────────────
+deploy: pull deploy-ghcr ## Full deploy: pull code + pull GHCR images + restart
 
 # ── Backup ────────────────────────────────────────────────────────────────────
 backup: ## Trigger a manual backup via API
@@ -94,22 +145,22 @@ backup: ## Trigger a manual backup via API
 
 # ── Shells ────────────────────────────────────────────────────────────────────
 shell-backend: ## Open a shell in the backend container
-	$(DC) exec backend bash
+	docker compose -f docker-compose.ghcr.yml exec backend bash
 
 shell-frontend: ## Open a shell in the frontend container
-	$(DC) exec frontend sh
+	docker compose -f docker-compose.ghcr.yml exec frontend sh
 
 shell-mongo: ## Open MongoDB shell
-	$(DC) exec mongodb mongosh
+	docker compose -f docker-compose.ghcr.yml exec mongodb mongosh
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
-clean: down ## Stop services and remove orphan containers
-	$(DC) down --remove-orphans
+clean: ## Stop services and remove orphan containers
+	docker compose -f docker-compose.ghcr.yml down --remove-orphans
 
-clean-all: down ## Remove containers, images, volumes (DESTRUCTIVE)
-	@echo "$(YELLOW)WARNING: This will delete all data. Press Ctrl+C to cancel..."
+clean-all: ## Remove containers, images, volumes (DESTRUCTIVE)
+	@echo "$(YELLOW)WARNING: This will delete all data. Press Ctrl+C to cancel...$(NC)"
 	@sleep 5
-	$(DC) down --volumes --rmi local --remove-orphans
+	docker compose -f docker-compose.ghcr.yml down --volumes --rmi local --remove-orphans
 
 prune-images: ## Remove dangling Docker images
 	docker image prune -f
