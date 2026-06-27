@@ -1,5 +1,5 @@
 # =============================================================================
-# eBill — Deployment Makefile  (package manager: pnpm)
+# eBill — Deployment Makefile  (package manager: npm)
 # Usage: make <target>
 # =============================================================================
 
@@ -23,7 +23,7 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 
-# ── Build ─────────────────────────────────────────────────────────────────────
+# ── Build ────────────────────────────────────────────────────────────────────
 build: ## Build all images (uses BuildKit cache)
 	@echo "$(YELLOW)Building images...$(NC)"
 	$(DC) build --parallel

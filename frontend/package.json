@@ -85,6 +85,5 @@
     "globals": "^17.4.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17"
-  },
-  "packageManager": "pnpm@9.15.9"
+  }
 }
