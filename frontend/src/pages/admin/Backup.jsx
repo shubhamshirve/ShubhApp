@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import {
   Database, Plus, RefreshCw, Trash2, RotateCcw,
-  CheckCircle, Clock, Shield, HardDrive, AlertTriangle, Download,
+  Clock, Shield, HardDrive, AlertTriangle, Download, Eraser,
 } from "lucide-react";
 
 const DEFAULT_PLATFORM_SETTINGS = {
@@ -38,9 +38,11 @@ const AdminBackup = () => {
   const [totalBackups, setTotalBackups] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [allStats, setAllStats] = useState({ total_size_kb: 0, auto_count: 0, manual_count: 0, retention_days: 30 });
   const [platformSettings, setPlatformSettings] = useState(DEFAULT_PLATFORM_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [password, setPassword] = useState("");
   const [restoring, setRestoring] = useState(false);
@@ -52,12 +54,9 @@ const AdminBackup = () => {
   const fetchSettings = async () => {
     try {
       const res = await authAxios.get("/admin/settings");
-      setPlatformSettings({
-        ...DEFAULT_PLATFORM_SETTINGS,
-        ...res.data,
-      });
+      setPlatformSettings({ ...DEFAULT_PLATFORM_SETTINGS, ...res.data });
     } catch {
-      // keep defaults if settings cannot be loaded
+      // keep defaults
     }
   };
 
@@ -68,6 +67,7 @@ const AdminBackup = () => {
       setTotalBackups(res.data.total || 0);
       setCurrentPage(res.data.page || page);
       setTotalPages(res.data.total_pages || 1);
+      if (res.data.stats) setAllStats(res.data.stats);
     } catch {
       toast.error("Failed to load backups");
     }
@@ -83,6 +83,25 @@ const AdminBackup = () => {
       toast.error(e.response?.data?.detail || "Backup failed");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handlePurgeOld = async () => {
+    const days = allStats.retention_days || 30;
+    if (!confirm(`Delete all backups older than ${days} days? This cannot be undone.`)) return;
+    setPurging(true);
+    try {
+      const res = await authAxios.post("/admin/backup/purge-old");
+      if (res.data.purged_count > 0) {
+        toast.success(`Purged ${res.data.purged_count} backup(s) older than ${days} days`);
+      } else {
+        toast.info("No old backups found to purge");
+      }
+      fetchBackups(1);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Purge failed");
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -102,7 +121,9 @@ const AdminBackup = () => {
     setRestoring(true);
     try {
       const res = await authAxios.post(`/admin/backup/restore/${restoreTarget.id}`, { password });
-      toast.success(`Restored successfully — ${res.data.records_restored} records across ${res.data.collections_restored.length} collections`);
+      toast.success(
+        `Restored successfully — ${res.data.records_restored} records across ${res.data.collections_restored.length} collections`
+      );
       setRestoreTarget(null);
       setPassword("");
     } catch (e) {
@@ -148,13 +169,35 @@ const AdminBackup = () => {
   return (
     <AdminLayout title="Backup & Restore">
       <div className="space-y-6 animate-fade-in">
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <p className="text-slate-500">Manage database backups and restore points</p>
-          <div className="flex gap-2">
+          <div>
+            <p className="text-slate-500">Manage database backups and restore points</p>
+            <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              Auto-delete policy: backups older than{" "}
+              <strong className="ml-1">{allStats.retention_days} days</strong> are removed automatically
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => fetchBackups(currentPage)}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-amber-700 border-amber-300 hover:bg-amber-50"
+              onClick={handlePurgeOld}
+              disabled={purging}
+            >
+              {purging ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Eraser className="w-4 h-4 mr-2" />
+              )}
+              Purge Old (&gt;{allStats.retention_days}d)
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? (
@@ -166,7 +209,7 @@ const AdminBackup = () => {
           </div>
         </div>
 
-        {/* Info Cards */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="bg-blue-50 border-blue-100">
             <CardContent className="p-4 flex items-center gap-3">
@@ -182,9 +225,11 @@ const AdminBackup = () => {
               <Clock className="w-8 h-8 text-emerald-600" />
               <div>
                 <p className="text-sm font-bold text-emerald-700">
-                  {backups.filter(b => b.type === "auto").length} Auto
+                  {allStats.auto_count} Auto / {allStats.manual_count} Manual
                 </p>
-                <p className="text-xs text-emerald-600">Daily at {platformSettings.cron_backup_time} IST</p>
+                <p className="text-xs text-emerald-600">
+                  Daily at {platformSettings.cron_backup_time} IST
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -193,9 +238,9 @@ const AdminBackup = () => {
               <HardDrive className="w-8 h-8 text-amber-600" />
               <div>
                 <p className="text-sm font-bold text-amber-700">
-                  {formatSize(backups.reduce((s, b) => s + (b.size_kb || 0), 0))}
+                  {formatSize(allStats.total_size_kb)}
                 </p>
-                <p className="text-xs text-amber-600">Total Storage Used</p>
+                <p className="text-xs text-amber-600">Total Storage (all backups)</p>
               </div>
             </CardContent>
           </Card>
@@ -223,7 +268,7 @@ const AdminBackup = () => {
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-10 text-slate-500">
                       <Database className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      No backups yet. Click "Create Backup" to get started.
+                      No backups yet. Click &ldquo;Create Backup&rdquo; to get started.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -284,7 +329,8 @@ const AdminBackup = () => {
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
             <p className="text-sm text-slate-500">
-              Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, totalBackups)} of {totalBackups} backups
+              Showing {((currentPage - 1) * PAGE_SIZE) + 1}–
+              {Math.min(currentPage * PAGE_SIZE, totalBackups)} of {totalBackups} backups
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -293,23 +339,50 @@ const AdminBackup = () => {
                 onClick={() => { const p = currentPage - 1; setCurrentPage(p); fetchBackups(p); }}
                 disabled={currentPage <= 1}
               >
-                Previous
+                ‹ Previous
               </Button>
-              <span className="text-sm text-slate-600">Page {currentPage} of {totalPages}</span>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && arr[idx - 1] !== p - 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === "..." ? (
+                    <span key={`dots-${idx}`} className="text-slate-400 px-1">…</span>
+                  ) : (
+                    <Button
+                      key={item}
+                      variant={item === currentPage ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => { setCurrentPage(item); fetchBackups(item); }}
+                    >
+                      {item}
+                    </Button>
+                  )
+                )}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => { const p = currentPage + 1; setCurrentPage(p); fetchBackups(p); }}
                 disabled={currentPage >= totalPages}
               >
-                Next
+                Next ›
               </Button>
             </div>
           </div>
         )}
+        {totalBackups > 0 && totalPages <= 1 && (
+          <p className="text-xs text-slate-400 px-1">
+            {totalBackups} backup{totalBackups !== 1 ? "s" : ""} total
+          </p>
+        )}
+
       </div>
 
-      {/* Restore Password Dialog */}
+      {/* Restore Confirmation Dialog */}
       <Dialog open={!!restoreTarget} onOpenChange={() => { setRestoreTarget(null); setPassword(""); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -319,7 +392,9 @@ const AdminBackup = () => {
             </DialogTitle>
             <DialogDescription>
               This will <strong>replace all current data</strong> with the backup from{" "}
-              <span className="font-medium">{restoreTarget && formatDate(restoreTarget.created_at)}</span>.
+              <span className="font-medium">
+                {restoreTarget && formatDate(restoreTarget.created_at)}
+              </span>.
               This action cannot be undone.
             </DialogDescription>
           </DialogHeader>

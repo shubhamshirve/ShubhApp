@@ -1,60 +1,63 @@
-# Multi-stage build for both development and production
-# Build arg: BUILD_ENV determines if we use local (dev) or production requirements
+# syntax=docker/dockerfile:1.4
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-stage build — optimized with BuildKit cache mounts
+# BUILD_ENV: production (default) | development
+# ─────────────────────────────────────────────────────────────────────────────
 ARG BUILD_ENV=production
 
-# ===== Builder Stage =====
-FROM python:3.11-slim as builder
+# ── Builder Stage ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
 ARG BUILD_ENV=production
 WORKDIR /tmp
 
-# Install build dependencies (only in builder stage)
+# Build dependencies (gcc/build-essential only needed for compiled wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy appropriate requirements based on environment
 COPY requirements.txt requirements_local.txt ./
 
-RUN if [ "${BUILD_ENV}" = "development" ]; then \
-      pip wheel --no-cache-dir --no-deps --wheel-dir /tmp/wheels -r requirements_local.txt; \
+# Cache pip downloads between builds via BuildKit mount
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    if [ "${BUILD_ENV}" = "development" ]; then \
+      pip wheel --wheel-dir /tmp/wheels -r requirements_local.txt; \
     else \
-      pip wheel --no-cache-dir --no-deps --wheel-dir /tmp/wheels -r requirements.txt; \
+      pip wheel --wheel-dir /tmp/wheels -r requirements.txt; \
     fi
 
-# ===== Runtime Stage =====
+# ── Runtime Stage ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
 ARG BUILD_ENV=production
 WORKDIR /app
 
-# Install runtime dependencies only (minimal)
+# Minimal runtime deps only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy wheels from builder and install
+# Install pre-built wheels (fast, no compilation)
 COPY --from=builder /tmp/wheels /wheels
 COPY requirements.txt requirements_local.txt ./
 
-RUN if [ "${BUILD_ENV}" = "development" ]; then \
-      pip install --no-cache /wheels/* && \
-      pip install -r requirements_local.txt 2>/dev/null || true; \
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    if [ "${BUILD_ENV}" = "development" ]; then \
+      pip install --no-index --find-links /wheels -r requirements_local.txt || \
+      pip install --find-links /wheels -r requirements_local.txt; \
     else \
-      pip install --no-cache /wheels/* && \
-      pip install -r requirements.txt 2>/dev/null || true; \
+      pip install --no-index --find-links /wheels -r requirements.txt || \
+      pip install --find-links /wheels -r requirements.txt; \
     fi && \
     rm -rf /wheels
 
-# Copy application code
+# Application code
 COPY . .
 
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
-# Run application
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]

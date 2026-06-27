@@ -1,28 +1,34 @@
-# Build stage
-FROM node:20-alpine as builder
+# syntax=docker/dockerfile:1.4
+# ─────────────────────────────────────────────────────────────────────────────
+# Build stage — compile the React app
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 ARG REACT_APP_BACKEND_URL=
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
-COPY package*.json ./
+# Copy manifests first for maximum cache reuse
+COPY package.json yarn.lock ./
 
-# Use npm ci for more reliable builds than npm install
-RUN npm ci --legacy-peer-deps
+# Mount the Yarn cache so repeated builds reuse already-downloaded packages
+RUN --mount=type=cache,target=/root/.yarn,sharing=locked \
+    YARN_CACHE_FOLDER=/root/.yarn yarn install --frozen-lockfile
 
 COPY . .
 
-RUN npm run build && npm prune --production
+RUN yarn build
 
-# Runtime stage with minimal footprint
+# ─────────────────────────────────────────────────────────────────────────────
+# Runtime stage — serve the static build
+# ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install serve globally in runtime stage only if needed
-RUN apk add --no-cache curl
-RUN npm install -g serve
+RUN apk add --no-cache curl && \
+    yarn global add serve
 
 COPY --from=builder /app/build ./build
 

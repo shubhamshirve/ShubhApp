@@ -43,7 +43,7 @@ from routers.auth import router as auth_router
 from routers.admin import router as admin_router
 from routers.operator import router as operator_router
 from routers.webhooks import router as webhooks_router
-from routers.backup import router as backup_router, _do_backup
+from routers.backup import router as backup_router, _do_backup, _purge_old_backups
 from routers.public import router as public_router
 from routers.wallet import router as wallet_router
 from routers.support import router as support_router
@@ -347,6 +347,17 @@ async def startup_event():
         except Exception as backup_err:
             await log_cron_execution(db, "daily_backup", "failed", {}, error=str(backup_err))
             raise
+        # Auto-purge backups older than BACKUP_RETENTION_DAYS (default 30)
+        try:
+            from routers.backup import BACKUP_RETENTION_DAYS
+            purge_result = await _purge_old_backups(BACKUP_RETENTION_DAYS)
+            if purge_result["purged_count"]:
+                logger.info(
+                    f"Auto-purge: removed {purge_result['purged_count']} backups "
+                    f"older than {BACKUP_RETENTION_DAYS} days"
+                )
+        except Exception as purge_err:
+            logger.warning(f"Auto-purge failed (non-critical): {purge_err}")
 
     def scheduler_listener(event):
         import asyncio

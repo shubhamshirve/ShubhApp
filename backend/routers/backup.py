@@ -1,7 +1,7 @@
 """Admin backup & restore system with scheduled daily backups."""
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import json
 import gzip
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 BACKUP_DIR = Path("/app/backups")
 BACKUP_PASSWORD = os.environ.get("BACKUP_PASSWORD", "Shubham@123")
+BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "30"))
 
 COLLECTIONS = [
     "users", "operators", "saas_plans", "operator_plans", "subscribers",
@@ -132,20 +133,38 @@ async def list_backups(
     per_page: int = 10,
     current_user: dict = Depends(require_admin),
 ):
-    """List all available backups with optional pagination."""
-    from fastapi import Query as FQuery
+    """List all available backups with pagination and aggregate stats."""
     await _sync_backups_from_disk()
     page = max(1, page)
     per_page = max(1, min(per_page, 100))
     total = await db.backups.count_documents({})
     skip = (page - 1) * per_page
     backups = await db.backups.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    # Aggregate stats across ALL backups (not just current page)
+    pipeline = [
+        {"$group": {
+            "_id": None,
+            "total_size_kb": {"$sum": "$size_kb"},
+            "auto_count": {"$sum": {"$cond": [{"$eq": ["$type", "auto"]}, 1, 0]}},
+            "manual_count": {"$sum": {"$cond": [{"$eq": ["$type", "manual"]}, 1, 0]}},
+        }}
+    ]
+    agg = await db.backups.aggregate(pipeline).to_list(1)
+    stats = agg[0] if agg else {"total_size_kb": 0, "auto_count": 0, "manual_count": 0}
+
     return {
         "backups": backups,
         "total": total,
         "page": page,
         "per_page": per_page,
         "total_pages": max(1, (total + per_page - 1) // per_page),
+        "stats": {
+            "total_size_kb": round(stats.get("total_size_kb", 0), 1),
+            "auto_count": stats.get("auto_count", 0),
+            "manual_count": stats.get("manual_count", 0),
+            "retention_days": BACKUP_RETENTION_DAYS,
+        },
     }
 
 
@@ -221,3 +240,55 @@ async def delete_backup(backup_id: str, current_user: dict = Depends(require_adm
 
     await db.backups.delete_one({"id": backup_id})
     return {"message": "Backup deleted"}
+
+
+# ── Auto-purge helpers ───────────────────────────────────────────────────────
+
+async def _purge_old_backups(max_age_days: int = BACKUP_RETENTION_DAYS) -> dict:
+    """Delete backups (file + DB record) older than max_age_days.
+    Returns a summary of what was deleted.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    cutoff_iso = cutoff.isoformat()
+
+    old_backups = await db.backups.find(
+        {"created_at": {"$lt": cutoff_iso}}, {"_id": 0}
+    ).to_list(1000)
+
+    deleted_files, deleted_db, errors = 0, 0, []
+    for meta in old_backups:
+        filepath = BACKUP_DIR / meta["filename"]
+        try:
+            if filepath.exists():
+                filepath.unlink()
+                deleted_files += 1
+        except Exception as e:
+            errors.append(f"File delete error {meta['filename']}: {e}")
+        try:
+            await db.backups.delete_one({"id": meta["id"]})
+            deleted_db += 1
+        except Exception as e:
+            errors.append(f"DB delete error {meta['id']}: {e}")
+
+    logger.info(
+        f"Purged {deleted_db} old backups (>{max_age_days}d) | "
+        f"files removed: {deleted_files} | errors: {len(errors)}"
+    )
+    return {
+        "purged_count": deleted_db,
+        "files_removed": deleted_files,
+        "retention_days": max_age_days,
+        "cutoff_date": cutoff_iso,
+        "errors": errors,
+    }
+
+
+@router.post("/purge-old")
+async def purge_old_backups(
+    retention_days: int = BACKUP_RETENTION_DAYS,
+    current_user: dict = Depends(require_admin),
+):
+    """Manually trigger deletion of all backups older than retention_days (default: 30)."""
+    retention_days = max(1, min(retention_days, 365))
+    result = await _purge_old_backups(retention_days)
+    return {"message": f"Purged {result['purged_count']} backups older than {retention_days} days", **result}
