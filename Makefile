@@ -1,5 +1,5 @@
 # =============================================================================
-# eBill — Deployment Makefile
+# eBill — Deployment Makefile  (package manager: pnpm)
 # Usage: make <target>
 # =============================================================================
 
