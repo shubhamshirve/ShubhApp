@@ -767,6 +767,13 @@ class CronJobService:
         await self.db.invoices.insert_one(invoice)
         logger.info(f"Created first invoice {invoice['invoice_number']} for {subscriber['name']}")
 
+        # ── Deduct wallet fee for first invoice generation ────────────────────
+        try:
+            from routers.wallet import deduct_wallet_for_invoice
+            await deduct_wallet_for_invoice(operator["id"], invoice["id"])
+        except Exception as wallet_e:
+            logger.warning(f"Wallet deduction failed for first invoice {invoice['id']}: {wallet_e}")
+
         # ── Sync subscriber plan expiry from this invoice ──────────────────────
         try:
             sub_doc = await self.db.subscribers.find_one({"id": subscriber["id"], "deleted_at": None}, {"_id": 0})

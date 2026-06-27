@@ -48,6 +48,8 @@ const OperatorSubscribers = () => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [showDialog, setShowDialog] = useState(false);
   const [editingSubscriber, setEditingSubscriber] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);
@@ -58,6 +60,9 @@ const OperatorSubscribers = () => {
   const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
   const [subFieldErrors, setSubFieldErrors] = useState({});
   const fileInputRef = useRef(null);
+  // Always keep a fresh copy of plans accessible inside async state updaters
+  const plansRef = useRef(plans);
+  useEffect(() => { plansRef.current = plans; }, [plans]);
 
   // Expiry audit state
   const [showExpiryAudit, setShowExpiryAudit] = useState(false);
@@ -124,6 +129,29 @@ const OperatorSubscribers = () => {
     fetchDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-calculate plan_expiry_date after plan selection or start-date change
+  // Runs after state commits so `plans` is always fresh
+  useEffect(() => {
+    if (!plans.length) return; // plans not loaded yet
+    setFormData(prev => {
+      let changed = false;
+      const updated = prev.plans.map(p => {
+        if (!p.plan_id || !p.plan_start_date) return p;
+        const planDef = plans.find(pl => pl.id === p.plan_id);
+        if (!planDef) return p;
+        const validity = p.selected_validity || planDef.validity;
+        // Only auto-fill if still empty (don't overwrite a manual override)
+        if (p.plan_expiry_date) return p;
+        const calc = calcExpiry(p.plan_start_date, validity);
+        if (!calc || calc === p.plan_expiry_date) return p;
+        changed = true;
+        return { ...p, plan_expiry_date: calc };
+      });
+      return changed ? { ...prev, plans: updated } : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.plans.map(p => `${p.plan_id}|${p.plan_start_date}|${p.selected_validity}`).join(','), plans]);
 
   const fetchDashboard = async () => {
     try {
@@ -352,11 +380,19 @@ const OperatorSubscribers = () => {
   };
 
   const updatePlanRow = (index, field, value) => {
+    // Calculate planDef OUTSIDE the functional updater to avoid stale closure issues
+    // At this point, `plans` is the current state value from the last render
+    const currentPlanId = field === "plan_id" ? value : null;
+    const planDefForUpdate = currentPlanId
+      ? plans.find(pl => pl.id === currentPlanId)
+      : null;
+
     setFormData(prev => {
       const updated = prev.plans.map((p, i) => {
         if (i !== index) return p;
         const newRow = { ...p, [field]: value };
-        const planDef = plans.find(pl => pl.id === newRow.plan_id);
+        // Use the planDef computed outside the updater (not stale)
+        const planDef = planDefForUpdate || plans.find(pl => pl.id === newRow.plan_id) || plansRef.current.find(pl => pl.id === newRow.plan_id);
 
         // When plan changes, reset selected_validity to base validity and recalc expiry
         if (field === "plan_id" && planDef) {
@@ -384,6 +420,18 @@ const OperatorSubscribers = () => {
     sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     sub.whatsapp_number.includes(searchTerm)
   );
+
+  const totalPages = Math.max(1, Math.ceil(filteredSubscribers.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedSubscribers = filteredSubscribers.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
+  );
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1); // reset to page 1 on new search
+  };
 
   // ── Bulk Upload ───────────────────────────────────────────────────────────
   const handleDownloadSample = async () => {
@@ -489,7 +537,7 @@ const OperatorSubscribers = () => {
             <Input
               placeholder="Search subscribers..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
               className="pl-10"
               data-testid="search-subscribers"
             />
@@ -572,7 +620,7 @@ const OperatorSubscribers = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSubscribers.length === 0 ? (
+                {paginatedSubscribers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-slate-500">
                       <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -580,7 +628,7 @@ const OperatorSubscribers = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSubscribers.map((subscriber) => (
+                  paginatedSubscribers.map((subscriber) => (
                     <TableRow key={subscriber.id} data-testid={`subscriber-row-${subscriber.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -715,6 +763,62 @@ const OperatorSubscribers = () => {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Pagination Controls */}
+        {filteredSubscribers.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between text-sm text-slate-500 px-1">
+            <span>
+              Showing {Math.min((safePage - 1) * ITEMS_PER_PAGE + 1, filteredSubscribers.length)}–
+              {Math.min(safePage * ITEMS_PER_PAGE, filteredSubscribers.length)} of {filteredSubscribers.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="h-8 px-3"
+              >
+                ‹ Prev
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && arr[idx - 1] !== p - 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === "..." ? (
+                    <span key={`dots-${idx}`} className="px-1">…</span>
+                  ) : (
+                    <Button
+                      key={item}
+                      variant={item === safePage ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(item)}
+                      className="h-8 w-8 p-0"
+                    >
+                      {item}
+                    </Button>
+                  )
+                )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="h-8 px-3"
+              >
+                Next ›
+              </Button>
+            </div>
+          </div>
+        )}
+        {/* Compact count when no pagination needed */}
+        {filteredSubscribers.length > 0 && filteredSubscribers.length <= ITEMS_PER_PAGE && (
+          <p className="text-xs text-slate-400 px-1">{filteredSubscribers.length} subscriber{filteredSubscribers.length !== 1 ? "s" : ""}</p>
+        )}
 
         {/* Create/Edit Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
@@ -873,6 +977,21 @@ const OperatorSubscribers = () => {
                             />
                           </div>
 
+                          {/* Plan end date — auto-calculated, allows manual override */}
+                          <div className="space-y-2">
+                            <Label className="flex items-center gap-1">
+                              Plan End Date
+                              <span className="text-[10px] font-normal text-indigo-500 bg-indigo-50 rounded px-1 py-0.5 leading-none">auto</span>
+                            </Label>
+                            <Input
+                              type="date"
+                              value={plan.plan_expiry_date || ""}
+                              onChange={(e) => updatePlanRow(index, "plan_expiry_date", e.target.value)}
+                              placeholder="Auto-calculated"
+                              title="Auto-calculated from start date + tenure. You can override this."
+                            />
+                          </div>
+
                           {/* Discount */}
                           <div className="space-y-2">
                             <Label>Discount (₹)</Label>
@@ -886,25 +1005,18 @@ const OperatorSubscribers = () => {
                           </div>
                         </div>
 
-                        {/* Expiry + price preview */}
+                        {/* Price preview */}
                         {plan.plan_id && (() => {
                           const planDef = plans.find(pl => pl.id === plan.plan_id);
                           const tenure = plan.selected_validity || planDef?.validity;
                           const calcPrice = planDef ? priceForTenure(planDef.price, planDef.validity, tenure) : 0;
-                          return (
+                          return planDef ? (
                             <div className="flex flex-wrap gap-2 mt-2">
-                              {plan.plan_expiry_date && (
-                                <p className="text-xs text-indigo-600 bg-indigo-50 rounded px-2 py-1">
-                                  Expires <strong>{plan.plan_expiry_date}</strong>
-                                </p>
-                              )}
-                              {planDef && (
-                                <p className="text-xs text-emerald-700 bg-emerald-50 rounded px-2 py-1">
-                                  ₹{calcPrice.toLocaleString('en-IN')} / {tenure}
-                                </p>
-                              )}
+                              <p className="text-xs text-emerald-700 bg-emerald-50 rounded px-2 py-1">
+                                ₹{calcPrice.toLocaleString('en-IN')} / {tenure}
+                              </p>
                             </div>
-                          );
+                          ) : null;
                         })()}
                       </div>
                     );

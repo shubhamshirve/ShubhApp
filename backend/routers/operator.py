@@ -1410,8 +1410,12 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
             start = now.date()
             plan_dict["plan_start_date"] = start.strftime("%Y-%m-%d")
 
-        expiry = _calc_plan_expiry(start, validity)
-        plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
+        # Use manual expiry date if provided; otherwise auto-calculate
+        if p.plan_expiry_date:
+            plan_dict["plan_expiry_date"] = p.plan_expiry_date
+        else:
+            expiry = _calc_plan_expiry(start, validity)
+            plan_dict["plan_expiry_date"] = expiry.strftime("%Y-%m-%d")
         plan_dict["billing_date"] = start.day  # keep for legacy display only
         enriched_plans.append(plan_dict)
 
