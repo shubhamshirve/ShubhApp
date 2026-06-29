@@ -248,7 +248,8 @@ const OperatorInvoices = () => {
       service_start_date: new Date(),
       service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     }],
-    due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+    due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+    invoice_date: new Date(),
   });
 
   useEffect(() => {
@@ -342,6 +343,7 @@ const OperatorInvoices = () => {
       const payload = {
         subscriber_id: formData.subscriber_id,
         due_date: formData.due_date.toISOString(),
+        invoice_date: formData.invoice_date ? formData.invoice_date.toISOString() : new Date().toISOString(),
         line_items: formData.line_items.map(item => ({
           plan_id: item.item_type === "custom" ? null : item.plan_id,
           is_custom: item.item_type === "custom",
@@ -525,7 +527,8 @@ const OperatorInvoices = () => {
         service_start_date: new Date(),
         service_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       }],
-      due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+      due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      invoice_date: new Date(),
     });
   };
 
@@ -544,6 +547,7 @@ const OperatorInvoices = () => {
         service_end_date: new Date(item.service_end_date),
       })),
       due_date: new Date(invoice.due_date),
+      invoice_date: invoice.invoice_date ? new Date(invoice.invoice_date) : new Date(invoice.created_at),
     });
     setShowDialog(true);
   };
@@ -817,7 +821,7 @@ const OperatorInvoices = () => {
         </div>
       </TableCell>
       <TableCell className="text-sm">
-        {new Date(invoice.due_date).toLocaleDateString()}
+        {new Date(invoice.due_date).toLocaleDateString('en-GB')}
       </TableCell>
       <TableCell>{getStatusBadge(invoice.status)}</TableCell>
       <TableCell>
@@ -1222,6 +1226,16 @@ const OperatorInvoices = () => {
                     value={formData.subscriber_id}
                     onSelect={(id) => setFormData(prev => ({ ...prev, subscriber_id: id }))}
                     authAxios={authAxios}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Invoice Date *</Label>
+                  <Input
+                    type="date"
+                    value={formData.invoice_date ? format(formData.invoice_date, "yyyy-MM-dd") : ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, invoice_date: e.target.value ? new Date(e.target.value) : null }))}
+                    required
                   />
                 </div>
 

@@ -2011,6 +2011,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     subscriber = payload["subscriber"]
 
     now = datetime.now(timezone.utc)
+    invoice_dt = data.invoice_date if data.invoice_date else now
     invoice = {
         "id": generate_id(),
         "invoice_number": await generate_invoice_number_atomic(db),
@@ -2021,6 +2022,7 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
         "tax_amount": payload["tax_amount"],
         "final_amount": payload["final_amount"],
         "due_date": payload["due_date"], "status": "pending", "payment_id": None,
+        "invoice_date": invoice_dt.isoformat(),
         "operator_id": current_user["operator_id"],
         "created_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None
     }
@@ -2172,6 +2174,8 @@ async def update_invoice(
         "due_date": payload["due_date"],
         "updated_at": now,
     }
+    if data.invoice_date:
+        updates["invoice_date"] = data.invoice_date.isoformat()
     await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
 
     # Audit log — capture old vs new line item dates & amounts

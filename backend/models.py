@@ -431,12 +431,14 @@ class InvoiceCreate(SanitizedModel):
     subscriber_id: str
     line_items: List[InvoiceLineItem]
     due_date: datetime
+    invoice_date: Optional[datetime] = None
 
 
 class InvoiceUpdate(SanitizedModel):
     subscriber_id: str
     line_items: List[InvoiceLineItem]
     due_date: datetime
+    invoice_date: Optional[datetime] = None
 
 
 class InvoiceStatusUpdate(SanitizedModel):
@@ -457,6 +459,7 @@ class InvoiceResponse(SanitizedModel):
     tax_amount: float
     final_amount: float
     due_date: datetime
+    invoice_date: Optional[datetime] = None
     status: str  # pending, paid, overdue, cancelled
     payment_id: Optional[str] = None
     payment_mode: Optional[str] = None
