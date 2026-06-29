@@ -820,6 +820,11 @@ const OperatorInvoices = () => {
           )}
         </div>
       </TableCell>
+      <TableCell className="text-sm text-slate-500">
+        {invoice.invoice_date
+          ? new Date(invoice.invoice_date).toLocaleDateString('en-GB')
+          : new Date(invoice.created_at).toLocaleDateString('en-GB')}
+      </TableCell>
       <TableCell className="text-sm">
         {new Date(invoice.due_date).toLocaleDateString('en-GB')}
       </TableCell>
@@ -1063,6 +1068,7 @@ const OperatorInvoices = () => {
                         <TableHead>Subscriber</TableHead>
                         <TableHead>Items</TableHead>
                         <TableHead>Amount</TableHead>
+                        <TableHead>Invoice Date</TableHead>
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
@@ -1071,7 +1077,7 @@ const OperatorInvoices = () => {
                     <TableBody>
                       {pagedFlat.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                          <TableCell colSpan={8} className="text-center py-8 text-slate-500">
                             <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                             No invoices found
                           </TableCell>
@@ -1181,6 +1187,7 @@ const OperatorInvoices = () => {
                                 <TableHead>Invoice #</TableHead>
                                 <TableHead>Items</TableHead>
                                 <TableHead>Amount</TableHead>
+                                <TableHead>Invoice Date</TableHead>
                                 <TableHead>Due Date</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="w-[50px]"></TableHead>

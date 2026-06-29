@@ -351,7 +351,7 @@ export default function PublicInvoice() {
               <div className="text-left sm:text-right">
                 <StatusBadge status={isOverdue ? "overdue" : invoice.status} />
                 <p className="text-indigo-200 text-xs mt-2">
-                  Issued: {formatDate(invoice.created_at)}
+                  Issued: {formatDate(invoice.invoice_date || invoice.created_at)}
                 </p>
               </div>
             </div>
@@ -430,7 +430,7 @@ export default function PublicInvoice() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Invoice Date</p>
-                <p className="text-sm font-medium text-slate-700 mt-0.5">{formatDate(invoice.created_at)}</p>
+                <p className="text-sm font-medium text-slate-700 mt-0.5">{formatDate(invoice.invoice_date || invoice.created_at)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Due Date</p>
