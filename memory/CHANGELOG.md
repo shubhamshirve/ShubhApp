@@ -57,7 +57,7 @@ Surfaces real WhatsApp delivery state in the Admin → WhatsApp Stats → Messag
 
 #### Meta dashboard configuration (manual, one-time)
 1. Meta App Dashboard → WhatsApp → Configuration → Webhooks.
-2. Set Callback URL: `<REACT_APP_BACKEND_URL>/api/webhooks/whatsapp` (e.g. `https://billing-upgrade-11.preview.emergentagent.com/api/webhooks/whatsapp`).
+2. Set Callback URL: `<REACT_APP_BACKEND_URL>/api/webhooks/whatsapp` (e.g. `https://health-scan-opt.preview.emergentagent.com/api/webhooks/whatsapp`).
 3. Set Verify Token: arbitrary string — paste the same value in Admin → Settings → Platform WhatsApp Config → Webhook Verify Token, save.
 4. Subscribe to the **messages** field on the WhatsApp Business Account.
 
