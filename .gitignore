@@ -6,6 +6,12 @@
 .DS_Store
 Thumbs.db
 
+# Environment files (keep only the example; safe for public GitHub pushes)
+.env
+.env.local
+.env.*
+!.env.example
+
 # Node / frontend
 node_modules/
 frontend/node_modules/
