@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 # Load environment from frontend .env
 load_dotenv(Path("/app/frontend/.env"))
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://health-scan-opt.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://perf-optimize-28.preview.emergentagent.com").rstrip("/")
 
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASSWORD = "Admin@123"
