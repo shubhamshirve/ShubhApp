@@ -47,6 +47,9 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    # Limit WiredTiger cache = 15% of total RAM (set by 'make auto-config')
+    # Default: 0.15GB (safe for 1GB VPS). Run 'make auto-config' after RAM upgrade.
+    command: mongod --wiredTigerCacheSizeGB ${MONGO_CACHE_GB:-0.15}
     ports:
       - "127.0.0.1:27017:27017"
     volumes:
@@ -63,9 +66,9 @@ services:
       resources:
         limits:
           cpus: "0.8"
-          memory: 512M
+          memory: ${MONGO_MEMORY_LIMIT:-300m}
         reservations:
-          memory: 256M
+          memory: ${MONGO_MEMORY_RESERVATION:-150m}
     logging:
       driver: "json-file"
       options:
@@ -103,9 +106,9 @@ services:
       resources:
         limits:
           cpus: "0.8"
-          memory: 512M
+          memory: ${BACKEND_MEMORY_LIMIT:-256m}
         reservations:
-          memory: 128M
+          memory: ${BACKEND_MEMORY_RESERVATION:-128m}
     logging:
       driver: "json-file"
       options:
@@ -133,9 +136,9 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256M
+          memory: ${FRONTEND_MEMORY_LIMIT:-128m}
         reservations:
-          memory: 64M
+          memory: ${FRONTEND_MEMORY_RESERVATION:-64m}
     logging:
       driver: "json-file"
       options:
@@ -173,7 +176,7 @@ services:
       resources:
         limits:
           cpus: "0.3"
-          memory: 128M
+          memory: ${CADDY_MEMORY_LIMIT:-64m}
     logging:
       driver: "json-file"
       options:
@@ -200,7 +203,7 @@ services:
       resources:
         limits:
           cpus: "0.1"
-          memory: 32M
+          memory: ${WATCHTOWER_MEMORY_LIMIT:-32m}
     logging:
       driver: "json-file"
       options:

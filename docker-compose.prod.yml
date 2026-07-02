@@ -33,7 +33,7 @@ services:
       resources:
         limits:
           cpus: "0.2"
-          memory: 64M
+          memory: 64m
 
   # MongoDB - Database (Production)
   mongodb:
@@ -45,6 +45,9 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    # Limit WiredTiger cache = 15% of total RAM (set by 'make auto-config')
+    # Default: 0.15GB (safe for 1GB VPS). Run 'make auto-config' after RAM upgrade.
+    command: mongod --wiredTigerCacheSizeGB ${MONGO_CACHE_GB:-0.15}
     ports:
       - "127.0.0.1:27017:27017"  # Bind to localhost only, accessed via backend on same network
     volumes:
@@ -61,10 +64,10 @@ services:
       resources:
         limits:
           cpus: "0.8"
-          memory: 1024M
+          memory: ${MONGO_MEMORY_LIMIT:-300m}
         reservations:
           cpus: "0.1"
-          memory: 512M
+          memory: ${MONGO_MEMORY_RESERVATION:-150m}
     logging:
       driver: "json-file"
       options:
@@ -108,10 +111,10 @@ services:
       resources:
         limits:
           cpus: "0.8"
-          memory: 1024M
+          memory: ${BACKEND_MEMORY_LIMIT:-256m}
         reservations:
           cpus: "0.1"
-          memory: 256M
+          memory: ${BACKEND_MEMORY_RESERVATION:-128m}
     labels:
       - "com.example.description=FastAPI backend service"
       - "com.example.version=${VERSION:-latest}"
@@ -147,10 +150,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: ${FRONTEND_MEMORY_LIMIT:-128m}
         reservations:
           cpus: "0.05"
-          memory: 128M
+          memory: ${FRONTEND_MEMORY_RESERVATION:-64m}
     labels:
       - "com.example.description=React frontend service"
       - "com.example.version=${VERSION:-latest}"
@@ -191,10 +194,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256M
+          memory: ${CADDY_MEMORY_LIMIT:-64m}
         reservations:
           cpus: "0.05"
-          memory: 64M
+          memory: ${CADDY_MEMORY_RESERVATION:-32m}
     labels:
       - "com.example.description=Caddy reverse proxy (production)"
     logging:

@@ -21,18 +21,22 @@ COPY . .
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Runtime stage — serve the static build
+# Runtime stage — nginx:alpine (~5MB RAM vs node+serve ~50MB RAM)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine
+FROM nginx:1.27-alpine
 
-RUN apk add --no-cache curl && \
-    npm install -g serve
+# Copy built React app
+COPY --from=builder /app/build /usr/share/nginx/html
 
-COPY --from=builder /app/build ./build
+# Custom nginx config: SPA routing, gzip, caching, security headers
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Remove default nginx config
+RUN rm -f /etc/nginx/conf.d/default.conf.bak
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:3000/index.html || exit 1
+    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
 
-CMD ["serve", "-s", "build", "-l", "3000"]
+CMD ["nginx", "-g", "daemon off;"]
