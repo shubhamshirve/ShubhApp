@@ -8,7 +8,7 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
-    BASE_URL = "https://health-scan-opt.preview.emergentagent.com"
+    BASE_URL = "https://data-analyzer-139.preview.emergentagent.com"
 
 # Credentials
 ADMIN_EMAIL = "admin@saas.com"
