@@ -1,3 +1,22 @@
+# =============================================================================
+# eBill — Build, Push to GHCR, Deploy to VPS
+# =============================================================================
+# Pipeline:
+#   1. Build backend + frontend Docker images on GitHub Actions runners
+#   2. Push images to GitHub Container Registry (GHCR)
+#   3. SSH into VPS → pull from GHCR → restart services
+#
+# Why GHCR instead of Docker Hub:
+#   - No rate limits (Docker Hub free tier = 100 pulls/6h)
+#   - GitHub CDN — faster, more reliable connectivity from VPS
+#   - Uses GITHUB_TOKEN automatically — no extra secrets needed for auth
+#
+# GitHub Secrets required:
+#   PROD_SERVER_IP   — VPS IP or hostname
+#   SERVER_USER      — SSH username (e.g. root)
+#   DEPLOY_KEY       — SSH private key (full PEM content)
+#   REACT_APP_BACKEND_URL — e.g. https://api.yourdomain.com
+# =============================================================================
 name: Build & Deploy to Production
 
 on:
@@ -7,10 +26,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # JOB 1: Build images on GitHub runners and push to GHCR
+  # ---------------------------------------------------------------------------
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write   # Required to push to GHCR
 
     steps:
       - name: Checkout repository
@@ -19,74 +42,80 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push backend
+      - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ebill-backend:latest
-            ${{ secrets.DOCKER_USERNAME }}/ebill-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/shubhapp-backend:latest
+            ghcr.io/${{ github.repository_owner }}/shubhapp-backend:${{ github.sha }}
           build-args: BUILD_ENV=production
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push frontend
+      - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:latest
-            ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/shubhapp-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/shubhapp-frontend:${{ github.sha }}
           build-args: REACT_APP_BACKEND_URL=${{ secrets.REACT_APP_BACKEND_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ---------------------------------------------------------------------------
+  # JOB 2: Deploy on VPS using GHCR images
+  # ---------------------------------------------------------------------------
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read    # Required to pass GITHUB_TOKEN for VPS GHCR pull
     env:
-      BRANCH_NAME: ${{ github.ref_name }}
+      BRANCH_NAME:    ${{ github.ref_name }}
+      GHCR_TOKEN:     ${{ secrets.GITHUB_TOKEN }}
+      GHCR_USER:      ${{ github.repository_owner }}
 
     steps:
-      - name: Deploy to production
+      - name: Deploy to production via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.PROD_SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          envs: BRANCH_NAME
+          host:            ${{ secrets.PROD_SERVER_IP }}
+          username:        ${{ secrets.SERVER_USER }}
+          key:             ${{ secrets.DEPLOY_KEY }}
+          port:            22
+          envs:            BRANCH_NAME,GHCR_TOKEN,GHCR_USER
           command_timeout: 30m
           script: |
             set -e
             APP_DIR="/root/ShubhApp"
-            DEPLOY_LOG="$APP_DIR/deploy.log"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
+            # ── Pull latest code ──────────────────────────────────────────────
             if [ ! -d ".git" ]; then
-              echo "Initializing git repository in $APP_DIR..."
+              echo "Initializing git repository..."
               git init
               git remote add origin https://github.com/shubhamshirve/ShubhApp.git
             fi
-
             echo "Pulling latest code for branch $BRANCH_NAME..."
             git fetch origin "$BRANCH_NAME"
             git reset --hard "origin/$BRANCH_NAME"
 
-            # ---------------------------------------------------------------
-            # ENV FILE RESOLUTION
-            # Priority: .env.production > .env (in current dir)
-            # Fallback: migrate from old /root/ebill location
-            # ---------------------------------------------------------------
+            # ── Resolve env file ──────────────────────────────────────────────
+            # Priority: .env.production > .env (current dir)
+            # Fallback:  migrate from old /root/ebill location
             resolve_env_file() {
               if [ -s "$APP_DIR/.env.production" ]; then
                 echo "$APP_DIR/.env.production"; return 0
@@ -109,92 +138,93 @@ jobs:
 
             ENV_FILE_ABS=$(resolve_env_file) || {
               echo "=========================================================="
-              echo "ERROR: No valid environment file found!"
-              echo "Please create /root/ShubhApp/.env.production on the server"
-              echo "with all required variables. See .env.example for reference."
-              echo "Required: DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD"
-              echo "          JWT_SECRET, BACKUP_PASSWORD, CORS_ORIGINS, REACT_APP_BACKEND_URL"
+              echo "ERROR: No .env or .env.production file found in $APP_DIR"
+              echo "Create $APP_DIR/.env.production with all required variables."
+              echo "See .env.example for the full list."
+              echo "Required: DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME,"
+              echo "          MONGO_ROOT_PASSWORD, JWT_SECRET, BACKUP_PASSWORD,"
+              echo "          CORS_ORIGINS, REACT_APP_BACKEND_URL"
               echo "=========================================================="
               exit 1
             }
-
             echo "Using environment file: $ENV_FILE_ABS"
 
-            # Validate required variables are present and non-empty
+            # Warn about missing required variables
             MISSING=""
             for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL; do
               if ! grep -qE "^${VAR}=.+" "$ENV_FILE_ABS"; then
                 MISSING="$MISSING $VAR"
               fi
             done
-            if [ -n "$MISSING" ]; then
-              echo "WARNING: Missing or empty variables in $ENV_FILE_ABS: $MISSING"
-              echo "Deployment may fail or behave unexpectedly."
-            fi
+            [ -n "$MISSING" ] && echo "WARNING: Missing variables in $ENV_FILE_ABS:$MISSING"
 
-            # ---------------------------------------------------------------
-            # DOCKER DAEMON: Fix MTU + DNS for VPS networking (runs once)
-            # Root cause of TLS handshake timeouts: VPS providers use VXLAN/
-            # overlay networking with MTU ~1450 — Docker's default 1500 causes
-            # large TLS packets to be fragmented/dropped during image pulls.
-            # ---------------------------------------------------------------
+            # ── Docker daemon: fix MTU + DNS (runs once, persists) ────────────
             DAEMON_JSON="/etc/docker/daemon.json"
-            NEEDS_RESTART=false
-
             if [ ! -f "$DAEMON_JSON" ] || ! grep -q '"mtu"' "$DAEMON_JSON"; then
-              echo ">>> Configuring Docker daemon (MTU=1450 + DNS) for VPS networking..."
+              echo ">>> Configuring Docker daemon (MTU=1450 + DNS)..."
               printf '{"dns":["8.8.8.8","8.8.4.4"],"mtu":1450,"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"}}\n' > "$DAEMON_JSON"
-              NEEDS_RESTART=true
-            fi
-
-            if [ "$NEEDS_RESTART" = "true" ]; then
-              echo ">>> Restarting Docker daemon to apply new config..."
               systemctl restart docker
               sleep 5
               echo ">>> Docker daemon ready"
             fi
 
-            # ---------------------------------------------------------------
-            # PULL images with retry (handles transient TLS timeouts)
-            # ---------------------------------------------------------------
-            echo ">>> Pulling Docker images (this may take several minutes)..."
+            # ── Login to GHCR on VPS ──────────────────────────────────────────
+            # Uses the GitHub Actions GITHUB_TOKEN passed via envs above.
+            # Token is valid for the duration of this workflow run.
+            # Credentials are saved to ~/.docker/config.json so Watchtower
+            # can also use them for auto-updates.
+            echo ">>> Logging in to GHCR..."
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            echo ">>> GHCR login successful"
+
+            # ── Pull images from GHCR ─────────────────────────────────────────
+            # Only pull backend + frontend (the GHCR images).
+            # Base images (mongo, caddy, alpine) stay from VPS cache — they
+            # do NOT change between app deploys. Pulling them would hit Docker
+            # Hub and reintroduce the connectivity issues we are avoiding.
+            echo ">>> Pulling backend + frontend from GHCR..."
             PULL_SUCCESS=false
             for attempt in 1 2 3; do
               echo "    Pull attempt $attempt/3..."
-              if docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull; then
+              if docker-compose -f docker-compose.ghcr.yml --env-file "$ENV_FILE_ABS" pull backend frontend; then
                 PULL_SUCCESS=true
-                echo "    Pull succeeded on attempt $attempt"
+                echo "    Pull succeeded"
                 break
               fi
               if [ "$attempt" -lt 3 ]; then
-                echo "    Pull failed — retrying in 30s..."
-                sleep 30
+                echo "    Pull failed — retrying in 15s..."
+                sleep 15
               fi
             done
 
             if [ "$PULL_SUCCESS" = "false" ]; then
               echo "=========================================================="
-              echo "ERROR: All 3 pull attempts failed."
-              echo "Check VPS network connectivity to registry-1.docker.io"
-              echo "Manual fix: curl -v https://registry-1.docker.io/v2/"
+              echo "ERROR: All pull attempts failed from GHCR."
+              echo "Registry: ghcr.io"
+              echo "Images:   ghcr.io/$GHCR_USER/shubhapp-backend:latest"
+              echo "          ghcr.io/$GHCR_USER/shubhapp-frontend:latest"
+              echo "Debug:    curl -v https://ghcr.io/v2/"
               echo "=========================================================="
               exit 1
             fi
 
-            echo "Stopping old containers..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
+            # ── Restart services ──────────────────────────────────────────────
+            echo ">>> Stopping old containers..."
+            docker-compose -f docker-compose.ghcr.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
-            echo "Starting services..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
+            echo ">>> Starting services..."
+            docker-compose -f docker-compose.ghcr.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
               echo "=========================================================="
-              echo "ERROR: docker-compose up failed. Dumping logs..."
-              echo "--- backend logs ---"
-              docker-compose -f docker-compose.prod.yml logs --tail=50 backend || true
-              echo "--- mongodb logs ---"
-              docker-compose -f docker-compose.prod.yml logs --tail=20 mongodb || true
+              echo "ERROR: docker-compose up failed. Logs:"
+              echo "--- backend ---"
+              docker-compose -f docker-compose.ghcr.yml logs --tail=50 backend  || true
+              echo "--- mongodb ---"
+              docker-compose -f docker-compose.ghcr.yml logs --tail=20 mongodb  || true
               echo "=========================================================="
               exit 1
             }
 
-            echo "Deployment complete!"
-            docker-compose -f docker-compose.prod.yml ps
+            docker image prune -f
+
+            echo ">>> Deployment complete!"
+            docker-compose -f docker-compose.ghcr.yml ps
