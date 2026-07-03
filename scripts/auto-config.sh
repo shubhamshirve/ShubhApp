@@ -28,7 +28,7 @@ echo ""
 # Increase percentages if you have dedicated server (no other workloads)
 MONGO_PCT=30       # MongoDB: largest consumer (data cache)
 BACKEND_PCT=25     # FastAPI + Python runtime
-FRONTEND_PCT=12    # nginx static files (very lightweight)
+FRONTEND_PCT=15    # node + serve static files
 CADDY_PCT=6        # Caddy reverse proxy
 WATCHTOWER_PCT=3   # Watchtower auto-updater
 INIT_PCT=1         # init-env container (runs once and exits)

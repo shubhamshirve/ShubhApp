@@ -150,10 +150,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: ${FRONTEND_MEMORY_LIMIT:-128m}
+          memory: ${FRONTEND_MEMORY_LIMIT:-200m}
         reservations:
           cpus: "0.05"
-          memory: ${FRONTEND_MEMORY_RESERVATION:-64m}
+          memory: ${FRONTEND_MEMORY_RESERVATION:-100m}
     labels:
       - "com.example.description=React frontend service"
       - "com.example.version=${VERSION:-latest}"

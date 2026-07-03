@@ -136,9 +136,9 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: ${FRONTEND_MEMORY_LIMIT:-128m}
+          memory: ${FRONTEND_MEMORY_LIMIT:-200m}
         reservations:
-          memory: ${FRONTEND_MEMORY_RESERVATION:-64m}
+          memory: ${FRONTEND_MEMORY_RESERVATION:-100m}
     logging:
       driver: "json-file"
       options:
