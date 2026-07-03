@@ -133,11 +133,60 @@ jobs:
             fi
 
             # ---------------------------------------------------------------
-            # PULL images first (can be slow — done synchronously so errors
-            # are visible, but SSH timeout is raised to 30 min above)
+            # DOCKER DAEMON: Fix MTU + DNS for VPS networking (runs once)
+            # Root cause of TLS handshake timeouts: VPS providers use VXLAN/
+            # overlay networking with MTU ~1450 — Docker's default 1500 causes
+            # large TLS packets to be fragmented/dropped during image pulls.
             # ---------------------------------------------------------------
-            echo "Pulling Docker images (this may take several minutes)..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
+            DAEMON_JSON="/etc/docker/daemon.json"
+            NEEDS_RESTART=false
+
+            if [ ! -f "$DAEMON_JSON" ] || ! grep -q '"mtu"' "$DAEMON_JSON"; then
+              echo ">>> Configuring Docker daemon (MTU=1450 + DNS) for VPS networking..."
+              cat > "$DAEMON_JSON" << 'DOCKERCFG'
+{
+  "dns": ["8.8.8.8", "8.8.4.4"],
+  "mtu": 1450,
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+DOCKERCFG
+              NEEDS_RESTART=true
+            fi
+
+            if [ "$NEEDS_RESTART" = "true" ]; then
+              echo ">>> Restarting Docker daemon to apply new config..."
+              systemctl restart docker
+              sleep 5
+              echo ">>> Docker daemon ready"
+            fi
+
+            # ---------------------------------------------------------------
+            # PULL images with retry (handles transient TLS timeouts)
+            # ---------------------------------------------------------------
+            echo ">>> Pulling Docker images (this may take several minutes)..."
+            PULL_SUCCESS=false
+            for attempt in 1 2 3; do
+              echo "    Pull attempt $attempt/3..."
+              if docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull; then
+                PULL_SUCCESS=true
+                echo "    Pull succeeded on attempt $attempt"
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "    Pull failed — retrying in 30s..."
+                sleep 30
+              fi
+            done
+
+            if [ "$PULL_SUCCESS" = "false" ]; then
+              echo "=========================================================="
+              echo "ERROR: All 3 pull attempts failed."
+              echo "Check VPS network connectivity to registry-1.docker.io"
+              echo "Manual fix: curl -v https://registry-1.docker.io/v2/"
+              echo "=========================================================="
+              exit 1
+            fi
 
             echo "Stopping old containers..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans

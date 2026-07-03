@@ -98,13 +98,36 @@ if ! grep -q 'vm.overcommit_memory' /etc/sysctl.conf; then
 fi
 ok "vm.overcommit_memory set to 1"
 
-# ── Step 3: Auto memory configuration ─────────────────────────────────────────
+# ── Step 3: Docker daemon — MTU + DNS fix ─────────────────────────────────────
 echo ""
-echo "[3/4] Memory Limits Configuration"
+echo "[3/5] Docker Daemon Configuration"
+
+DAEMON_JSON="/etc/docker/daemon.json"
+if [ ! -f "$DAEMON_JSON" ] || ! grep -q '"mtu"' "$DAEMON_JSON"; then
+    info "Configuring Docker daemon (MTU=1450, DNS=8.8.8.8)..."
+    info "This fixes TLS handshake timeouts when pulling images on VPS networks."
+    cat > "$DAEMON_JSON" << 'DOCKERCFG'
+{
+  "dns": ["8.8.8.8", "8.8.4.4"],
+  "mtu": 1450,
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+DOCKERCFG
+    systemctl restart docker
+    sleep 5
+    ok "Docker daemon configured and restarted"
+else
+    ok "Docker daemon already configured (skipping)"
+fi
+
+# ── Step 4: Auto memory configuration ─────────────────────────────────────────
+echo ""
+echo "[4/5] Memory Limits Configuration"
 bash "$APP_DIR/scripts/auto-config.sh"
 
-# ── Step 4: Health watchdog cron ──────────────────────────────────────────────
-echo "[4/4] Health Watchdog"
+# ── Step 5: Health watchdog cron ──────────────────────────────────────────────
+echo "[5/5] Health Watchdog"
 
 chmod +x "$WATCHDOG_SCRIPT"
 
