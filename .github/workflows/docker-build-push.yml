@@ -143,14 +143,7 @@ jobs:
 
             if [ ! -f "$DAEMON_JSON" ] || ! grep -q '"mtu"' "$DAEMON_JSON"; then
               echo ">>> Configuring Docker daemon (MTU=1450 + DNS) for VPS networking..."
-              cat > "$DAEMON_JSON" << 'DOCKERCFG'
-{
-  "dns": ["8.8.8.8", "8.8.4.4"],
-  "mtu": 1450,
-  "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "3" }
-}
-DOCKERCFG
+              printf '{"dns":["8.8.8.8","8.8.4.4"],"mtu":1450,"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"}}\n' > "$DAEMON_JSON"
               NEEDS_RESTART=true
             fi
 
