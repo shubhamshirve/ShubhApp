@@ -1,20 +1,25 @@
 # =============================================================================
-# eBill — CI/CD Pipeline
-# Push to 'live' branch → SSH into VPS → git pull → docker compose build & up
+# eBill — Legacy VPS Deploy (build-on-server)
+# =============================================================================
+# ⚠️  AUTO-TRIGGER DISABLED — superseded by docker-build-push.yml
 #
-# GitHub Secrets required:
+# docker-build-push.yml is the active CI/CD pipeline:
+#   Push → GitHub Actions builds images → Docker Hub → VPS pulls & runs
+#
+# This workflow is kept for MANUAL use only (e.g. emergency re-deploy
+# without a new push). Run it from GitHub Actions → Run workflow.
+#
+# Secrets required (if running manually):
 #   DEPLOY_HOST      — VPS IP or hostname
 #   DEPLOY_USER      — SSH username (e.g. root)
 #   DEPLOY_SSH_KEY   — SSH private key (full content)
 #   DEPLOY_PORT      — SSH port (optional, default 22)
 #   DEPLOY_PATH      — App path on VPS (optional, default /opt/ebill)
 # =============================================================================
-name: Deploy
+name: Deploy (Manual Only)
 
 on:
-  push:
-    branches: [live]
-  workflow_dispatch:
+  workflow_dispatch:    # Manual trigger only — push trigger removed to prevent double deployment
 
 jobs:
   deploy:
