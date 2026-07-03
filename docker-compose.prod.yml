@@ -96,6 +96,8 @@ services:
       BACKUP_PASSWORD: ${BACKUP_PASSWORD}
     expose:
       - "8000"
+    volumes:
+      - backup_data:/app/backups
     networks:
       - ebill
     healthcheck:
@@ -209,6 +211,8 @@ volumes:
   caddy_data:
     driver: local
   caddy_config:
+    driver: local
+  backup_data:
     driver: local
 
 networks:

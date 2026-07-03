@@ -77,6 +77,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - backup_data:/app/backups
     networks:
       - ebill
     healthcheck:
@@ -131,6 +133,7 @@ volumes:
   mongo_data:
   caddy_data:
   caddy_config:
+  backup_data:
 
 networks:
   ebill:
