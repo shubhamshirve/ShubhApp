@@ -96,6 +96,8 @@ services:
       BACKUP_PASSWORD: ${BACKUP_PASSWORD}
     expose:
       - "8000"
+    volumes:
+      - ./dbbackups:/app/backups
     networks:
       - ebill
     healthcheck:

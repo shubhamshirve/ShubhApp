@@ -1,10 +1,11 @@
 """Admin backup & restore system with scheduled daily backups."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.responses import FileResponse
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import json
 import gzip
+import io
 import os
 import logging
 
@@ -240,6 +241,74 @@ async def delete_backup(backup_id: str, current_user: dict = Depends(require_adm
 
     await db.backups.delete_one({"id": backup_id})
     return {"message": "Backup deleted"}
+
+
+@router.post("/upload")
+async def upload_backup(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload a previously downloaded .json.gz backup file and register it."""
+    if not (file.filename or "").endswith(".json.gz"):
+        raise HTTPException(status_code=400, detail="Only .json.gz backup files are accepted")
+
+    content = await file.read()
+
+    # Validate the file is a proper gzipped JSON backup
+    try:
+        with gzip.open(io.BytesIO(content), "rt", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid backup file: not a valid gzipped JSON archive")
+
+    if "collections" not in payload:
+        raise HTTPException(status_code=400, detail="Invalid backup format: missing 'collections' key")
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize filename — strip path traversal characters
+    safe_filename = (
+        (file.filename or "")
+        .replace("..", "")
+        .replace("/", "")
+        .replace("\\", "")
+        .strip()
+    ) or f"uploaded_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json.gz"
+
+    filepath = BACKUP_DIR / safe_filename
+    # Avoid overwriting existing files by appending a timestamp suffix
+    if filepath.exists():
+        base = safe_filename[:-8]  # strip .json.gz
+        ts = datetime.now(timezone.utc).strftime("%H%M%S")
+        safe_filename = f"{base}_imported_{ts}.json.gz"
+        filepath = BACKUP_DIR / safe_filename
+
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    collections = payload.get("collections") or {}
+    backup_id = payload.get("backup_id") or generate_id()
+
+    # Avoid duplicate IDs in DB
+    if await db.backups.find_one({"id": backup_id}):
+        backup_id = generate_id()
+
+    size_bytes = filepath.stat().st_size
+    meta = {
+        "id": backup_id,
+        "filename": safe_filename,
+        "created_at": payload.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "size_bytes": size_bytes,
+        "size_kb": round(size_bytes / 1024, 1),
+        "type": "uploaded",
+        "total_records": sum(len(v) for v in collections.values()),
+        "collections": list(collections.keys()),
+    }
+    await db.backups.insert_one(meta)
+    meta.pop("_id", None)
+
+    logger.info(f"Backup uploaded: {safe_filename} ({size_bytes} bytes)")
+    return {"message": "Backup uploaded successfully", "backup": meta}
 
 
 # ── Auto-purge helpers ───────────────────────────────────────────────────────

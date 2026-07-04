@@ -6,11 +6,20 @@ on:
       - live
   workflow_dispatch:
 
+# Cancel in-progress runs for the same branch (saves CI minutes)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-push:
+  # ── Build backend image ──────────────────────────────────────────────────────
+  build-backend:
+    name: Build & Push Backend
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      image_tag: ${{ github.sha }}
 
     steps:
       - name: Checkout repository
@@ -34,8 +43,30 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/ebill-backend:latest
             ${{ secrets.DOCKER_USERNAME }}/ebill-backend:${{ github.sha }}
           build-args: BUILD_ENV=production
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  # ── Build frontend image (runs in parallel with backend) ─────────────────────
+  build-frontend:
+    name: Build & Push Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ github.sha }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
@@ -46,11 +77,13 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:latest
             ${{ secrets.DOCKER_USERNAME }}/ebill-frontend:${{ github.sha }}
           build-args: REACT_APP_BACKEND_URL=${{ secrets.REACT_APP_BACKEND_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
+  # ── Deploy: pull pre-built images, no build on VPS ───────────────────────────
   deploy:
-    needs: build-and-push
+    name: Deploy to VPS
+    needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     env:
       BRANCH_NAME: ${{ github.ref_name }}
@@ -64,16 +97,14 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           envs: BRANCH_NAME
-          command_timeout: 30m
+          command_timeout: 15m
           script: |
             set -e
             APP_DIR="/root/ShubhApp"
-            DEPLOY_LOG="$APP_DIR/deploy.log"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
             if [ ! -d ".git" ]; then
-              echo "Initializing git repository in $APP_DIR..."
               git init
               git remote add origin https://github.com/shubhamshirve/ShubhApp.git
             fi
@@ -82,10 +113,11 @@ jobs:
             git fetch origin "$BRANCH_NAME"
             git reset --hard "origin/$BRANCH_NAME"
 
+            # Ensure dbbackups dir exists on the host (persists across deployments)
+            mkdir -p "$APP_DIR/dbbackups"
+
             # ---------------------------------------------------------------
             # ENV FILE RESOLUTION
-            # Priority: .env.production > .env (in current dir)
-            # Fallback: migrate from old /root/ebill location
             # ---------------------------------------------------------------
             resolve_env_file() {
               if [ -s "$APP_DIR/.env.production" ]; then
@@ -95,12 +127,10 @@ jobs:
                 echo "$APP_DIR/.env"; return 0
               fi
               if [ -s "/root/ebill/.env.production" ]; then
-                echo "Migrating .env.production from /root/ebill..." >&2
                 cp /root/ebill/.env.production "$APP_DIR/.env.production"
                 echo "$APP_DIR/.env.production"; return 0
               fi
               if [ -s "/root/ebill/.env" ]; then
-                echo "Migrating .env from /root/ebill..." >&2
                 cp /root/ebill/.env "$APP_DIR/.env"
                 echo "$APP_DIR/.env"; return 0
               fi
@@ -108,51 +138,39 @@ jobs:
             }
 
             ENV_FILE_ABS=$(resolve_env_file) || {
-              echo "=========================================================="
               echo "ERROR: No valid environment file found!"
-              echo "Please create /root/ShubhApp/.env.production on the server"
-              echo "with all required variables. See .env.example for reference."
-              echo "Required: DOMAIN, SERVER_IP, MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD"
-              echo "          JWT_SECRET, BACKUP_PASSWORD, CORS_ORIGINS, REACT_APP_BACKEND_URL"
-              echo "=========================================================="
+              echo "Please create $APP_DIR/.env.production on the server."
               exit 1
             }
 
             echo "Using environment file: $ENV_FILE_ABS"
 
-            # Validate required variables are present and non-empty
+            # Validate required vars
             MISSING=""
             for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL; do
               if ! grep -qE "^${VAR}=.+" "$ENV_FILE_ABS"; then
                 MISSING="$MISSING $VAR"
               fi
             done
-            if [ -n "$MISSING" ]; then
-              echo "WARNING: Missing or empty variables in $ENV_FILE_ABS: $MISSING"
-              echo "Deployment may fail or behave unexpectedly."
-            fi
+            [ -n "$MISSING" ] && echo "WARNING: Missing or empty variables: $MISSING"
 
-            # ---------------------------------------------------------------
-            # PULL images first (can be slow — done synchronously so errors
-            # are visible, but SSH timeout is raised to 30 min above)
-            # ---------------------------------------------------------------
-            echo "Pulling Docker images (this may take several minutes)..."
+            # Pull pre-built images (no build on VPS)
+            echo "Pulling Docker images..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
 
             echo "Stopping old containers..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
-            echo "Starting services..."
+            echo "Starting services with new images..."
             docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
-              echo "=========================================================="
               echo "ERROR: docker-compose up failed. Dumping logs..."
-              echo "--- backend logs ---"
               docker-compose -f docker-compose.prod.yml logs --tail=50 backend || true
-              echo "--- mongodb logs ---"
               docker-compose -f docker-compose.prod.yml logs --tail=20 mongodb || true
-              echo "=========================================================="
               exit 1
             }
+
+            echo "Removing dangling images..."
+            docker image prune -f
 
             echo "Deployment complete!"
             docker-compose -f docker-compose.prod.yml ps

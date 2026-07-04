@@ -1,20 +1,12 @@
 # =============================================================================
-# eBill — CI/CD Pipeline
-# Push to 'live' branch → SSH into VPS → git pull → docker compose build & up
-#
-# GitHub Secrets required:
-#   DEPLOY_HOST      — VPS IP or hostname
-#   DEPLOY_USER      — SSH username (e.g. root)
-#   DEPLOY_SSH_KEY   — SSH private key (full content)
-#   DEPLOY_PORT      — SSH port (optional, default 22)
-#   DEPLOY_PATH      — App path on VPS (optional, default /opt/ebill)
+# eBill — Lightweight CI/CD (build-on-VPS fallback)
+# This workflow is a fallback for direct VPS builds when pre-built GHCR images
+# are not available. Prefer docker-build-push.yml for production deployments.
 # =============================================================================
-name: Deploy
+name: Deploy (VPS Build)
 
 on:
-  push:
-    branches: [live]
-  workflow_dispatch:
+  workflow_dispatch:   # Manual trigger only — not on push
 
 jobs:
   deploy:
@@ -33,11 +25,15 @@ jobs:
             set -e
             cd ${{ secrets.DEPLOY_PATH || '/opt/ebill' }}
 
+            # Ensure dbbackups directory exists
+            mkdir -p dbbackups
+
             echo ">>> Pulling latest code..."
             git pull origin live
 
-            echo ">>> Building and starting services..."
-            DOCKER_BUILDKIT=1 docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            echo ">>> Building and starting services (BuildKit enabled)..."
+            DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 \
+              docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 
             echo ">>> Cleaning up old images..."
             docker image prune -f

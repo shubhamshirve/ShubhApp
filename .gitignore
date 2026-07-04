@@ -59,3 +59,7 @@ mongodb_data/
 credentials.json
 *.key
 .credentials
+
+# Backup files (keep directory structure, ignore actual backup blobs)
+dbbackups/*.json.gz
+dbbackups/*.json

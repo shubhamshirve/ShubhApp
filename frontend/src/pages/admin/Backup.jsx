@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import {
   Database, Plus, RefreshCw, Trash2, RotateCcw,
-  Clock, Shield, HardDrive, AlertTriangle, Download, Eraser,
+  Clock, Shield, HardDrive, AlertTriangle, Download, Eraser, Upload,
 } from "lucide-react";
 
 const DEFAULT_PLATFORM_SETTINGS = {
@@ -43,9 +43,11 @@ const AdminBackup = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [purging, setPurging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [password, setPassword] = useState("");
   const [restoring, setRestoring] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     Promise.all([fetchBackups(1), fetchSettings()]).finally(() => setLoading(false));
@@ -156,6 +158,33 @@ const AdminBackup = () => {
     }
   };
 
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = "";          // reset so same file can be re-selected
+    if (!file) return;
+
+    if (!file.name.endsWith(".json.gz")) {
+      toast.error("Only .json.gz backup files are accepted");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authAxios.post("/admin/backup/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success(`Uploaded: ${res.data.backup.filename}`);
+      fetchBackups(1);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (loading) {
     return (
       <AdminLayout title="Backup & Restore">
@@ -198,6 +227,27 @@ const AdminBackup = () => {
                 <Eraser className="w-4 h-4 mr-2" />
               )}
               Purge Old (&gt;{allStats.retention_days}d)
+            </Button>
+            {/* Hidden file input for upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json.gz"
+              className="hidden"
+              onChange={handleUpload}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Uploading...</>
+              ) : (
+                <><Upload className="w-4 h-4 mr-2" /> Upload Backup</>
+              )}
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? (
@@ -280,9 +330,11 @@ const AdminBackup = () => {
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           b.type === "auto"
                             ? "bg-blue-100 text-blue-700"
+                            : b.type === "uploaded"
+                            ? "bg-emerald-100 text-emerald-700"
                             : "bg-slate-100 text-slate-700"
                         }`}>
-                          {b.type === "auto" ? "Auto" : "Manual"}
+                          {b.type === "auto" ? "Auto" : b.type === "uploaded" ? "Uploaded" : "Manual"}
                         </span>
                       </TableCell>
                       <TableCell className="text-sm">{formatSize(b.size_kb || 0)}</TableCell>
