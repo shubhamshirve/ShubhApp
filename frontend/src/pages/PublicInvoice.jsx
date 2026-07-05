@@ -261,7 +261,12 @@ export default function PublicInvoice() {
   const visibleFields = invoice_settings?.visible_fields || {};
   const taxPercentage = plan?.tax_percentage || 0;
   const taxType = plan?.tax_type || "none";
-  const subtotalAfterDiscount = invoice.base_amount - (invoice.discount || 0);
+
+  // Subtotal = sum of ALL line items' base_amount (includes Previous Pending)
+  const lineItems = invoice.line_items || [];
+  const lineItemsSubtotal = lineItems.reduce((s, item) => s + (item.base_amount || 0), 0);
+  const subtotalAfterDiscount = lineItemsSubtotal - (invoice.discount || 0);
+
   const amountPaid = invoice.amount_paid || 0;
   const balanceDue = Math.max(0, invoice.final_amount - amountPaid);
 
@@ -538,7 +543,7 @@ export default function PublicInvoice() {
                   {/* Subtotal */}
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal</span>
-                    <span>{formatCurrency(invoice.base_amount)}</span>
+                    <span>{formatCurrency(lineItemsSubtotal)}</span>
                   </div>
 
                   {/* Discount */}
@@ -597,14 +602,14 @@ export default function PublicInvoice() {
                     <span className="text-xl font-bold text-slate-800">{formatCurrency(invoice.final_amount)}</span>
                   </div>
 
-                  {/* Partial payment rows */}
-                  {invoice.status === "partial" && amountPaid > 0 && (
+                  {/* Partial payment summary — amount paid & balance due */}
+                  {amountPaid > 0 && invoice.status === "partial" && (
                     <>
-                      <div className="flex justify-between text-emerald-600 text-sm">
+                      <div className="flex justify-between text-emerald-600 text-sm pt-1">
                         <span>Amount Paid</span>
-                        <span>- {formatCurrency(amountPaid)}</span>
+                        <span className="font-medium">- {formatCurrency(amountPaid)}</span>
                       </div>
-                      <div className="flex justify-between items-center pt-2 border-t border-orange-300">
+                      <div className="flex justify-between items-center pt-2 border-t-2 border-orange-400">
                         <span className="text-base font-bold text-orange-700">Balance Due</span>
                         <span className="text-xl font-bold text-orange-700">{formatCurrency(balanceDue)}</span>
                       </div>
@@ -626,8 +631,8 @@ export default function PublicInvoice() {
             </div>
           </div>
 
-          {/* Payment History (partial invoices) */}
-          {invoice.status === "partial" && invoice.payments_received && invoice.payments_received.length > 0 && (
+          {/* Payment History — shown when payments_received is populated */}
+          {invoice.payments_received && invoice.payments_received.length > 0 && (
             <div className="px-6 sm:px-8 py-5 bg-orange-50 border-t border-orange-200">
               <p className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3">Payment History</p>
               <div className="space-y-2">
@@ -645,10 +650,12 @@ export default function PublicInvoice() {
                   );
                 })}
               </div>
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-orange-200 text-sm font-semibold">
-                <span className="text-orange-700">Balance Due</span>
-                <span className="text-orange-700 text-base">{formatCurrency(balanceDue)}</span>
-              </div>
+              {invoice.status === "partial" && balanceDue > 0 && (
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-orange-200 text-sm font-semibold">
+                  <span className="text-orange-700">Balance Due</span>
+                  <span className="text-orange-700 text-base">{formatCurrency(balanceDue)}</span>
+                </div>
+              )}
             </div>
           )}
 
