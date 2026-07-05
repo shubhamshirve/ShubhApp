@@ -546,6 +546,14 @@ class CronJobService:
         
         await self.db.invoices.insert_one(invoice)
 
+        # ── Mark consolidated invoices so they can't be paid separately ────────
+        if pending_numbers:
+            try:
+                from services.invoice_helpers import mark_invoices_consolidated
+                await mark_invoices_consolidated(self.db, pending_numbers, operator["id"], invoice["id"])
+            except Exception as _ce:
+                logger.warning(f"Consolidation marking failed for auto-invoice {invoice.get('id')}: {_ce}")
+
         # ── Sync subscriber plan expiry from this new invoice ─────────────────
         try:
             sub_doc = await self.db.subscribers.find_one({"id": subscriber["id"], "deleted_at": None}, {"_id": 0})
@@ -788,6 +796,14 @@ class CronJobService:
         }
         await self.db.invoices.insert_one(invoice)
         logger.info(f"Created first invoice {invoice['invoice_number']} for {subscriber['name']}")
+
+        # ── Mark consolidated invoices so they can't be paid separately ────────
+        if pending_numbers:
+            try:
+                from services.invoice_helpers import mark_invoices_consolidated
+                await mark_invoices_consolidated(self.db, pending_numbers, operator["id"], invoice["id"])
+            except Exception as _ce:
+                logger.warning(f"Consolidation marking failed for first invoice {invoice.get('id')}: {_ce}")
 
         # ── Deduct wallet fee for first invoice generation ────────────────────
         try:

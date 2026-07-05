@@ -199,7 +199,12 @@ class InvoicePDFService:
             ])
         else:
             for item in line_items:
-                period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
+                if item.get("plan_name") == "Previous Pending":
+                    # Show "Till <date>" instead of a meaningless same-day range
+                    till_date = self._fmt(item.get("service_start_date"))
+                    period = f"Till {till_date}" if till_date else "Carried forward"
+                else:
+                    period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
                 rows.append([
                     item.get("plan_name", "Service"),
                     period,
@@ -467,7 +472,11 @@ class InvoicePDFService:
             ])
         else:
             for idx, item in enumerate(line_items):
-                period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
+                if item.get("plan_name") == "Previous Pending":
+                    till_date = self._fmt(item.get("service_start_date"))
+                    period = f"Till {till_date}" if till_date else "Carried forward"
+                else:
+                    period = f"{self._fmt(item.get('service_start_date'))} – {self._fmt(item.get('service_end_date'))}"
                 rows.append([
                     str(idx + 1),
                     item.get("plan_name", "Service"),

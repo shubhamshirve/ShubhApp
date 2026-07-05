@@ -445,6 +445,7 @@ class InvoiceStatusUpdate(SanitizedModel):
     status: str
     payment_mode: Optional[str] = None
     payment_date: Optional[datetime] = None
+    amount_paid: Optional[float] = None  # For partial payments
 
 
 class InvoiceResponse(SanitizedModel):
@@ -460,7 +461,7 @@ class InvoiceResponse(SanitizedModel):
     final_amount: float
     due_date: datetime
     invoice_date: Optional[datetime] = None
-    status: str  # pending, paid, overdue, cancelled
+    status: str  # pending, partial, paid, overdue, cancelled, consolidated
     payment_id: Optional[str] = None
     payment_mode: Optional[str] = None
     paid_at: Optional[datetime] = None
@@ -468,6 +469,9 @@ class InvoiceResponse(SanitizedModel):
     cancelled_by_role: Optional[str] = None
     operator_id: str
     created_at: datetime
+    amount_paid: float = 0.0
+    payments_received: List[dict] = Field(default_factory=list)
+    consolidated_into: Optional[str] = None  # invoice_id of newer invoice this was rolled into
 
 
 class PaymentLinkCreate(SanitizedModel):

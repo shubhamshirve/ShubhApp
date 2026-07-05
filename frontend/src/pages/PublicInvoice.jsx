@@ -38,6 +38,8 @@ const StatusBadge = ({ status }) => {
     paid: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", icon: CheckCircle2, label: "Paid" },
     overdue: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: AlertCircle, label: "Overdue" },
     cancelled: { bg: "bg-slate-50 border-slate-200", text: "text-slate-500", icon: XCircle, label: "Cancelled" },
+    partial: { bg: "bg-orange-50 border-orange-200", text: "text-orange-700", icon: Clock, label: "Partially Paid" },
+    consolidated: { bg: "bg-slate-50 border-slate-200", text: "text-slate-500", icon: XCircle, label: "Consolidated" },
   };
   const c = config[status] || config.pending;
   const Icon = c.icon;
@@ -251,18 +253,20 @@ export default function PublicInvoice() {
   }
 
   const { invoice, operator, subscriber, plan, invoice_settings, payment } = data;
-  const isUnpaid = invoice.status === "pending" || invoice.status === "overdue";
+  const isUnpaid = invoice.status === "pending" || invoice.status === "overdue" || invoice.status === "partial";
   const acceptPaymentGateway = invoice_settings?.accept_payment_gateway !== false && payment?.enabled;
   const acceptUpi = invoice_settings?.accept_upi === true && operator?.upi_id;
-  const showPayButton = isUnpaid && (acceptPaymentGateway || acceptUpi);
+  const showPayButton = isUnpaid && invoice.status !== "partial" && (acceptPaymentGateway || acceptUpi);
   const showGst = invoice_settings?.show_gst !== false;
   const visibleFields = invoice_settings?.visible_fields || {};
   const taxPercentage = plan?.tax_percentage || 0;
   const taxType = plan?.tax_type || "none";
   const subtotalAfterDiscount = invoice.base_amount - (invoice.discount || 0);
+  const amountPaid = invoice.amount_paid || 0;
+  const balanceDue = Math.max(0, invoice.final_amount - amountPaid);
 
   // Check if overdue
-  const isOverdue = isUnpaid && new Date(invoice.due_date) < new Date();
+  const isOverdue = (invoice.status === "pending" || invoice.status === "overdue") && new Date(invoice.due_date) < new Date();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
@@ -462,22 +466,50 @@ export default function PublicInvoice() {
               </thead>
               <tbody>
                 {invoice.line_items && invoice.line_items.length > 0 ? (
-                  invoice.line_items.map((item, idx) => (
-                    <tr key={idx} className="border-b border-slate-100 last:border-0">
-                      <td className="py-4">
-                        <p className="font-medium text-slate-800">{item.plan_name}</p>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                          {formatDate(item.service_start_date)} to {formatDate(item.service_end_date)}
-                        </p>
-                        {(item.description || item.plan_description) && (
-                          <p className="text-xs text-slate-400 mt-1 italic">{item.description || item.plan_description}</p>
-                        )}
-                      </td>
-                      <td className="py-4 text-right font-medium text-slate-800">
-                        {formatCurrency(item.base_amount)}
-                      </td>
-                    </tr>
-                  ))
+                  invoice.line_items.map((item, idx) => {
+                    const isPreviousPending = item.plan_name === "Previous Pending";
+                    return (
+                      <tr key={idx} className="border-b border-slate-100 last:border-0">
+                        <td className="py-4">
+                          <p className={`font-medium ${isPreviousPending ? "text-amber-700" : "text-slate-800"}`}>
+                            {item.plan_name}
+                          </p>
+                          <p className="text-sm text-slate-500 mt-0.5">
+                            {isPreviousPending
+                              ? `Till ${formatDate(item.service_start_date)}`
+                              : `${formatDate(item.service_start_date)} to ${formatDate(item.service_end_date)}`
+                            }
+                          </p>
+                          {isPreviousPending && item.description && (
+                            <p className="text-xs text-slate-400 mt-1 italic">
+                              {item.description.split(",").map((num, i, arr) => {
+                                const trimmed = num.trim();
+                                return (
+                                  <span key={i}>
+                                    <a
+                                      href={`/invoice/${trimmed}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:text-blue-700 underline"
+                                    >
+                                      {trimmed}
+                                    </a>
+                                    {i < arr.length - 1 && ", "}
+                                  </span>
+                                );
+                              })}
+                            </p>
+                          )}
+                          {!isPreviousPending && (item.description || item.plan_description) && (
+                            <p className="text-xs text-slate-400 mt-1 italic">{item.description || item.plan_description}</p>
+                          )}
+                        </td>
+                        <td className="py-4 text-right font-medium text-slate-800">
+                          {formatCurrency(item.base_amount)}
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr className="border-b border-slate-100 last:border-0">
                     <td className="py-4">
@@ -564,6 +596,20 @@ export default function PublicInvoice() {
                     <span className="text-base font-bold text-slate-800">Total Amount</span>
                     <span className="text-xl font-bold text-slate-800">{formatCurrency(invoice.final_amount)}</span>
                   </div>
+
+                  {/* Partial payment rows */}
+                  {invoice.status === "partial" && amountPaid > 0 && (
+                    <>
+                      <div className="flex justify-between text-emerald-600 text-sm">
+                        <span>Amount Paid</span>
+                        <span>- {formatCurrency(amountPaid)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-orange-300">
+                        <span className="text-base font-bold text-orange-700">Balance Due</span>
+                        <span className="text-xl font-bold text-orange-700">{formatCurrency(balanceDue)}</span>
+                      </div>
+                    </>
+                  )}
 
                   {/* Amount in words - for Indian format */}
                   {invoice.final_amount > 0 && (

@@ -226,6 +226,7 @@ const OperatorInvoices = () => {
   const [paymentForm, setPaymentForm] = useState({
     payment_mode: "cash",
     payment_date: new Date(),
+    amount_paid: "",
   });
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [bulkFile, setBulkFile] = useState(null);
@@ -564,18 +565,25 @@ const OperatorInvoices = () => {
 
   const openPaymentConfirmDialog = (invoice) => {
     setPaymentTargetInvoice(invoice);
+    const remaining = invoice.final_amount - (invoice.amount_paid || 0);
     setPaymentForm({
       payment_mode: "cash",
       payment_date: new Date(),
+      amount_paid: remaining.toFixed(2),
     });
     setShowPaymentConfirmDialog(true);
   };
 
   const submitPaymentConfirmation = async () => {
     if (!paymentTargetInvoice) return;
-    await handleStatusUpdate(paymentTargetInvoice.id, "paid", {
+    const fullAmount = paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0);
+    const enteredAmount = parseFloat(paymentForm.amount_paid);
+    const isPartial = enteredAmount < fullAmount - 0.001;
+    const statusToSet = isPartial ? "partial" : "paid";
+    await handleStatusUpdate(paymentTargetInvoice.id, statusToSet, {
       payment_mode: paymentForm.payment_mode,
       payment_date: paymentForm.payment_date.toISOString(),
+      amount_paid: enteredAmount,
     });
     setShowPaymentConfirmDialog(false);
     setPaymentTargetInvoice(null);
@@ -818,6 +826,11 @@ const OperatorInvoices = () => {
           {invoice.tax_amount > 0 && (
             <span className="text-xs text-slate-500 block">Tax: ₹{invoice.tax_amount}</span>
           )}
+          {invoice.status === "partial" && invoice.amount_paid > 0 && (
+            <span className="text-xs text-orange-600 block">
+              Paid: ₹{invoice.amount_paid.toLocaleString("en-IN")} · Balance: ₹{(invoice.final_amount - invoice.amount_paid).toLocaleString("en-IN")}
+            </span>
+          )}
         </div>
       </TableCell>
       <TableCell className="text-sm text-slate-500">
@@ -884,19 +897,19 @@ const OperatorInvoices = () => {
                 Send Reminder
               </DropdownMenuItem>
             )}
-            {invoice.status === "pending" && (
+            {(invoice.status === "pending" || invoice.status === "partial") && (
               <DropdownMenuItem onClick={() => openPaymentConfirmDialog(invoice)}>
                 <CheckCircle className="w-4 h-4 mr-2 text-emerald-600" />
-                Mark as Paid
+                {invoice.status === "partial" ? "Record More Payment" : "Mark as Paid"}
               </DropdownMenuItem>
             )}
-            {invoice.status !== "overdue" && invoice.status !== "paid" && (
+            {invoice.status !== "overdue" && invoice.status !== "paid" && invoice.status !== "consolidated" && (
               <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "overdue")}>
                 <AlertTriangle className="w-4 h-4 mr-2 text-red-600" />
                 Mark as Overdue
               </DropdownMenuItem>
             )}
-            {invoice.status !== "cancelled" && invoice.status !== "paid" && (
+            {invoice.status !== "cancelled" && invoice.status !== "paid" && invoice.status !== "consolidated" && (
               <DropdownMenuItem onClick={() => handleStatusUpdate(invoice.id, "cancelled")}>
                 Cancel Invoice
               </DropdownMenuItem>
@@ -913,13 +926,15 @@ const OperatorInvoices = () => {
       pending: { class: "badge-pending", icon: Clock },
       paid: { class: "badge-paid", icon: CheckCircle },
       overdue: { class: "badge-overdue", icon: AlertTriangle },
-      cancelled: { class: "badge-suspended", icon: null }
+      cancelled: { class: "badge-suspended", icon: null },
+      partial: { class: "badge-warning", icon: Clock },
+      consolidated: { class: "badge-suspended", icon: null },
     };
     const { class: badgeClass, icon: Icon } = config[status] || config.pending;
     return (
       <span className={`${badgeClass} flex items-center gap-1`}>
         {Icon && <Icon className="w-3 h-3" />}
-        {status}
+        {status === "partial" ? "Partially Paid" : status === "consolidated" ? "Consolidated" : status}
       </span>
     );
   };
@@ -1528,6 +1543,32 @@ const OperatorInvoices = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
+              {/* Amount field */}
+              <div className="space-y-2">
+                <Label>Amount Received (₹) *</Label>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={paymentTargetInvoice ? (paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0)) : undefined}
+                  value={paymentForm.amount_paid}
+                  onChange={(e) => setPaymentForm(prev => ({ ...prev, amount_paid: e.target.value }))}
+                  placeholder="Enter amount received"
+                />
+                {paymentTargetInvoice && (() => {
+                  const remaining = paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0);
+                  const entered = parseFloat(paymentForm.amount_paid);
+                  if (!isNaN(entered) && entered > 0 && entered < remaining - 0.001) {
+                    return (
+                      <p className="text-xs text-orange-600">
+                        Partial payment — Balance remaining: ₹{(remaining - entered).toFixed(2)}. Invoice will be marked as Partially Paid.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
               <div className="space-y-2">
                 <Label>Payment Mode *</Label>
                 <Select
@@ -1561,8 +1602,17 @@ const OperatorInvoices = () => {
                 <Button type="button" variant="outline" onClick={() => setShowPaymentConfirmDialog(false)}>
                   Cancel
                 </Button>
-                <Button type="button" onClick={submitPaymentConfirmation}>
-                  Confirm Payment
+                <Button
+                  type="button"
+                  onClick={submitPaymentConfirmation}
+                  disabled={!paymentForm.amount_paid || parseFloat(paymentForm.amount_paid) <= 0}
+                >
+                  {(() => {
+                    if (!paymentTargetInvoice) return "Confirm Payment";
+                    const remaining = paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0);
+                    const entered = parseFloat(paymentForm.amount_paid);
+                    return (!isNaN(entered) && entered < remaining - 0.001) ? "Record Partial Payment" : "Confirm Full Payment";
+                  })()}
                 </Button>
               </div>
             </div>

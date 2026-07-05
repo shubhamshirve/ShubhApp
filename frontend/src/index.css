@@ -160,6 +160,10 @@ code, .font-mono {
     @apply bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-medium;
 }
 
+.badge-warning {
+    @apply bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-xs font-medium;
+}
+
 /* Input focus */
 input:focus, select:focus, textarea:focus {
     @apply ring-2 ring-slate-400 ring-offset-2 outline-none;

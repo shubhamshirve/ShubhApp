@@ -35,6 +35,7 @@ from services.invoice_helpers import (
     build_invoice_payload as _build_invoice_payload,
     get_pending_balance_for_subscriber as _get_pending_balance,
     make_previous_pending_line_item as _make_pending_line_item,
+    mark_invoices_consolidated as _mark_consolidated,
 )
 from routers.wallet import get_or_create_wallet, deduct_wallet
 
@@ -2043,6 +2044,13 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
     }
     await db.invoices.insert_one(invoice)
 
+    # Mark consolidated invoices so they cannot be paid separately
+    if pending_numbers:
+        try:
+            await _mark_consolidated(db, pending_numbers, current_user["operator_id"], invoice["id"])
+        except Exception as consolidate_err:
+            logger.warning(f"Invoice consolidation marking failed: {consolidate_err}")
+
     # Sync subscriber.plans from this invoice's line items (no payment dependency)
     try:
         await _sync_subscriber_plans_from_invoice(data.subscriber_id, payload["line_items"])
@@ -2240,7 +2248,7 @@ async def update_invoice_status(
     operator_id = current_user.get("operator_id")
     if operator_id and await check_operator_read_only(operator_id):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
-    if status not in ["pending", "paid", "overdue", "cancelled"]:
+    if status not in ["pending", "paid", "partial", "overdue", "cancelled"]:
         raise HTTPException(status_code=400, detail="Invalid status")
 
     query = {"id": invoice_id, "deleted_at": None}
@@ -2252,6 +2260,8 @@ async def update_invoice_status(
 
     if invoice["status"] == "cancelled":
         raise HTTPException(status_code=400, detail="Cancelled invoice cannot be changed")
+    if invoice["status"] == "consolidated":
+        raise HTTPException(status_code=400, detail="This invoice has been consolidated into a newer invoice and cannot be modified")
     if invoice["status"] == "paid":
         if status == "cancelled" and current_user["role"] == "admin":
             pass
@@ -2262,15 +2272,48 @@ async def update_invoice_status(
 
     now = datetime.now(timezone.utc)
     updates = {"status": status, "updated_at": now.isoformat()}
-    if status == "paid":
+
+    if status in ("paid", "partial"):
         payment_mode = sanitize_text(data.payment_mode or "").lower().replace(" ", "_")
         if payment_mode not in PAYMENT_MODES:
             raise HTTPException(status_code=400, detail="Valid payment mode is required")
         payment_date = data.payment_date or now
+
+        final_amount = invoice.get("final_amount", 0)
+        existing_paid = invoice.get("amount_paid") or 0.0
+
+        if status == "partial":
+            amt = data.amount_paid
+            if not amt or amt <= 0:
+                raise HTTPException(status_code=400, detail="amount_paid must be > 0 for partial payment")
+            if amt >= final_amount:
+                # Treat as full payment
+                status = "paid"
+                updates["status"] = "paid"
+            new_total_paid = round(existing_paid + amt, 2)
+            if new_total_paid >= final_amount:
+                status = "paid"
+                updates["status"] = "paid"
+        else:
+            # Full payment
+            amt = data.amount_paid if (data.amount_paid and data.amount_paid > 0) else final_amount
+            new_total_paid = round(existing_paid + amt, 2)
+
+        # Append to payments_received history
+        payment_record = {
+            "amount": amt,
+            "mode": payment_mode,
+            "date": payment_date.isoformat(),
+        }
+        updates["amount_paid"] = new_total_paid
+        updates["payments_received"] = list(invoice.get("payments_received") or []) + [payment_record]
         updates["payment_mode"] = payment_mode
-        updates["paid_at"] = payment_date.isoformat()
-        updates["cancelled_at"] = None
-        updates["cancelled_by_role"] = None
+
+        if updates["status"] == "paid":
+            updates["paid_at"] = payment_date.isoformat()
+            updates["cancelled_at"] = None
+            updates["cancelled_by_role"] = None
+
     elif status == "cancelled":
         updates["cancelled_at"] = now.isoformat()
         updates["cancelled_by_role"] = current_user["role"]

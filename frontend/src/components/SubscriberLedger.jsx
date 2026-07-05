@@ -348,9 +348,11 @@ export default function SubscriberLedger({ subscriberId, subscriberName, open, o
                                 )}
                               </TableCell>
                               <TableCell className="py-2.5 whitespace-nowrap text-slate-600">
-                                {item.service_start_date
-                                  ? `${fmtDate(item.service_start_date)} – ${fmtDate(item.service_end_date)}`
-                                  : "—"}
+                                {item.plan_name === "Previous Pending"
+                                  ? (item.service_start_date ? `Till ${fmtDate(item.service_start_date)}` : "Carried forward")
+                                  : item.service_start_date
+                                    ? `${fmtDate(item.service_start_date)} – ${fmtDate(item.service_end_date)}`
+                                    : "—"}
                               </TableCell>
                               <TableCell className="py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">
                                 {fmt(inv.final_amount)}

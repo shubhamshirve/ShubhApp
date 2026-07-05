@@ -140,27 +140,66 @@ async def get_pending_balance_for_subscriber(
     exclude_invoice_id: str | None = None,
 ) -> tuple[float, list[str]]:
     """
-    Return (total_pending_amount, [invoice_numbers]) for all unpaid invoices
-    (status = pending | overdue) belonging to this subscriber.
+    Return (total_remaining_amount, [invoice_numbers]) for all unpaid invoices
+    (status = pending | overdue | partial) belonging to this subscriber.
+    For partial invoices, only the remaining balance (final_amount - amount_paid) is summed.
 
-    Pass `exclude_invoice_id` to skip an invoice that is currently being processed
-    (not stored yet, so it won't appear anyway — kept for safety).
+    Pass `exclude_invoice_id` to skip a specific invoice (safety guard).
     """
     query: dict = {
         "subscriber_id": subscriber_id,
         "operator_id": operator_id,
-        "status": {"$in": ["pending", "overdue"]},
+        "status": {"$in": ["pending", "overdue", "partial"]},
         "deleted_at": None,
     }
     if exclude_invoice_id:
         query["id"] = {"$ne": exclude_invoice_id}
 
-    cursor = db.invoices.find(query, {"_id": 0, "final_amount": 1, "invoice_number": 1})
+    cursor = db.invoices.find(query, {"_id": 0, "final_amount": 1, "amount_paid": 1, "invoice_number": 1})
     docs = await cursor.to_list(None)
 
-    total = round(sum(d.get("final_amount", 0) for d in docs), 2)
-    numbers = [d["invoice_number"] for d in docs if d.get("invoice_number")]
-    return total, numbers
+    total = 0.0
+    numbers: list[str] = []
+    for d in docs:
+        remaining = d.get("final_amount", 0) - (d.get("amount_paid") or 0)
+        if remaining > 0:
+            total += remaining
+            if d.get("invoice_number"):
+                numbers.append(d["invoice_number"])
+
+    return round(total, 2), numbers
+
+
+async def mark_invoices_consolidated(
+    db,
+    invoice_numbers: list[str],
+    operator_id: str,
+    new_invoice_id: str,
+) -> None:
+    """
+    Mark a list of invoices (by invoice_number + operator_id) as 'consolidated'.
+    Sets status='consolidated' and consolidated_into=new_invoice_id so they cannot
+    be paid separately. Only affects pending / overdue / partial invoices.
+    """
+    if not invoice_numbers:
+        return
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    await db.invoices.update_many(
+        {
+            "invoice_number": {"$in": invoice_numbers},
+            "operator_id": operator_id,
+            "status": {"$in": ["pending", "overdue", "partial"]},
+            "deleted_at": None,
+        },
+        {
+            "$set": {
+                "status": "consolidated",
+                "consolidated_into": new_invoice_id,
+                "updated_at": now,
+            }
+        },
+    )
 
 
 def make_previous_pending_line_item(pending_amount: float, invoice_numbers: list[str], now_iso: str) -> dict:
