@@ -1882,22 +1882,59 @@ async def get_subscriber_ledger(subscriber_id: str, current_user: dict = Depends
 
     invoices = [_parse_invoice_document(inv) for inv in raw_invoices]
 
-    # Financial summary
-    total_invoiced = sum(inv.get("final_amount", 0) for inv in raw_invoices)
-    total_paid     = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "paid")
-    total_pending  = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "pending")
-    total_overdue  = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "overdue")
+    # Financial summary — include partial payments in totals
+    total_invoiced   = sum(inv.get("final_amount", 0) for inv in raw_invoices)
+    total_paid       = sum(inv.get("final_amount", 0) for inv in raw_invoices if inv.get("status") == "paid")
+    total_paid      += sum(inv.get("amount_paid", 0) or 0 for inv in raw_invoices if inv.get("status") == "partial")
+    total_pending    = sum(
+        (inv.get("final_amount", 0) - (inv.get("amount_paid", 0) or 0))
+        for inv in raw_invoices if inv.get("status") in ("pending", "partial")
+    )
+    total_overdue    = sum(
+        (inv.get("final_amount", 0) - (inv.get("amount_paid", 0) or 0))
+        for inv in raw_invoices if inv.get("status") == "overdue"
+    )
 
-    paid_invoices = [inv for inv in raw_invoices if inv.get("status") == "paid" and inv.get("paid_at")]
+    # Build last_payment by scanning payments_received across all invoices
+    all_payments = []
+    for inv in raw_invoices:
+        inv_num = inv.get("invoice_number", "")
+        # Fully paid invoices — treat paid_at as a single payment record
+        if inv.get("status") == "paid" and inv.get("paid_at"):
+            # Use payments_received if present, otherwise synthesise one entry
+            pr = inv.get("payments_received") or []
+            if pr:
+                for rec in pr:
+                    all_payments.append({
+                        "date": rec.get("date"),
+                        "mode": rec.get("mode") or inv.get("payment_mode"),
+                        "amount": rec.get("amount"),
+                        "invoice_number": inv_num,
+                    })
+            else:
+                all_payments.append({
+                    "date": _to_ymd(inv.get("paid_at")),
+                    "mode": inv.get("payment_mode"),
+                    "amount": inv.get("final_amount"),
+                    "invoice_number": inv_num,
+                })
+        # Partial invoices — list each partial record
+        elif inv.get("status") == "partial":
+            for rec in (inv.get("payments_received") or []):
+                all_payments.append({
+                    "date": rec.get("date"),
+                    "mode": rec.get("mode"),
+                    "amount": rec.get("amount"),
+                    "invoice_number": inv_num,
+                })
+
     last_payment = None
-    if paid_invoices:
-        latest_paid = max(paid_invoices, key=lambda x: x.get("paid_at", ""))
-        last_payment = {
-            "date": _to_ymd(latest_paid.get("paid_at")),
-            "mode": latest_paid.get("payment_mode"),
-            "amount": latest_paid.get("final_amount"),
-            "invoice_number": latest_paid.get("invoice_number"),
-        }
+    if all_payments:
+        last_payment = max(
+            (p for p in all_payments if p.get("date")),
+            key=lambda x: x["date"],
+            default=None,
+        )
 
     return {
         "subscriber": {
@@ -1912,9 +1949,10 @@ async def get_subscriber_ledger(subscriber_id: str, current_user: dict = Depends
             "total_overdue":  round(total_overdue, 2),
             "invoice_count":  len(raw_invoices),
             "paid_count":     len([i for i in raw_invoices if i.get("status") == "paid"]),
-            "pending_count":  len([i for i in raw_invoices if i.get("status") == "pending"]),
+            "pending_count":  len([i for i in raw_invoices if i.get("status") in ("pending", "partial")]),
             "overdue_count":  len([i for i in raw_invoices if i.get("status") == "overdue"]),
             "last_payment":   last_payment,
+            "all_payments":   sorted(all_payments, key=lambda x: x.get("date") or "", reverse=True),
         },
     }
 
@@ -2269,6 +2307,14 @@ async def update_invoice_status(
             raise HTTPException(status_code=403, detail="Paid invoice cannot be changed by operator")
     if status == "cancelled" and invoice["status"] == "paid" and current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can cancel a paid invoice")
+
+    # Check partial payment setting
+    if status == "partial":
+        inv_settings_doc = await db.invoice_settings.find_one(
+            {"operator_id": invoice.get("operator_id") or operator_id}, {"_id": 0}
+        )
+        if inv_settings_doc and inv_settings_doc.get("allow_partial_payments") is False:
+            raise HTTPException(status_code=403, detail="Partial payments are disabled for this account")
 
     now = datetime.now(timezone.utc)
     updates = {"status": status, "updated_at": now.isoformat()}

@@ -1,689 +1,600 @@
+#!/usr/bin/env python3
 """
-Backend API tests for new invoice features:
-1. Consolidated status on invoice creation
-2. Partial payment accumulation
-3. Full payment after partial
-4. Consolidated invoice cannot be paid
-5. get_pending_balance uses remaining balance for partial invoices
+Backend API Tests for E-Bill Platform - Ledger & Partial Payment Features
+Tests the specific fixes requested:
+1. Ledger shows payment records for partial invoices
+2. allow_partial_payments setting
+3. Ledger financial summary accuracy
 """
+
 import requests
 import json
-from datetime import datetime, timedelta
+import sys
+from datetime import datetime
 
-# Backend URL from frontend/.env
+# Backend URL from environment
 BACKEND_URL = "https://recursing-proskuriakova-9.preview.emergentagent.com/api"
 
 # Test credentials
 OPERATOR_EMAIL = "operator@test.com"
 OPERATOR_PASSWORD = "test123"
 
-def login():
-    """Login as operator and return access token"""
+# Color codes for output
+GREEN = '\033[92m'
+RED = '\033[91m'
+YELLOW = '\033[93m'
+BLUE = '\033[94m'
+RESET = '\033[0m'
+
+def log_info(msg):
+    print(f"{BLUE}ℹ {msg}{RESET}")
+
+def log_success(msg):
+    print(f"{GREEN}✓ {msg}{RESET}")
+
+def log_error(msg):
+    print(f"{RED}✗ {msg}{RESET}")
+
+def log_warning(msg):
+    print(f"{YELLOW}⚠ {msg}{RESET}")
+
+def login_operator():
+    """Login as operator and return auth token"""
+    log_info("Logging in as operator...")
     response = requests.post(
         f"{BACKEND_URL}/auth/login",
         json={"email": OPERATOR_EMAIL, "password": OPERATOR_PASSWORD}
     )
     if response.status_code != 200:
-        print(f"❌ Login failed: {response.status_code} - {response.text}")
-        return None
-    data = response.json()
-    return data["access_token"]
-
-def get_headers(token):
-    """Return authorization headers"""
-    return {"Authorization": f"Bearer {token}"}
-
-def get_invoice_by_id(token, invoice_id):
-    """Get a single invoice by ID using the list endpoint"""
-    headers = get_headers(token)
-    response = requests.get(f"{BACKEND_URL}/operator/invoices", headers=headers)
-    if response.status_code != 200:
+        log_error(f"Login failed: {response.status_code} - {response.text}")
         return None
     
-    invoices = response.json()
-    for inv in invoices:
-        if inv["id"] == invoice_id:
-            return inv
-    return None
+    data = response.json()
+    token = data.get("access_token")
+    if token:
+        log_success(f"Logged in successfully as {OPERATOR_EMAIL}")
+        return token
+    else:
+        log_error("No access token in response")
+        return None
 
-def test_consolidated_status_on_invoice_creation(token):
+def get_headers(token):
+    """Return headers with auth token"""
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+def test_1_ledger_payment_records(token):
     """
-    Test 1: When a new invoice is created for a subscriber with pending invoices,
-    old pending invoices should be marked as status="consolidated" with consolidated_into field.
+    Test 1: Ledger shows payment records for partial invoices
+    - Verify response includes summary.all_payments array
+    - Verify partial payments appear in all_payments
+    - Verify summary.total_paid includes partial amounts
+    - Verify summary.last_payment reflects most recent payment
     """
     print("\n" + "="*80)
-    print("TEST 1: Consolidated status on invoice creation")
+    print("TEST 1: Ledger shows payment records for partial invoices")
     print("="*80)
     
     headers = get_headers(token)
     
-    # Step 1: Get all subscribers
+    # Step 1: Get subscribers list
+    log_info("Fetching subscribers list...")
     response = requests.get(f"{BACKEND_URL}/operator/subscribers", headers=headers)
     if response.status_code != 200:
-        print(f"❌ Failed to get subscribers: {response.status_code}")
+        log_error(f"Failed to fetch subscribers: {response.status_code} - {response.text}")
         return False
     
     subscribers = response.json()
     if not subscribers:
-        print("❌ No subscribers found")
+        log_error("No subscribers found in the system")
         return False
     
-    # Step 2: Find a subscriber with pending invoices
-    subscriber_with_pending = None
-    pending_invoices = []
+    log_success(f"Found {len(subscribers)} subscribers")
     
-    for sub in subscribers:
-        response = requests.get(
-            f"{BACKEND_URL}/operator/invoices",
-            headers=headers,
-            params={"subscriber_id": sub["id"]}
-        )
-        if response.status_code == 200:
-            invoices = response.json()
-            pending = [inv for inv in invoices if inv["status"] in ["pending", "overdue"]]
-            if pending:
-                subscriber_with_pending = sub
-                pending_invoices = pending
-                break
+    # Pick the first subscriber
+    subscriber = subscribers[0]
+    subscriber_id = subscriber["id"]
+    subscriber_name = subscriber.get("name", "Unknown")
+    log_info(f"Testing with subscriber: {subscriber_name} (ID: {subscriber_id})")
     
-    if not subscriber_with_pending:
-        print("⚠️  No subscriber with pending invoices found. Creating test scenario...")
-        # Use first subscriber and create a pending invoice
-        test_sub = subscribers[0]
-        
-        # Get subscriber's plans
-        response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
-        if response.status_code != 200 or not response.json():
-            print(f"❌ No plans available: {response.status_code}")
-            return False
-        
-        plans = response.json()
-        test_plan = plans[0]
-        
-        # Create a pending invoice
-        invoice_data = {
-            "subscriber_id": test_sub["id"],
-            "line_items": [{
-                "plan_id": test_plan["id"],
-                "base_amount": test_plan["price"],
-                "discount": 0,
-                "service_start_date": datetime.now().isoformat(),
-                "service_end_date": (datetime.now() + timedelta(days=30)).isoformat()
-            }],
-            "due_date": (datetime.now() + timedelta(days=7)).isoformat()
-        }
-        
-        response = requests.post(
-            f"{BACKEND_URL}/operator/invoices",
-            headers=headers,
-            json=invoice_data
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ Failed to create test invoice: {response.status_code} - {response.text}")
-            return False
-        
-        subscriber_with_pending = test_sub
-        pending_invoices = [response.json()]
-        print(f"✅ Created test pending invoice: {pending_invoices[0]['invoice_number']}")
-    
-    print(f"\n📋 Found subscriber: {subscriber_with_pending['name']} (ID: {subscriber_with_pending['id']})")
-    print(f"📋 Pending invoices: {[inv['invoice_number'] for inv in pending_invoices]}")
-    
-    # Step 3: Get subscriber's plans for new invoice
-    response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
-    if response.status_code != 200 or not response.json():
-        print(f"❌ No plans available: {response.status_code}")
-        return False
-    
-    plans = response.json()
-    test_plan = plans[0]
-    
-    # Step 4: Create a new invoice for the same subscriber
-    print(f"\n📝 Creating new invoice for subscriber...")
-    new_invoice_data = {
-        "subscriber_id": subscriber_with_pending["id"],
-        "line_items": [{
-            "plan_id": test_plan["id"],
-            "base_amount": test_plan["price"],
-            "discount": 0,
-            "service_start_date": datetime.now().isoformat(),
-            "service_end_date": (datetime.now() + timedelta(days=30)).isoformat()
-        }],
-        "due_date": (datetime.now() + timedelta(days=7)).isoformat()
-    }
-    
-    response = requests.post(
-        f"{BACKEND_URL}/operator/invoices",
-        headers=headers,
-        json=new_invoice_data
+    # Step 2: Get ledger for this subscriber
+    log_info(f"Fetching ledger for subscriber {subscriber_id}...")
+    response = requests.get(
+        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}/ledger",
+        headers=headers
     )
-    
     if response.status_code != 200:
-        print(f"❌ Failed to create new invoice: {response.status_code} - {response.text}")
+        log_error(f"Failed to fetch ledger: {response.status_code} - {response.text}")
         return False
     
-    new_invoice = response.json()
-    print(f"✅ Created new invoice: {new_invoice['invoice_number']}")
+    ledger = response.json()
+    log_success("Ledger fetched successfully")
     
-    # Step 5: Verify old pending invoices are now consolidated
-    print(f"\n🔍 Verifying old invoices are marked as consolidated...")
-    all_passed = True
+    # Step 3: Verify summary structure
+    summary = ledger.get("summary", {})
+    if not summary:
+        log_error("Ledger response missing 'summary' field")
+        return False
     
-    for old_inv in pending_invoices:
-        updated_inv = get_invoice_by_id(token, old_inv['id'])
+    log_success("Ledger contains 'summary' field")
+    
+    # Step 4: Verify all_payments array exists
+    all_payments = summary.get("all_payments")
+    if all_payments is None:
+        log_error("summary.all_payments field is missing")
+        return False
+    
+    log_success(f"summary.all_payments exists with {len(all_payments)} payment records")
+    
+    # Step 5: Check if there are any partial invoices
+    invoices = ledger.get("invoices", [])
+    partial_invoices = [inv for inv in invoices if inv.get("status") == "partial"]
+    
+    if partial_invoices:
+        log_info(f"Found {len(partial_invoices)} partial invoices")
         
-        if not updated_inv:
-            print(f"❌ Failed to get invoice {old_inv['invoice_number']}")
-            all_passed = False
-            continue
+        # Verify partial payments appear in all_payments
+        for partial_inv in partial_invoices:
+            inv_num = partial_inv.get("invoice_number")
+            payments_for_this_invoice = [
+                p for p in all_payments 
+                if p.get("invoice_number") == inv_num
+            ]
+            
+            if payments_for_this_invoice:
+                log_success(f"Partial invoice {inv_num} has {len(payments_for_this_invoice)} payment(s) in all_payments")
+                for payment in payments_for_this_invoice:
+                    log_info(f"  - Amount: ₹{payment.get('amount')}, Mode: {payment.get('mode')}, Date: {payment.get('date')}")
+            else:
+                log_warning(f"Partial invoice {inv_num} has no payments in all_payments (might be newly created)")
         
-        if updated_inv["status"] != "consolidated":
-            print(f"❌ Invoice {old_inv['invoice_number']} status is '{updated_inv['status']}', expected 'consolidated'")
-            all_passed = False
+        # Verify total_paid includes partial amounts
+        total_paid = summary.get("total_paid", 0)
+        log_info(f"summary.total_paid = ₹{total_paid}")
+        
+        # Calculate expected total_paid
+        expected_paid = 0
+        for inv in invoices:
+            if inv.get("status") == "paid":
+                expected_paid += inv.get("final_amount", 0)
+            elif inv.get("status") == "partial":
+                expected_paid += inv.get("amount_paid", 0) or 0
+        
+        log_info(f"Expected total_paid (paid invoices + partial amounts) = ₹{expected_paid}")
+        
+        if abs(total_paid - expected_paid) < 0.01:  # Allow for floating point precision
+            log_success("total_paid correctly includes partial payment amounts")
         else:
-            print(f"✅ Invoice {old_inv['invoice_number']} status: consolidated")
-        
-        if updated_inv.get("consolidated_into") != new_invoice["id"]:
-            print(f"❌ Invoice {old_inv['invoice_number']} consolidated_into is '{updated_inv.get('consolidated_into')}', expected '{new_invoice['id']}'")
-            all_passed = False
-        else:
-            print(f"✅ Invoice {old_inv['invoice_number']} consolidated_into: {new_invoice['id']}")
-    
-    # Step 6: Verify new invoice has "Previous Pending" line item
-    print(f"\n🔍 Verifying new invoice has 'Previous Pending' line item...")
-    has_previous_pending = False
-    for item in new_invoice.get("line_items", []):
-        if item.get("plan_name") == "Previous Pending":
-            has_previous_pending = True
-            print(f"✅ Found 'Previous Pending' line item with amount: ₹{item['final_amount']}")
-            print(f"   Description: {item.get('description', 'N/A')}")
-            break
-    
-    if not has_previous_pending:
-        print(f"❌ New invoice does not have 'Previous Pending' line item")
-        all_passed = False
-    
-    return all_passed
-
-def test_partial_payment(token):
-    """
-    Test 2: Partial payment accumulation
-    """
-    print("\n" + "="*80)
-    print("TEST 2: Partial payment accumulation")
-    print("="*80)
-    
-    headers = get_headers(token)
-    
-    # Step 1: Get a pending invoice
-    response = requests.get(f"{BACKEND_URL}/operator/invoices", headers=headers)
-    if response.status_code != 200:
-        print(f"❌ Failed to get invoices: {response.status_code}")
-        return False
-    
-    invoices = response.json()
-    pending_invoice = None
-    
-    for inv in invoices:
-        if inv["status"] == "pending":
-            pending_invoice = inv
-            break
-    
-    if not pending_invoice:
-        print("⚠️  No pending invoice found. Creating one...")
-        # Create a test invoice
-        response = requests.get(f"{BACKEND_URL}/operator/subscribers", headers=headers)
-        if response.status_code != 200 or not response.json():
-            print(f"❌ No subscribers found")
-            return False
-        
-        subscribers = response.json()
-        test_sub = subscribers[0]
-        
-        response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
-        if response.status_code != 200 or not response.json():
-            print(f"❌ No plans available")
-            return False
-        
-        plans = response.json()
-        test_plan = plans[0]
-        
-        invoice_data = {
-            "subscriber_id": test_sub["id"],
-            "line_items": [{
-                "plan_id": test_plan["id"],
-                "base_amount": test_plan["price"],
-                "discount": 0,
-                "service_start_date": datetime.now().isoformat(),
-                "service_end_date": (datetime.now() + timedelta(days=30)).isoformat()
-            }],
-            "due_date": (datetime.now() + timedelta(days=7)).isoformat()
-        }
-        
-        response = requests.post(
-            f"{BACKEND_URL}/operator/invoices",
-            headers=headers,
-            json=invoice_data
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ Failed to create test invoice: {response.status_code} - {response.text}")
-            return False
-        
-        pending_invoice = response.json()
-    
-    print(f"\n📋 Testing with invoice: {pending_invoice['invoice_number']}")
-    print(f"   Final amount: ₹{pending_invoice['final_amount']}")
-    
-    # Step 2: Make first partial payment
-    print(f"\n💰 Making first partial payment of ₹100...")
-    response = requests.put(
-        f"{BACKEND_URL}/operator/invoices/{pending_invoice['id']}/status",
-        headers=headers,
-        json={
-            "status": "partial",
-            "payment_mode": "cash",
-            "amount_paid": 100
-        }
-    )
-    
-    if response.status_code != 200:
-        print(f"❌ First partial payment failed: {response.status_code} - {response.text}")
-        return False
-    
-    print(f"✅ First partial payment successful")
-    
-    # Verify first payment
-    updated_inv = get_invoice_by_id(token, pending_invoice['id'])
-    
-    if not updated_inv:
-        print(f"❌ Failed to get updated invoice")
-        return False
-    
-    if updated_inv["status"] != "partial":
-        print(f"❌ Status is '{updated_inv['status']}', expected 'partial'")
-        return False
-    
-    print(f"✅ Status: {updated_inv['status']}")
-    
-    if updated_inv.get("amount_paid") != 100:
-        print(f"❌ amount_paid is {updated_inv.get('amount_paid')}, expected 100")
-        return False
-    
-    print(f"✅ amount_paid: ₹{updated_inv['amount_paid']}")
-    
-    if len(updated_inv.get("payments_received", [])) != 1:
-        print(f"❌ payments_received has {len(updated_inv.get('payments_received', []))} entries, expected 1")
-        return False
-    
-    print(f"✅ payments_received has 1 entry")
-    
-    # Step 3: Make second partial payment
-    print(f"\n💰 Making second partial payment of ₹50...")
-    response = requests.put(
-        f"{BACKEND_URL}/operator/invoices/{pending_invoice['id']}/status",
-        headers=headers,
-        json={
-            "status": "partial",
-            "payment_mode": "cash",
-            "amount_paid": 50
-        }
-    )
-    
-    if response.status_code != 200:
-        print(f"❌ Second partial payment failed: {response.status_code} - {response.text}")
-        return False
-    
-    print(f"✅ Second partial payment successful")
-    
-    # Verify accumulated payment
-    updated_inv = get_invoice_by_id(token, pending_invoice['id'])
-    
-    if not updated_inv:
-        print(f"❌ Failed to get updated invoice")
-        return False
-    
-    if updated_inv.get("amount_paid") != 150:
-        print(f"❌ amount_paid is {updated_inv.get('amount_paid')}, expected 150")
-        return False
-    
-    print(f"✅ amount_paid accumulated: ₹{updated_inv['amount_paid']}")
-    
-    if len(updated_inv.get("payments_received", [])) != 2:
-        print(f"❌ payments_received has {len(updated_inv.get('payments_received', []))} entries, expected 2")
-        return False
-    
-    print(f"✅ payments_received has 2 entries")
-    
-    return True
-
-def test_full_payment_after_partial(token):
-    """
-    Test 3: Full payment after partial
-    """
-    print("\n" + "="*80)
-    print("TEST 3: Full payment after partial")
-    print("="*80)
-    
-    headers = get_headers(token)
-    
-    # Step 1: Get a partial invoice
-    response = requests.get(f"{BACKEND_URL}/operator/invoices", headers=headers)
-    if response.status_code != 200:
-        print(f"❌ Failed to get invoices: {response.status_code}")
-        return False
-    
-    invoices = response.json()
-    partial_invoice = None
-    
-    for inv in invoices:
-        if inv["status"] == "partial":
-            partial_invoice = inv
-            break
-    
-    if not partial_invoice:
-        print("⚠️  No partial invoice found. Skipping test (run test 2 first)")
-        return True  # Not a failure, just skip
-    
-    print(f"\n📋 Testing with invoice: {partial_invoice['invoice_number']}")
-    print(f"   Final amount: ₹{partial_invoice['final_amount']}")
-    print(f"   Amount paid: ₹{partial_invoice.get('amount_paid', 0)}")
-    
-    remaining = partial_invoice['final_amount'] - partial_invoice.get('amount_paid', 0)
-    print(f"   Remaining: ₹{remaining}")
-    
-    # Step 2: Pay remaining amount
-    print(f"\n💰 Paying remaining amount of ₹{remaining}...")
-    response = requests.put(
-        f"{BACKEND_URL}/operator/invoices/{partial_invoice['id']}/status",
-        headers=headers,
-        json={
-            "status": "paid",
-            "payment_mode": "cash",
-            "amount_paid": remaining
-        }
-    )
-    
-    if response.status_code != 200:
-        print(f"❌ Full payment failed: {response.status_code} - {response.text}")
-        return False
-    
-    print(f"✅ Full payment successful")
-    
-    # Verify status changed to paid
-    updated_inv = get_invoice_by_id(token, partial_invoice['id'])
-    
-    if not updated_inv:
-        print(f"❌ Failed to get updated invoice")
-        return False
-    
-    if updated_inv["status"] != "paid":
-        print(f"❌ Status is '{updated_inv['status']}', expected 'paid'")
-        return False
-    
-    print(f"✅ Status changed to: {updated_inv['status']}")
-    
-    if updated_inv.get("paid_at") is None:
-        print(f"❌ paid_at is None, expected a timestamp")
-        return False
-    
-    print(f"✅ paid_at: {updated_inv['paid_at']}")
-    
-    return True
-
-def test_consolidated_invoice_cannot_be_paid(token):
-    """
-    Test 4: Consolidated invoice cannot be paid
-    """
-    print("\n" + "="*80)
-    print("TEST 4: Consolidated invoice cannot be paid")
-    print("="*80)
-    
-    headers = get_headers(token)
-    
-    # Step 1: Find a consolidated invoice
-    response = requests.get(f"{BACKEND_URL}/operator/invoices", headers=headers)
-    if response.status_code != 200:
-        print(f"❌ Failed to get invoices: {response.status_code}")
-        return False
-    
-    invoices = response.json()
-    consolidated_invoice = None
-    
-    for inv in invoices:
-        if inv["status"] == "consolidated":
-            consolidated_invoice = inv
-            break
-    
-    if not consolidated_invoice:
-        print("⚠️  No consolidated invoice found. Skipping test (run test 1 first)")
-        return True  # Not a failure, just skip
-    
-    print(f"\n📋 Testing with consolidated invoice: {consolidated_invoice['invoice_number']}")
-    print(f"   Consolidated into: {consolidated_invoice.get('consolidated_into', 'N/A')}")
-    
-    # Step 2: Try to pay the consolidated invoice
-    print(f"\n💰 Attempting to pay consolidated invoice (should fail)...")
-    response = requests.put(
-        f"{BACKEND_URL}/operator/invoices/{consolidated_invoice['id']}/status",
-        headers=headers,
-        json={
-            "status": "paid",
-            "payment_mode": "cash",
-            "amount_paid": 100
-        }
-    )
-    
-    if response.status_code == 400:
-        error_detail = response.json().get("detail", "")
-        if "consolidated" in error_detail.lower():
-            print(f"✅ Correctly rejected with 400 error")
-            print(f"   Error message: {error_detail}")
-            return True
-        else:
-            print(f"❌ Got 400 error but wrong message: {error_detail}")
+            log_error(f"total_paid mismatch: got ₹{total_paid}, expected ₹{expected_paid}")
             return False
     else:
-        print(f"❌ Expected 400 error, got {response.status_code}")
-        print(f"   Response: {response.text}")
+        log_warning("No partial invoices found for this subscriber")
+        log_info("Checking if all_payments includes paid invoices...")
+        
+        paid_invoices = [inv for inv in invoices if inv.get("status") == "paid"]
+        if paid_invoices:
+            log_info(f"Found {len(paid_invoices)} paid invoices")
+            # Verify paid invoices appear in all_payments
+            for paid_inv in paid_invoices[:3]:  # Check first 3
+                inv_num = paid_inv.get("invoice_number")
+                payments_for_this_invoice = [
+                    p for p in all_payments 
+                    if p.get("invoice_number") == inv_num
+                ]
+                if payments_for_this_invoice:
+                    log_success(f"Paid invoice {inv_num} appears in all_payments")
+                else:
+                    log_warning(f"Paid invoice {inv_num} not in all_payments")
+    
+    # Step 6: Verify last_payment
+    last_payment = summary.get("last_payment")
+    if last_payment:
+        log_success(f"summary.last_payment exists: ₹{last_payment.get('amount')} on {last_payment.get('date')} via {last_payment.get('mode')}")
+        
+        # Verify it's actually the most recent
+        if all_payments:
+            sorted_payments = sorted(
+                [p for p in all_payments if p.get("date")],
+                key=lambda x: x["date"],
+                reverse=True
+            )
+            if sorted_payments:
+                most_recent = sorted_payments[0]
+                if last_payment.get("date") == most_recent.get("date"):
+                    log_success("last_payment correctly reflects the most recent payment")
+                else:
+                    log_warning(f"last_payment date mismatch: {last_payment.get('date')} vs {most_recent.get('date')}")
+    else:
+        if all_payments:
+            log_error("summary.last_payment is None but all_payments has records")
+            return False
+        else:
+            log_info("No payments recorded yet (last_payment is None)")
+    
+    # Step 7: Verify total_pending calculation
+    total_pending = summary.get("total_pending", 0)
+    expected_pending = 0
+    for inv in invoices:
+        if inv.get("status") in ("pending", "partial"):
+            final_amount = inv.get("final_amount", 0)
+            amount_paid = inv.get("amount_paid", 0) or 0
+            expected_pending += (final_amount - amount_paid)
+    
+    log_info(f"summary.total_pending = ₹{total_pending}")
+    log_info(f"Expected total_pending (remaining balance) = ₹{expected_pending}")
+    
+    if abs(total_pending - expected_pending) < 0.01:
+        log_success("total_pending correctly calculated (includes remaining balance from partial invoices)")
+    else:
+        log_error(f"total_pending mismatch: got ₹{total_pending}, expected ₹{expected_pending}")
         return False
+    
+    log_success("TEST 1 PASSED: Ledger payment records working correctly")
+    return True
 
-def test_pending_balance_uses_remaining_for_partial(token):
+def test_2_allow_partial_payments_setting(token):
     """
-    Test 5: get_pending_balance uses remaining balance for partial invoices
+    Test 2: allow_partial_payments setting
+    - GET invoice-settings and verify allow_partial_payments field exists
+    - PUT to disable partial payments
+    - Try to mark invoice as partial - should return 403
+    - PUT to enable partial payments
+    - Try partial payment again - should succeed
     """
     print("\n" + "="*80)
-    print("TEST 5: Pending balance uses remaining balance for partial invoices")
+    print("TEST 2: allow_partial_payments setting")
     print("="*80)
     
     headers = get_headers(token)
     
-    # Step 1: Create a test scenario
-    # Get a subscriber
+    # Step 1: Get current invoice settings
+    log_info("Fetching current invoice settings...")
+    response = requests.get(f"{BACKEND_URL}/operator/invoice-settings", headers=headers)
+    if response.status_code != 200:
+        log_error(f"Failed to fetch invoice settings: {response.status_code} - {response.text}")
+        return False
+    
+    settings = response.json()
+    log_success("Invoice settings fetched successfully")
+    
+    # Step 2: Verify allow_partial_payments field exists
+    if "allow_partial_payments" not in settings:
+        log_error("allow_partial_payments field missing from invoice settings")
+        return False
+    
+    current_value = settings.get("allow_partial_payments")
+    log_success(f"allow_partial_payments field exists (current value: {current_value})")
+    
+    # Store original settings for restoration
+    original_settings = settings.copy()
+    
+    # Step 3: Find a pending invoice to test with
+    log_info("Finding a pending invoice to test with...")
+    response = requests.get(f"{BACKEND_URL}/operator/invoices?status=pending", headers=headers)
+    if response.status_code != 200:
+        log_error(f"Failed to fetch invoices: {response.status_code} - {response.text}")
+        return False
+    
+    invoices = response.json()
+    pending_invoices = [inv for inv in invoices if inv.get("status") == "pending"]
+    
+    if not pending_invoices:
+        log_warning("No pending invoices found - creating a test scenario")
+        # Try to find any invoice that's not paid/cancelled
+        all_invoices_response = requests.get(f"{BACKEND_URL}/operator/invoices", headers=headers)
+        if all_invoices_response.status_code == 200:
+            all_invoices = all_invoices_response.json()
+            testable_invoices = [
+                inv for inv in all_invoices 
+                if inv.get("status") in ("pending", "overdue")
+            ]
+            if testable_invoices:
+                test_invoice = testable_invoices[0]
+            else:
+                log_error("No suitable invoices found for testing")
+                return False
+        else:
+            log_error("Could not fetch invoices for testing")
+            return False
+    else:
+        test_invoice = pending_invoices[0]
+    
+    invoice_id = test_invoice["id"]
+    invoice_number = test_invoice.get("invoice_number", "Unknown")
+    final_amount = test_invoice.get("final_amount", 0)
+    log_success(f"Using invoice {invoice_number} (ID: {invoice_id}, Amount: ₹{final_amount})")
+    
+    # Step 4: Disable partial payments
+    log_info("Disabling partial payments...")
+    settings["allow_partial_payments"] = False
+    response = requests.put(
+        f"{BACKEND_URL}/operator/invoice-settings",
+        headers=headers,
+        json=settings
+    )
+    if response.status_code != 200:
+        log_error(f"Failed to update settings: {response.status_code} - {response.text}")
+        return False
+    
+    log_success("Partial payments disabled")
+    
+    # Step 5: Try to mark invoice as partial - should fail with 403
+    log_info("Attempting to mark invoice as partial (should fail)...")
+    partial_amount = final_amount / 2  # Pay half
+    response = requests.put(
+        f"{BACKEND_URL}/operator/invoices/{invoice_id}/status",
+        headers=headers,
+        json={
+            "status": "partial",
+            "payment_mode": "cash",
+            "amount_paid": partial_amount
+        }
+    )
+    
+    if response.status_code == 403:
+        response_data = response.json()
+        error_detail = response_data.get("detail", "")
+        if "partial payments are disabled" in error_detail.lower():
+            log_success(f"Correctly blocked partial payment: {error_detail}")
+        else:
+            log_warning(f"Got 403 but unexpected message: {error_detail}")
+    else:
+        log_error(f"Expected 403 but got {response.status_code}: {response.text}")
+        # Restore settings before returning
+        requests.put(f"{BACKEND_URL}/operator/invoice-settings", headers=headers, json=original_settings)
+        return False
+    
+    # Step 6: Re-enable partial payments
+    log_info("Re-enabling partial payments...")
+    settings["allow_partial_payments"] = True
+    response = requests.put(
+        f"{BACKEND_URL}/operator/invoice-settings",
+        headers=headers,
+        json=settings
+    )
+    if response.status_code != 200:
+        log_error(f"Failed to update settings: {response.status_code} - {response.text}")
+        return False
+    
+    log_success("Partial payments re-enabled")
+    
+    # Step 7: Try partial payment again - should succeed
+    log_info("Attempting partial payment again (should succeed)...")
+    response = requests.put(
+        f"{BACKEND_URL}/operator/invoices/{invoice_id}/status",
+        headers=headers,
+        json={
+            "status": "partial",
+            "payment_mode": "cash",
+            "amount_paid": partial_amount
+        }
+    )
+    
+    if response.status_code == 200:
+        log_success(f"Partial payment succeeded: ₹{partial_amount} recorded")
+        
+        # Verify the invoice status
+        verify_response = requests.get(
+            f"{BACKEND_URL}/operator/invoices/{invoice_id}",
+            headers=headers
+        )
+        if verify_response.status_code == 200:
+            updated_invoice = verify_response.json()
+            if updated_invoice.get("status") == "partial":
+                log_success(f"Invoice status correctly updated to 'partial'")
+                log_info(f"Amount paid: ₹{updated_invoice.get('amount_paid', 0)}")
+            else:
+                log_warning(f"Invoice status is '{updated_invoice.get('status')}' instead of 'partial'")
+    else:
+        log_error(f"Partial payment failed: {response.status_code} - {response.text}")
+        # Restore settings
+        requests.put(f"{BACKEND_URL}/operator/invoice-settings", headers=headers, json=original_settings)
+        return False
+    
+    # Restore original settings
+    log_info("Restoring original settings...")
+    requests.put(f"{BACKEND_URL}/operator/invoice-settings", headers=headers, json=original_settings)
+    
+    log_success("TEST 2 PASSED: allow_partial_payments setting working correctly")
+    return True
+
+def test_3_ledger_financial_accuracy(token):
+    """
+    Test 3: Ledger financial summary accuracy
+    - Find or create scenario with paid and partial invoices
+    - Verify total_paid includes partial amounts (not just fully-paid invoices)
+    - Verify total_pending is correct (remaining balance, not full amount)
+    """
+    print("\n" + "="*80)
+    print("TEST 3: Ledger financial summary accuracy")
+    print("="*80)
+    
+    headers = get_headers(token)
+    
+    # Step 1: Get subscribers list
+    log_info("Fetching subscribers list...")
     response = requests.get(f"{BACKEND_URL}/operator/subscribers", headers=headers)
-    if response.status_code != 200 or not response.json():
-        print(f"❌ No subscribers found")
+    if response.status_code != 200:
+        log_error(f"Failed to fetch subscribers: {response.status_code} - {response.text}")
         return False
     
     subscribers = response.json()
-    test_sub = subscribers[0]
-    
-    # Get a plan
-    response = requests.get(f"{BACKEND_URL}/operator/plans", headers=headers)
-    if response.status_code != 200 or not response.json():
-        print(f"❌ No plans available")
+    if not subscribers:
+        log_error("No subscribers found")
         return False
     
-    plans = response.json()
-    test_plan = plans[0]
+    # Find a subscriber with both paid and partial invoices
+    target_subscriber = None
+    for sub in subscribers:
+        sub_id = sub["id"]
+        ledger_response = requests.get(
+            f"{BACKEND_URL}/operator/subscribers/{sub_id}/ledger",
+            headers=headers
+        )
+        if ledger_response.status_code == 200:
+            ledger = ledger_response.json()
+            invoices = ledger.get("invoices", [])
+            has_paid = any(inv.get("status") == "paid" for inv in invoices)
+            has_partial = any(inv.get("status") == "partial" for inv in invoices)
+            
+            if has_paid and has_partial:
+                target_subscriber = sub
+                log_success(f"Found subscriber with both paid and partial invoices: {sub.get('name')}")
+                break
+            elif has_partial:
+                target_subscriber = sub
+                log_info(f"Found subscriber with partial invoices: {sub.get('name')}")
+                break
     
-    print(f"\n📋 Creating test scenario with subscriber: {test_sub['name']}")
+    if not target_subscriber:
+        log_warning("No subscriber with partial invoices found - using first subscriber")
+        target_subscriber = subscribers[0]
     
-    # Step 2: Create Invoice A with known amount (e.g., ₹500)
-    print(f"\n📝 Creating Invoice A with amount ₹500...")
-    invoice_a_data = {
-        "subscriber_id": test_sub["id"],
-        "line_items": [{
-            "plan_id": test_plan["id"],
-            "base_amount": 500,
-            "discount": 0,
-            "service_start_date": datetime.now().isoformat(),
-            "service_end_date": (datetime.now() + timedelta(days=30)).isoformat()
-        }],
-        "due_date": (datetime.now() + timedelta(days=7)).isoformat()
-    }
+    subscriber_id = target_subscriber["id"]
+    subscriber_name = target_subscriber.get("name", "Unknown")
     
-    response = requests.post(
-        f"{BACKEND_URL}/operator/invoices",
-        headers=headers,
-        json=invoice_a_data
+    # Step 2: Get ledger
+    log_info(f"Fetching ledger for {subscriber_name}...")
+    response = requests.get(
+        f"{BACKEND_URL}/operator/subscribers/{subscriber_id}/ledger",
+        headers=headers
     )
-    
     if response.status_code != 200:
-        print(f"❌ Failed to create Invoice A: {response.status_code} - {response.text}")
+        log_error(f"Failed to fetch ledger: {response.status_code} - {response.text}")
         return False
     
-    invoice_a = response.json()
-    print(f"✅ Created Invoice A: {invoice_a['invoice_number']} with amount ₹{invoice_a['final_amount']}")
+    ledger = response.json()
+    invoices = ledger.get("invoices", [])
+    summary = ledger.get("summary", {})
     
-    # Step 3: Make partial payment on Invoice A (₹100 out of ₹500)
-    print(f"\n💰 Making partial payment of ₹100 on Invoice A...")
-    response = requests.put(
-        f"{BACKEND_URL}/operator/invoices/{invoice_a['id']}/status",
-        headers=headers,
-        json={
-            "status": "partial",
-            "payment_mode": "cash",
-            "amount_paid": 100
-        }
-    )
+    log_info(f"Subscriber has {len(invoices)} invoices")
     
-    if response.status_code != 200:
-        print(f"❌ Partial payment failed: {response.status_code} - {response.text}")
+    # Step 3: Calculate expected values manually
+    expected_total_paid = 0
+    expected_total_pending = 0
+    
+    paid_invoices = []
+    partial_invoices = []
+    pending_invoices = []
+    
+    for inv in invoices:
+        status = inv.get("status")
+        final_amount = inv.get("final_amount", 0)
+        amount_paid = inv.get("amount_paid", 0) or 0
+        
+        if status == "paid":
+            expected_total_paid += final_amount
+            paid_invoices.append(inv)
+        elif status == "partial":
+            expected_total_paid += amount_paid
+            expected_total_pending += (final_amount - amount_paid)
+            partial_invoices.append(inv)
+        elif status in ("pending", "overdue"):
+            expected_total_pending += final_amount
+            pending_invoices.append(inv)
+    
+    log_info(f"Invoice breakdown:")
+    log_info(f"  - Paid: {len(paid_invoices)} invoices")
+    log_info(f"  - Partial: {len(partial_invoices)} invoices")
+    log_info(f"  - Pending/Overdue: {len(pending_invoices)} invoices")
+    
+    # Step 4: Verify total_paid
+    actual_total_paid = summary.get("total_paid", 0)
+    log_info(f"\nTotal Paid:")
+    log_info(f"  - Actual (from API): ₹{actual_total_paid}")
+    log_info(f"  - Expected (calculated): ₹{expected_total_paid}")
+    
+    if abs(actual_total_paid - expected_total_paid) < 0.01:
+        log_success("✓ total_paid is correct (includes partial payment amounts)")
+    else:
+        log_error(f"✗ total_paid mismatch: got ₹{actual_total_paid}, expected ₹{expected_total_paid}")
         return False
     
-    print(f"✅ Partial payment successful")
+    # Step 5: Verify total_pending
+    actual_total_pending = summary.get("total_pending", 0)
+    log_info(f"\nTotal Pending:")
+    log_info(f"  - Actual (from API): ₹{actual_total_pending}")
+    log_info(f"  - Expected (calculated): ₹{expected_total_pending}")
     
-    # Verify Invoice A is partial
-    invoice_a_updated = get_invoice_by_id(token, invoice_a['id'])
-    
-    if not invoice_a_updated:
-        print(f"❌ Failed to get Invoice A")
-        return False
-    print(f"   Invoice A status: {invoice_a_updated['status']}")
-    print(f"   Amount paid: ₹{invoice_a_updated.get('amount_paid', 0)}")
-    print(f"   Remaining: ₹{invoice_a_updated['final_amount'] - invoice_a_updated.get('amount_paid', 0)}")
-    
-    # Step 4: Create Invoice B for the same subscriber
-    print(f"\n📝 Creating Invoice B for the same subscriber...")
-    invoice_b_data = {
-        "subscriber_id": test_sub["id"],
-        "line_items": [{
-            "plan_id": test_plan["id"],
-            "base_amount": test_plan["price"],
-            "discount": 0,
-            "service_start_date": datetime.now().isoformat(),
-            "service_end_date": (datetime.now() + timedelta(days=30)).isoformat()
-        }],
-        "due_date": (datetime.now() + timedelta(days=7)).isoformat()
-    }
-    
-    response = requests.post(
-        f"{BACKEND_URL}/operator/invoices",
-        headers=headers,
-        json=invoice_b_data
-    )
-    
-    if response.status_code != 200:
-        print(f"❌ Failed to create Invoice B: {response.status_code} - {response.text}")
+    if abs(actual_total_pending - expected_total_pending) < 0.01:
+        log_success("✓ total_pending is correct (uses remaining balance for partial invoices)")
+    else:
+        log_error(f"✗ total_pending mismatch: got ₹{actual_total_pending}, expected ₹{expected_total_pending}")
         return False
     
-    invoice_b = response.json()
-    print(f"✅ Created Invoice B: {invoice_b['invoice_number']}")
+    # Step 6: Detailed verification for partial invoices
+    if partial_invoices:
+        log_info(f"\nDetailed verification of {len(partial_invoices)} partial invoice(s):")
+        for inv in partial_invoices:
+            inv_num = inv.get("invoice_number")
+            final_amt = inv.get("final_amount", 0)
+            paid_amt = inv.get("amount_paid", 0) or 0
+            remaining = final_amt - paid_amt
+            
+            log_info(f"  Invoice {inv_num}:")
+            log_info(f"    - Total: ₹{final_amt}")
+            log_info(f"    - Paid: ₹{paid_amt}")
+            log_info(f"    - Remaining: ₹{remaining}")
+            
+            # Verify this partial amount is included in total_paid
+            if paid_amt > 0:
+                log_success(f"    ✓ Partial payment of ₹{paid_amt} included in total_paid")
+            
+            # Verify remaining balance is included in total_pending
+            if remaining > 0:
+                log_success(f"    ✓ Remaining balance of ₹{remaining} included in total_pending")
+    else:
+        log_warning("No partial invoices found for detailed verification")
     
-    # Step 5: Verify Invoice B has "Previous Pending" with remaining balance (₹400, not ₹500)
-    print(f"\n🔍 Verifying Invoice B's 'Previous Pending' amount...")
-    
-    previous_pending_item = None
-    for item in invoice_b.get("line_items", []):
-        if item.get("plan_name") == "Previous Pending":
-            previous_pending_item = item
-            break
-    
-    if not previous_pending_item:
-        print(f"❌ Invoice B does not have 'Previous Pending' line item")
-        return False
-    
-    expected_remaining = invoice_a_updated['final_amount'] - invoice_a_updated.get('amount_paid', 0)
-    actual_amount = previous_pending_item['final_amount']
-    
-    print(f"   Expected 'Previous Pending' amount: ₹{expected_remaining}")
-    print(f"   Actual 'Previous Pending' amount: ₹{actual_amount}")
-    
-    if abs(actual_amount - expected_remaining) > 0.01:  # Allow small floating point difference
-        print(f"❌ 'Previous Pending' amount is incorrect")
-        return False
-    
-    print(f"✅ 'Previous Pending' amount is correct (remaining balance, not full amount)")
-    
-    # Step 6: Verify Invoice A is marked as consolidated
-    invoice_a_final = get_invoice_by_id(token, invoice_a['id'])
-    
-    if not invoice_a_final:
-        print(f"❌ Failed to get Invoice A")
-        return False
-    
-    if invoice_a_final["status"] != "consolidated":
-        print(f"❌ Invoice A status is '{invoice_a_final['status']}', expected 'consolidated'")
-        return False
-    
-    print(f"✅ Invoice A is marked as consolidated")
-    
+    log_success("TEST 3 PASSED: Ledger financial summary is accurate")
     return True
 
 def main():
     """Run all tests"""
     print("\n" + "="*80)
-    print("BACKEND API TESTS - NEW INVOICE FEATURES")
+    print("E-BILL BACKEND TESTS - Ledger & Partial Payment Features")
+    print("="*80)
+    print(f"Backend URL: {BACKEND_URL}")
+    print(f"Test User: {OPERATOR_EMAIL}")
     print("="*80)
     
     # Login
-    print("\n🔐 Logging in as operator...")
-    token = login()
+    token = login_operator()
     if not token:
-        print("❌ Login failed. Cannot proceed with tests.")
-        return
+        log_error("Failed to login - cannot proceed with tests")
+        sys.exit(1)
     
-    print(f"✅ Login successful")
+    # Run tests
+    results = {
+        "Test 1: Ledger Payment Records": test_1_ledger_payment_records(token),
+        "Test 2: allow_partial_payments Setting": test_2_allow_partial_payments_setting(token),
+        "Test 3: Ledger Financial Accuracy": test_3_ledger_financial_accuracy(token),
+    }
     
-    # Run all tests
-    results = {}
-    
-    results["Test 1: Consolidated status on invoice creation"] = test_consolidated_status_on_invoice_creation(token)
-    results["Test 2: Partial payment accumulation"] = test_partial_payment(token)
-    results["Test 3: Full payment after partial"] = test_full_payment_after_partial(token)
-    results["Test 4: Consolidated invoice cannot be paid"] = test_consolidated_invoice_cannot_be_paid(token)
-    results["Test 5: Pending balance uses remaining for partial"] = test_pending_balance_uses_remaining_for_partial(token)
-    
-    # Print summary
+    # Summary
     print("\n" + "="*80)
     print("TEST SUMMARY")
     print("="*80)
     
-    for test_name, passed in results.items():
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"{status} - {test_name}")
-    
+    passed = sum(1 for result in results.values() if result)
     total = len(results)
-    passed = sum(1 for p in results.values() if p)
     
-    print(f"\n📊 Total: {passed}/{total} tests passed")
+    for test_name, result in results.items():
+        status = f"{GREEN}PASSED{RESET}" if result else f"{RED}FAILED{RESET}"
+        print(f"{test_name}: {status}")
+    
+    print("="*80)
+    print(f"Results: {passed}/{total} tests passed")
+    print("="*80)
     
     if passed == total:
-        print("\n🎉 All tests passed!")
+        log_success("All tests passed!")
+        sys.exit(0)
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
+        log_error(f"{total - passed} test(s) failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

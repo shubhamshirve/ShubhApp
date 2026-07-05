@@ -38,6 +38,7 @@ def normalize_invoice_settings(settings: Optional[Dict[str, Any]], operator: Opt
         "show_gst": settings.get("show_gst", True),
         "accept_payment_gateway": settings.get("accept_payment_gateway", True),
         "accept_upi": settings.get("accept_upi", False),
+        "allow_partial_payments": settings.get("allow_partial_payments", True),
         "invoice_footer": settings.get("invoice_footer"),
         "terms_conditions": settings.get("terms_conditions"),
         "invoice_template": settings.get("invoice_template", "classic"),

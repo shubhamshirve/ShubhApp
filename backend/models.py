@@ -680,6 +680,7 @@ class InvoiceCustomization(SanitizedModel):
     show_gst: bool = True
     accept_payment_gateway: bool = True
     accept_upi: bool = False
+    allow_partial_payments: bool = True
     terms_conditions: Optional[str] = None
     invoice_template: str = "classic"  # "classic" or "modern"
     visible_fields: Dict[str, bool] = Field(default_factory=lambda: {

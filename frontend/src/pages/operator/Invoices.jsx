@@ -578,7 +578,8 @@ const OperatorInvoices = () => {
     if (!paymentTargetInvoice) return;
     const fullAmount = paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0);
     const enteredAmount = parseFloat(paymentForm.amount_paid);
-    const isPartial = enteredAmount < fullAmount - 0.001;
+    const partialAllowed = invoiceSettings?.allow_partial_payments !== false;
+    const isPartial = partialAllowed && enteredAmount < fullAmount - 0.001;
     const statusToSet = isPartial ? "partial" : "paid";
     await handleStatusUpdate(paymentTargetInvoice.id, statusToSet, {
       payment_mode: paymentForm.payment_mode,
@@ -827,9 +828,19 @@ const OperatorInvoices = () => {
             <span className="text-xs text-slate-500 block">Tax: ₹{invoice.tax_amount}</span>
           )}
           {invoice.status === "partial" && invoice.amount_paid > 0 && (
-            <span className="text-xs text-orange-600 block">
-              Paid: ₹{invoice.amount_paid.toLocaleString("en-IN")} · Balance: ₹{(invoice.final_amount - invoice.amount_paid).toLocaleString("en-IN")}
-            </span>
+            <>
+              <span className="text-xs text-orange-600 block">
+                Paid: ₹{invoice.amount_paid.toLocaleString("en-IN")} · Balance: ₹{(invoice.final_amount - invoice.amount_paid).toLocaleString("en-IN")}
+              </span>
+              {(invoice.payments_received || []).map((rec, ri) => {
+                const modeLabels = { cash: "Cash", own_upi: "UPI", bank_transfer: "Bank Transfer", cheque: "Cheque" };
+                return (
+                  <span key={ri} className="text-xs text-slate-400 block">
+                    #{ri + 1} ₹{Number(rec.amount).toLocaleString("en-IN")} · {modeLabels[rec.mode] || rec.mode} · {rec.date ? new Date(rec.date).toLocaleDateString("en-GB") : "—"}
+                  </span>
+                );
+              })}
+            </>
           )}
         </div>
       </TableCell>
@@ -1552,10 +1563,17 @@ const OperatorInvoices = () => {
                   step="0.01"
                   max={paymentTargetInvoice ? (paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0)) : undefined}
                   value={paymentForm.amount_paid}
-                  onChange={(e) => setPaymentForm(prev => ({ ...prev, amount_paid: e.target.value }))}
+                  onChange={(e) => {
+                    if (invoiceSettings?.allow_partial_payments === false) return; // locked
+                    setPaymentForm(prev => ({ ...prev, amount_paid: e.target.value }));
+                  }}
+                  readOnly={invoiceSettings?.allow_partial_payments === false}
                   placeholder="Enter amount received"
                 />
-                {paymentTargetInvoice && (() => {
+                {invoiceSettings?.allow_partial_payments === false && (
+                  <p className="text-xs text-slate-500">Partial payments are disabled. Full amount required.</p>
+                )}
+                {invoiceSettings?.allow_partial_payments !== false && paymentTargetInvoice && (() => {
                   const remaining = paymentTargetInvoice.final_amount - (paymentTargetInvoice.amount_paid || 0);
                   const entered = parseFloat(paymentForm.amount_paid);
                   if (!isNaN(entered) && entered > 0 && entered < remaining - 0.001) {

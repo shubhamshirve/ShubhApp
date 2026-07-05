@@ -626,6 +626,32 @@ export default function PublicInvoice() {
             </div>
           </div>
 
+          {/* Payment History (partial invoices) */}
+          {invoice.status === "partial" && invoice.payments_received && invoice.payments_received.length > 0 && (
+            <div className="px-6 sm:px-8 py-5 bg-orange-50 border-t border-orange-200">
+              <p className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3">Payment History</p>
+              <div className="space-y-2">
+                {invoice.payments_received.map((rec, i) => {
+                  const modeLabels = { cash: "Cash", own_upi: "UPI", bank_transfer: "Bank Transfer", cheque: "Cheque" };
+                  return (
+                    <div key={i} className="flex items-center justify-between text-sm bg-white rounded-lg px-4 py-2.5 border border-orange-100">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-medium text-orange-500 bg-orange-100 rounded-full w-5 h-5 flex items-center justify-center">{i + 1}</span>
+                        <span className="text-slate-600">{rec.date ? new Date(rec.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
+                        <span className="text-slate-400 text-xs">{modeLabels[rec.mode] || rec.mode || "—"}</span>
+                      </div>
+                      <span className="font-semibold text-emerald-700">{formatCurrency(rec.amount)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-orange-200 text-sm font-semibold">
+                <span className="text-orange-700">Balance Due</span>
+                <span className="text-orange-700 text-base">{formatCurrency(balanceDue)}</span>
+              </div>
+            </div>
+          )}
+
           {/* Bank Details (if available) */}
           {visibleFields.show_bank_details !== false && (operator.bank_account_name || operator.bank_account_number) && (
             <div className="px-6 sm:px-8 py-5 bg-slate-50 border-t border-slate-200">

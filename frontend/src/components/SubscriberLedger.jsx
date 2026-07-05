@@ -73,10 +73,12 @@ const PAYMENT_MODE_ICONS = {
 
 function StatusBadge({ status }) {
   const map = {
-    paid:      { cls: "bg-green-100 text-green-700 border-green-200",  icon: CheckCircle2,   label: "Paid" },
-    pending:   { cls: "bg-amber-100 text-amber-700 border-amber-200",   icon: Clock,          label: "Pending" },
-    overdue:   { cls: "bg-red-100 text-red-700 border-red-200",         icon: AlertCircle,    label: "Overdue" },
-    cancelled: { cls: "bg-slate-100 text-slate-500 border-slate-200",   icon: XCircle,        label: "Cancelled" },
+    paid:         { cls: "bg-green-100 text-green-700 border-green-200",   icon: CheckCircle2,  label: "Paid" },
+    pending:      { cls: "bg-amber-100 text-amber-700 border-amber-200",    icon: Clock,         label: "Pending" },
+    overdue:      { cls: "bg-red-100 text-red-700 border-red-200",          icon: AlertCircle,   label: "Overdue" },
+    cancelled:    { cls: "bg-slate-100 text-slate-500 border-slate-200",    icon: XCircle,       label: "Cancelled" },
+    partial:      { cls: "bg-orange-100 text-orange-700 border-orange-200", icon: Clock,         label: "Partially Paid" },
+    consolidated: { cls: "bg-slate-100 text-slate-400 border-slate-200",    icon: XCircle,       label: "Consolidated" },
   };
   const { cls, icon: Icon, label } = map[status] || map.pending;
   return (
@@ -333,59 +335,104 @@ export default function SubscriberLedger({ subscriberId, subscriberName, open, o
                             inv.due_date &&
                             new Date(inv.due_date) < new Date()
                           );
+                          const isPartial = inv.status === "partial";
+                          const amountPaid = inv.amount_paid || 0;
+                          const balanceDue = isPartial ? Math.max(0, inv.final_amount - amountPaid) : 0;
+                          const paymentsReceived = inv.payments_received || [];
+
                           return (
-                            <TableRow
-                              key={inv.id}
-                              className={`text-xs ${isOverdue ? "bg-red-50/40" : "hover:bg-slate-50"}`}
-                            >
-                              <TableCell className="py-2.5 font-mono text-blue-600 font-medium whitespace-nowrap">
-                                {inv.invoice_number}
-                              </TableCell>
-                              <TableCell className="py-2.5 max-w-[120px]">
-                                <p className="font-medium text-slate-700 truncate" title={item.plan_name}>{item.plan_name || "—"}</p>
-                                {item.selected_validity && (
-                                  <p className="text-slate-400 text-[11px]">{VALIDITY_LABELS[item.selected_validity] || item.selected_validity}</p>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2.5 whitespace-nowrap text-slate-600">
-                                {item.plan_name === "Previous Pending"
-                                  ? (item.service_start_date ? `Till ${fmtDate(item.service_start_date)}` : "Carried forward")
-                                  : item.service_start_date
-                                    ? `${fmtDate(item.service_start_date)} – ${fmtDate(item.service_end_date)}`
-                                    : "—"}
-                              </TableCell>
-                              <TableCell className="py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">
-                                {fmt(inv.final_amount)}
-                              </TableCell>
-                              <TableCell className={`py-2.5 whitespace-nowrap ${isOverdue ? "text-red-600 font-medium" : "text-slate-600"}`}>
-                                {fmtDate(inv.due_date)}
-                              </TableCell>
-                              <TableCell className="py-2.5">
-                                <StatusBadge status={inv.status} />
-                              </TableCell>
-                              <TableCell className="py-2.5 text-slate-500 whitespace-nowrap">
-                                {inv.paid_at ? fmtDate(inv.paid_at) : "—"}
-                              </TableCell>
-                              <TableCell className="py-2.5">
-                                {inv.payment_mode ? (
-                                  <span className="flex items-center gap-1 text-slate-500">
-                                    <ModeIcon className="w-3.5 h-3.5" />
-                                    {PAYMENT_MODE_LABELS[inv.payment_mode] || inv.payment_mode}
-                                  </span>
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell className="py-2.5 text-center">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() => handlePdf(inv.id)}
-                                  title="Download PDF"
-                                >
-                                  <Download className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
+                            <>
+                              <TableRow
+                                key={inv.id}
+                                className={`text-xs ${isOverdue ? "bg-red-50/40" : isPartial ? "bg-orange-50/30" : "hover:bg-slate-50"}`}
+                              >
+                                <TableCell className="py-2.5 font-mono text-blue-600 font-medium whitespace-nowrap">
+                                  {inv.invoice_number}
+                                </TableCell>
+                                <TableCell className="py-2.5 max-w-[120px]">
+                                  <p className="font-medium text-slate-700 truncate" title={item.plan_name}>{item.plan_name || "—"}</p>
+                                  {item.selected_validity && (
+                                    <p className="text-slate-400 text-[11px]">{VALIDITY_LABELS[item.selected_validity] || item.selected_validity}</p>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-2.5 whitespace-nowrap text-slate-600">
+                                  {item.plan_name === "Previous Pending"
+                                    ? (item.service_start_date ? `Till ${fmtDate(item.service_start_date)}` : "Carried forward")
+                                    : item.service_start_date
+                                      ? `${fmtDate(item.service_start_date)} – ${fmtDate(item.service_end_date)}`
+                                      : "—"}
+                                </TableCell>
+                                <TableCell className="py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">
+                                  <span>{fmt(inv.final_amount)}</span>
+                                  {isPartial && (
+                                    <span className="block text-[11px] font-normal text-orange-600">
+                                      Paid {fmt(amountPaid)} · Bal {fmt(balanceDue)}
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className={`py-2.5 whitespace-nowrap ${isOverdue ? "text-red-600 font-medium" : "text-slate-600"}`}>
+                                  {fmtDate(inv.due_date)}
+                                </TableCell>
+                                <TableCell className="py-2.5">
+                                  <StatusBadge status={inv.status} />
+                                </TableCell>
+                                <TableCell className="py-2.5 text-slate-500 whitespace-nowrap">
+                                  {inv.paid_at ? fmtDate(inv.paid_at) : isPartial && paymentsReceived.length > 0 ? fmtDate(paymentsReceived[paymentsReceived.length - 1]?.date) : "—"}
+                                </TableCell>
+                                <TableCell className="py-2.5">
+                                  {inv.payment_mode ? (
+                                    <span className="flex items-center gap-1 text-slate-500">
+                                      <ModeIcon className="w-3.5 h-3.5" />
+                                      {PAYMENT_MODE_LABELS[inv.payment_mode] || inv.payment_mode}
+                                    </span>
+                                  ) : isPartial && paymentsReceived.length > 0 ? (
+                                    (() => {
+                                      const lastRec = paymentsReceived[paymentsReceived.length - 1];
+                                      const RecIcon = PAYMENT_MODE_ICONS[lastRec?.mode] || CreditCard;
+                                      return (
+                                        <span className="flex items-center gap-1 text-slate-500">
+                                          <RecIcon className="w-3.5 h-3.5" />
+                                          {PAYMENT_MODE_LABELS[lastRec?.mode] || lastRec?.mode || "—"}
+                                        </span>
+                                      );
+                                    })()
+                                  ) : "—"}
+                                </TableCell>
+                                <TableCell className="py-2.5 text-center">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => handlePdf(inv.id)}
+                                    title="Download PDF"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                              {/* Payment history sub-rows for partial invoices */}
+                              {isPartial && paymentsReceived.length > 0 && paymentsReceived.map((rec, ri) => {
+                                const RecIcon = PAYMENT_MODE_ICONS[rec.mode] || CreditCard;
+                                return (
+                                  <TableRow key={`${inv.id}-rec-${ri}`} className="bg-orange-50/50 text-xs border-l-2 border-l-orange-300">
+                                    <TableCell className="py-1.5 pl-6 text-slate-400 italic" colSpan={2}>
+                                      Payment #{ri + 1}
+                                    </TableCell>
+                                    <TableCell className="py-1.5 text-slate-500 whitespace-nowrap">{fmtDate(rec.date)}</TableCell>
+                                    <TableCell className="py-1.5 text-right font-medium text-orange-700">{fmt(rec.amount)}</TableCell>
+                                    <TableCell className="py-1.5 text-slate-400" colSpan={2}></TableCell>
+                                    <TableCell className="py-1.5 text-slate-500">{fmtDate(rec.date)}</TableCell>
+                                    <TableCell className="py-1.5">
+                                      <span className="flex items-center gap-1 text-slate-500">
+                                        <RecIcon className="w-3.5 h-3.5" />
+                                        {PAYMENT_MODE_LABELS[rec.mode] || rec.mode || "—"}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="py-1.5"></TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </>
                           );
                         })}
                       </TableBody>

@@ -83,6 +83,7 @@ const OperatorSettings = () => {
     show_gst: true,
     accept_payment_gateway: true,
     accept_upi: false,
+    allow_partial_payments: true,
     terms_conditions: "",
     invoice_template: "classic",
     visible_fields: {
@@ -140,6 +141,7 @@ const OperatorSettings = () => {
         show_gst: invoiceRes.data.show_gst !== false,
         accept_payment_gateway: invoiceRes.data.accept_payment_gateway !== false,
         accept_upi: invoiceRes.data.accept_upi === true,
+        allow_partial_payments: invoiceRes.data.allow_partial_payments !== false,
         terms_conditions: invoiceRes.data.terms_conditions || "",
         invoice_template: invoiceRes.data.invoice_template || "classic",
         visible_fields: {
@@ -837,6 +839,20 @@ const OperatorSettings = () => {
                         <p className="text-xs text-slate-500">
                           Configure which "Pay Now" options are visible to subscribers on their invoice.
                         </p>
+                      </div>
+
+                      {/* Allow partial payments toggle */}
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700">Allow Partial Payments</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            When enabled, operators can record partial payments against an invoice. Disable to enforce full payment only.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={invoiceForm.allow_partial_payments}
+                          onCheckedChange={(val) => setInvoiceForm(prev => ({ ...prev, allow_partial_payments: val }))}
+                        />
                       </div>
                     </div>
                     <div className="space-y-2">
