@@ -483,7 +483,18 @@ class CronJobService:
 
         from utils import generate_invoice_number_atomic
         invoice_number = await generate_invoice_number_atomic(self.db)
-        
+
+        # ── Carry forward any unpaid balance from previous invoices ───────────
+        from services.invoice_helpers import get_pending_balance_for_subscriber, make_previous_pending_line_item
+        pending_amount, pending_numbers = await get_pending_balance_for_subscriber(
+            self.db, subscriber["id"], operator["id"]
+        )
+        if pending_amount > 0:
+            line_items.append(
+                make_previous_pending_line_item(pending_amount, pending_numbers, now.isoformat())
+            )
+            total_final += pending_amount
+
         invoice = {
             "id": str(uuid.uuid4()),
             "invoice_number": invoice_number,
@@ -741,6 +752,17 @@ class CronJobService:
 
         from utils import generate_invoice_number_atomic
         invoice_num = await generate_invoice_number_atomic(self.db)
+
+        # ── Carry forward any unpaid balance from previous invoices ───────────
+        from services.invoice_helpers import get_pending_balance_for_subscriber, make_previous_pending_line_item
+        pending_amount, pending_numbers = await get_pending_balance_for_subscriber(
+            self.db, subscriber["id"], operator["id"]
+        )
+        if pending_amount > 0:
+            line_items.append(
+                make_previous_pending_line_item(pending_amount, pending_numbers, now.isoformat())
+            )
+            total_final += pending_amount
 
         # Due date = 1 day before the service start date (matching auto-invoice behavior)
         first_service_start = datetime.fromisoformat(line_items[0]["service_start_date"])

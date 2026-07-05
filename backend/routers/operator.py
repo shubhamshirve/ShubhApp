@@ -33,6 +33,8 @@ from services.invoice_helpers import (
     get_platform_whatsapp_config as _get_platform_whatsapp_config,
     get_whatsapp_template_settings as _get_whatsapp_template_settings,
     build_invoice_payload as _build_invoice_payload,
+    get_pending_balance_for_subscriber as _get_pending_balance,
+    make_previous_pending_line_item as _make_pending_line_item,
 )
 from routers.wallet import get_or_create_wallet, deduct_wallet
 
@@ -2012,15 +2014,28 @@ async def create_invoice(data: InvoiceCreate, request: Request, current_user: di
 
     now = datetime.now(timezone.utc)
     invoice_dt = data.invoice_date if data.invoice_date else now
+
+    # ── Carry forward any unpaid balance from previous invoices ───────────────
+    pending_amount, pending_numbers = await _get_pending_balance(
+        db, data.subscriber_id, current_user["operator_id"]
+    )
+    line_items = list(payload["line_items"])
+    final_amount = payload["final_amount"]
+    if pending_amount > 0:
+        line_items.append(
+            _make_pending_line_item(pending_amount, pending_numbers, now.isoformat())
+        )
+        final_amount = round(final_amount + pending_amount, 2)
+
     invoice = {
         "id": generate_id(),
         "invoice_number": await generate_invoice_number_atomic(db),
         "subscriber_id": data.subscriber_id, "subscriber_name": subscriber["name"],
-        "line_items": payload["line_items"],
+        "line_items": line_items,
         "base_amount": payload["base_amount"],
         "discount": payload["discount"],
         "tax_amount": payload["tax_amount"],
-        "final_amount": payload["final_amount"],
+        "final_amount": final_amount,
         "due_date": payload["due_date"], "status": "pending", "payment_id": None,
         "invoice_date": invoice_dt.isoformat(),
         "operator_id": current_user["operator_id"],

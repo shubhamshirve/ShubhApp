@@ -131,6 +131,60 @@ async def build_invoice_payload(operator_id: str, data: InvoiceCreate | InvoiceU
     }
 
 
+# ─── Previous-pending balance helper ─────────────────────────────────────────
+
+async def get_pending_balance_for_subscriber(
+    db,
+    subscriber_id: str,
+    operator_id: str,
+    exclude_invoice_id: str | None = None,
+) -> tuple[float, list[str]]:
+    """
+    Return (total_pending_amount, [invoice_numbers]) for all unpaid invoices
+    (status = pending | overdue) belonging to this subscriber.
+
+    Pass `exclude_invoice_id` to skip an invoice that is currently being processed
+    (not stored yet, so it won't appear anyway — kept for safety).
+    """
+    query: dict = {
+        "subscriber_id": subscriber_id,
+        "operator_id": operator_id,
+        "status": {"$in": ["pending", "overdue"]},
+        "deleted_at": None,
+    }
+    if exclude_invoice_id:
+        query["id"] = {"$ne": exclude_invoice_id}
+
+    cursor = db.invoices.find(query, {"_id": 0, "final_amount": 1, "invoice_number": 1})
+    docs = await cursor.to_list(None)
+
+    total = round(sum(d.get("final_amount", 0) for d in docs), 2)
+    numbers = [d["invoice_number"] for d in docs if d.get("invoice_number")]
+    return total, numbers
+
+
+def make_previous_pending_line_item(pending_amount: float, invoice_numbers: list[str], now_iso: str) -> dict:
+    """
+    Build a custom line-item dict representing a previous-pending balance carryover.
+    `invoice_numbers` — list of unpaid invoice numbers whose amounts are rolled up.
+    `now_iso`         — ISO timestamp string used for service_start/end dates.
+    """
+    description = ", ".join(invoice_numbers) if invoice_numbers else "Previous invoices"
+    return {
+        "plan_id": None,
+        "plan_name": "Previous Pending",
+        "plan_description": None,
+        "is_custom": True,
+        "description": description,
+        "base_amount": round(pending_amount, 2),
+        "discount": 0.0,
+        "tax_amount": 0.0,
+        "final_amount": round(pending_amount, 2),
+        "service_start_date": now_iso,
+        "service_end_date": now_iso,
+    }
+
+
 # ─── Date parsing helper ──────────────────────────────────────────────────────
 
 def parse_bulk_invoice_date(value: str, field_name: str) -> datetime:
