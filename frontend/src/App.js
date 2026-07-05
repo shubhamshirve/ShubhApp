@@ -22,6 +22,7 @@ import OperatorReports from "./pages/operator/Reports";
 import OperatorSettings from "./pages/operator/Settings";
 import OperatorSubscription from "./pages/operator/Subscription";
 import OperatorAnnouncements from "./pages/operator/Announcements";
+import SubscriberLedgerPage from "./pages/operator/SubscriberLedgerPage";
 import AdminBackup from "./pages/admin/Backup";
 import OperatorAuditLogs from "./pages/operator/AuditLogs";
 import AdminDiscountCodes from "./pages/admin/DiscountCodes";
@@ -319,6 +320,11 @@ function App() {
           <Route path="/operator/subscribers" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorSubscribers />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/subscribers/:subscriberId/ledger" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <SubscriberLedgerPage />
             </ProtectedRoute>
           } />
           <Route path="/operator/plans" element={

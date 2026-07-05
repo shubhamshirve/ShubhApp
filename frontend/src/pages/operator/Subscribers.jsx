@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent } from "../../components/ui/card";
@@ -38,10 +39,11 @@ import {
 import { toast } from "sonner";
 import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban, History, Clock, FileText } from "lucide-react";
 import { sanitize } from "../../utils/sanitize";
-import SubscriberLedger from "../../components/SubscriberLedger";
+import SubscriberLedger from "../../components/SubscriberLedger"; // kept for backwards compat
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
+  const navigate = useNavigate();
   const isStaff = user?.role === "staff";
   const isAdminImpersonating = !!user?.impersonated_by; // admin logged in as operator
   const [subscribers, setSubscribers] = useState([]);
@@ -702,7 +704,7 @@ const OperatorSubscribers = () => {
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { setLedgerSubscriber(subscriber); setLedgerOpen(true); }}>
+                            <DropdownMenuItem onClick={() => { navigate(`/operator/subscribers/${subscriber.id}/ledger`); }}>
                               <FileText className="w-4 h-4 mr-2 text-blue-600" />
                               View Ledger
                             </DropdownMenuItem>
