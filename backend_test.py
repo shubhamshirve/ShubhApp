@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from environment
-BACKEND_URL = "https://recursing-proskuriakova-9.preview.emergentagent.com/api"
+BACKEND_URL = "https://vps-launcher-6.preview.emergentagent.com/api"
 
 # Test credentials
 OPERATOR_EMAIL = "operator@test.com"
