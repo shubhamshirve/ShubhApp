@@ -125,6 +125,20 @@ jobs:
           command_timeout: 15m
           script: |
             set -e
+
+            # ── Ensure Docker daemon is running ────────────────────────────
+            if ! docker info &>/dev/null; then
+              echo ">>> Docker daemon not running — starting it..."
+              systemctl start docker
+              for i in 1 2 3 4 5; do
+                sleep 3
+                docker info &>/dev/null && break
+                echo "    waiting for Docker... ($i/5)"
+              done
+              docker info &>/dev/null || { echo "ERROR: Docker failed to start!"; exit 1; }
+              echo ">>> Docker daemon started"
+            fi
+
             APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ShubhApp' }}"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
