@@ -20,12 +20,65 @@ BACKUP_DIR = Path("/app/backups")
 BACKUP_PASSWORD = os.environ.get("BACKUP_PASSWORD", "Shubham@123")
 BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "30"))
 
+# ── Collections included in every backup ────────────────────────────────────
+# Ordered logically: core accounts → billing → settings → comms → audit
 COLLECTIONS = [
-    "users", "operators", "saas_plans", "operator_plans", "subscribers",
-    "invoices", "addons", "payment_gateways", "whatsapp_configs",
-    "whatsapp_templates", "whatsapp_message_logs",
-    "announcements", "audit_logs", "global_settings", "invoice_settings",
-    "saas_payments", "checkout_orders", "notification_queue", "backups",
+    # Core accounts & access
+    "users",
+    "operators",
+    "operator_wallets",        # wallet balances per operator
+    "wallet_transactions",     # full recharge / deduction history
+
+    # SaaS plans & subscriptions
+    "saas_plans",
+    "operator_plans",
+    "addons",
+
+    # Subscriber & billing
+    "subscribers",
+    "invoices",
+    "invoice_settings",        # per-operator invoice branding
+    "operator_theme",          # per-operator colour theme / logo
+
+    # Payments & checkout
+    "payment_gateways",
+    "saas_payments",
+    "checkout_orders",
+    "discount_codes",
+
+    # Platform & admin settings
+    # global_settings stores: env_settings (jwt_secret, backup_password),
+    # platform config, platform_whatsapp, reminder_settings, cron times,
+    # landing page content, whatsapp_template_settings, etc.
+    "global_settings",
+
+    # WhatsApp
+    "whatsapp_templates",
+    "whatsapp_message_logs",
+
+    # Communications
+    "announcements",
+    "notification_queue",
+
+    # Audit & logs
+    "audit_logs",
+    "error_logs",
+    "webhook_events",          # Razorpay / WhatsApp webhook audit trail
+
+    # Support
+    "support_tickets",
+    "support_replies",
+
+    # Backup metadata — always skipped from dump (restored separately via meta)
+    "backups",
+]
+
+# ── Transient collections: cleared on restore, never backed up ───────────────
+# These hold short-lived state that is invalid on a new / restored server.
+TRANSIENT_COLLECTIONS = [
+    "background_jobs",         # in-flight async job queue
+    "password_recovery",       # email OTPs (expire in minutes)
+    "pending_registrations",   # unverified registration tokens
 ]
 
 router = APIRouter(prefix="/admin/backup", tags=["Backup"])
@@ -48,14 +101,17 @@ async def _do_backup(backup_type: str = "manual") -> dict:
         "backup_id": backup_id,
         "backup_type": backup_type,
         "created_at": now.isoformat(),
+        "schema_version": 2,          # bump when backup format changes
         "collections": {},
+        "collection_counts": {},      # per-collection record count for quick inspection
     }
 
     for col in COLLECTIONS:
         if col == "backups":
-            continue  # skip backup meta-collection from the dump
+            continue  # backup metadata is rebuilt from files, not restored
         docs = await db[col].find({}, {"_id": 0}).to_list(200_000)
         payload["collections"][col] = docs
+        payload["collection_counts"][col] = len(docs)
 
     filename = f"backup_{now.strftime('%Y%m%d_%H%M%S')}_{backup_id[:8]}.json.gz"
     filepath = BACKUP_DIR / filename
@@ -64,7 +120,7 @@ async def _do_backup(backup_type: str = "manual") -> dict:
         json.dump(payload, f)
 
     size_bytes = filepath.stat().st_size
-    total_records = sum(len(v) for v in payload["collections"].values())
+    total_records = sum(payload["collection_counts"].values())
 
     meta = {
         "id": backup_id,
@@ -75,9 +131,13 @@ async def _do_backup(backup_type: str = "manual") -> dict:
         "type": backup_type,
         "total_records": total_records,
         "collections": list(payload["collections"].keys()),
+        "collection_counts": payload["collection_counts"],
     }
     await db.backups.insert_one(meta)
-    logger.info(f"Backup created: {filename} ({size_bytes} bytes, {total_records} records)")
+    logger.info(
+        "Backup created: %s (%d bytes, %d records across %d collections)",
+        filename, size_bytes, total_records, len(payload["collections"])
+    )
     return meta
 
 
@@ -176,9 +236,23 @@ async def restore_backup(
     body: RestoreRequest,
     current_user: dict = Depends(require_admin),
 ):
-    """Restore from a backup after password confirmation."""
+    """
+    Restore from a backup after password confirmation.
+
+    Safe to use on a fresh server:
+      1. Wipes all existing data in backed-up collections
+      2. Restores every collection from the backup file
+      3. Clears transient collections (background_jobs, password_recovery,
+         pending_registrations) so the new server starts clean
+      4. NOTE: You will need to log in again after restore — user sessions
+         are invalidated when the users collection is replaced.
+    """
     backup_id = sanitize_text(backup_id)
-    if body.password != BACKUP_PASSWORD:
+
+    # Allow password from env OR from global_settings (db-stored override)
+    from services.env_service import get_backup_password
+    valid_password = await get_backup_password()
+    if body.password != valid_password:
         raise HTTPException(status_code=403, detail="Invalid backup password")
 
     meta = await db.backups.find_one({"id": backup_id}, {"_id": 0})
@@ -192,19 +266,46 @@ async def restore_backup(
     with gzip.open(filepath, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
-    restored = []
-    for col, docs in data["collections"].items():
-        await db[col].delete_many({})
-        if docs:
-            await db[col].insert_many(docs)
-        restored.append(col)
+    if "collections" not in data:
+        raise HTTPException(status_code=422, detail="Invalid backup file: missing collections key")
 
-    logger.info(f"Restored backup {backup_id} — {len(restored)} collections")
+    restored = []
+    skipped = []
+    records_restored = 0
+
+    for col, docs in data["collections"].items():
+        # Never restore backup metadata — it gets rebuilt from disk
+        if col == "backups":
+            skipped.append(col)
+            continue
+        try:
+            await db[col].delete_many({})
+            if docs:
+                await db[col].insert_many(docs)
+                records_restored += len(docs)
+            restored.append(col)
+        except Exception as exc:
+            logger.error("Failed to restore collection %s: %s", col, exc)
+            skipped.append(col)
+
+    # Clear transient collections — stale state must not survive to new server
+    for col in TRANSIENT_COLLECTIONS:
+        try:
+            await db[col].delete_many({})
+        except Exception:
+            pass
+
+    logger.info(
+        "Restore complete — backup_id=%s, collections=%d, records=%d, skipped=%s",
+        backup_id, len(restored), records_restored, skipped
+    )
     return {
         "message": "Backup restored successfully",
         "backup_id": backup_id,
         "collections_restored": restored,
-        "records_restored": sum(len(data["collections"].get(c, [])) for c in restored),
+        "collections_skipped": skipped,
+        "records_restored": records_restored,
+        "note": "Session invalidated — please log in again with your restored credentials.",
     }
 
 
@@ -288,6 +389,7 @@ async def upload_backup(
         f.write(content)
 
     collections = payload.get("collections") or {}
+    collection_counts = payload.get("collection_counts") or {k: len(v) for k, v in collections.items()}
     backup_id = payload.get("backup_id") or generate_id()
 
     # Avoid duplicate IDs in DB
@@ -302,8 +404,9 @@ async def upload_backup(
         "size_bytes": size_bytes,
         "size_kb": round(size_bytes / 1024, 1),
         "type": "uploaded",
-        "total_records": sum(len(v) for v in collections.values()),
+        "total_records": sum(collection_counts.values()),
         "collections": list(collections.keys()),
+        "collection_counts": collection_counts,
     }
     await db.backups.insert_one(meta)
     meta.pop("_id", None)
