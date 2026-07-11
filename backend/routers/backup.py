@@ -23,6 +23,7 @@ BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "30"))
 COLLECTIONS = [
     "users", "operators", "saas_plans", "operator_plans", "subscribers",
     "invoices", "addons", "payment_gateways", "whatsapp_configs",
+    "whatsapp_templates", "whatsapp_message_logs",
     "announcements", "audit_logs", "global_settings", "invoice_settings",
     "saas_payments", "checkout_orders", "notification_queue", "backups",
 ]

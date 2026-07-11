@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import {
   Database, Plus, RefreshCw, Trash2, RotateCcw,
-  Clock, Shield, HardDrive, AlertTriangle, Download, Eraser, Upload,
+  Clock, Shield, HardDrive, AlertTriangle, Download, Eraser, Upload, FileUp,
 } from "lucide-react";
 
 const DEFAULT_PLATFORM_SETTINGS = {
@@ -44,6 +44,7 @@ const AdminBackup = () => {
   const [creating, setCreating] = useState(false);
   const [purging, setPurging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [password, setPassword] = useState("");
   const [restoring, setRestoring] = useState(false);
@@ -158,17 +159,12 @@ const AdminBackup = () => {
     }
   };
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!fileInputRef.current) return;
-    fileInputRef.current.value = "";          // reset so same file can be re-selected
+  const uploadFile = useCallback(async (file) => {
     if (!file) return;
-
     if (!file.name.endsWith(".json.gz")) {
       toast.error("Only .json.gz backup files are accepted");
       return;
     }
-
     setUploading(true);
     try {
       const form = new FormData();
@@ -183,6 +179,19 @@ const AdminBackup = () => {
     } finally {
       setUploading(false);
     }
+  }, [authAxios]);
+
+  const handleUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    uploadFile(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    uploadFile(file);
   };
 
   if (loading) {
@@ -228,7 +237,7 @@ const AdminBackup = () => {
               )}
               Purge Old (&gt;{allStats.retention_days}d)
             </Button>
-            {/* Hidden file input for upload */}
+            {/* Hidden file input — also used by the drag-drop zone */}
             <input
               ref={fileInputRef}
               type="file"
@@ -236,19 +245,6 @@ const AdminBackup = () => {
               className="hidden"
               onChange={handleUpload}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Uploading...</>
-              ) : (
-                <><Upload className="w-4 h-4 mr-2" /> Upload Backup</>
-              )}
-            </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Creating...</>
@@ -295,6 +291,46 @@ const AdminBackup = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Upload Backup Section */}
+        <Card className="border-2 border-dashed border-emerald-200 bg-emerald-50/40">
+          <CardContent className="p-0">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              className={`flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-lg cursor-pointer transition-all
+                ${dragOver ? "bg-emerald-100 border-emerald-400 scale-[1.01]" : "hover:bg-emerald-50"}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-full transition-colors ${dragOver ? "bg-emerald-200" : "bg-emerald-100"}`}>
+                  <FileUp className={`w-6 h-6 ${dragOver ? "text-emerald-700" : "text-emerald-600"}`} />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-800">
+                    {uploading ? "Uploading backup file…" : dragOver ? "Drop the file here" : "Upload a Backup File"}
+                  </p>
+                  <p className="text-sm text-emerald-600">
+                    Drag &amp; drop a <code className="bg-emerald-100 px-1 rounded text-xs">.json.gz</code> backup file here, or click to browse
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 shrink-0 pointer-events-none"
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Uploading…</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> Browse File</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Backups Table */}
         <Card>
