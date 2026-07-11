@@ -90,17 +90,17 @@ jobs:
 
     steps:
       - name: Deploy to production
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           envs: BRANCH_NAME
           command_timeout: 15m
           script: |
             set -e
-            APP_DIR="/root/ShubhApp"
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ShubhApp' }}"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
@@ -109,16 +109,14 @@ jobs:
               git remote add origin https://github.com/shubhamshirve/ShubhApp.git
             fi
 
-            echo "Pulling latest code for branch $BRANCH_NAME..."
+            echo ">>> Pulling latest code for branch $BRANCH_NAME..."
             git fetch origin "$BRANCH_NAME"
             git reset --hard "origin/$BRANCH_NAME"
 
-            # Ensure dbbackups dir exists on the host (persists across deployments)
+            # Ensure dbbackups dir exists (persists across deployments)
             mkdir -p "$APP_DIR/dbbackups"
 
-            # ---------------------------------------------------------------
-            # ENV FILE RESOLUTION
-            # ---------------------------------------------------------------
+            # ── Resolve .env file ──────────────────────────────────────────
             resolve_env_file() {
               if [ -s "$APP_DIR/.env.production" ]; then
                 echo "$APP_DIR/.env.production"; return 0
@@ -126,51 +124,40 @@ jobs:
               if [ -s "$APP_DIR/.env" ]; then
                 echo "$APP_DIR/.env"; return 0
               fi
-              if [ -s "/root/ebill/.env.production" ]; then
-                cp /root/ebill/.env.production "$APP_DIR/.env.production"
-                echo "$APP_DIR/.env.production"; return 0
-              fi
-              if [ -s "/root/ebill/.env" ]; then
-                cp /root/ebill/.env "$APP_DIR/.env"
-                echo "$APP_DIR/.env"; return 0
-              fi
               return 1
             }
 
             ENV_FILE_ABS=$(resolve_env_file) || {
-              echo "ERROR: No valid environment file found!"
-              echo "Please create $APP_DIR/.env.production on the server."
+              echo "ERROR: No .env or .env.production found in $APP_DIR!"
+              echo "Run the VPS bootstrap script first: bash vps-bootstrap-optionb.sh"
               exit 1
             }
-
-            echo "Using environment file: $ENV_FILE_ABS"
+            echo ">>> Using env file: $ENV_FILE_ABS"
 
             # Validate required vars
             MISSING=""
-            for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL; do
-              if ! grep -qE "^${VAR}=.+" "$ENV_FILE_ABS"; then
-                MISSING="$MISSING $VAR"
-              fi
+            for VAR in DOMAIN MONGO_ROOT_USERNAME MONGO_ROOT_PASSWORD JWT_SECRET REACT_APP_BACKEND_URL DOCKER_USERNAME; do
+              grep -qE "^${VAR}=.+" "$ENV_FILE_ABS" || MISSING="$MISSING $VAR"
             done
-            [ -n "$MISSING" ] && echo "WARNING: Missing or empty variables: $MISSING"
+            [ -n "$MISSING" ] && echo "WARNING: Missing env vars:$MISSING"
 
-            # Pull pre-built images (no build on VPS)
-            echo "Pulling Docker images..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
+            # ── Pull pre-built images (no build on VPS) ────────────────────
+            echo ">>> Pulling latest Docker images from Docker Hub..."
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
 
-            echo "Stopping old containers..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
+            echo ">>> Stopping old containers..."
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
-            echo "Starting services with new images..."
-            docker-compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
-              echo "ERROR: docker-compose up failed. Dumping logs..."
-              docker-compose -f docker-compose.prod.yml logs --tail=50 backend || true
-              docker-compose -f docker-compose.prod.yml logs --tail=20 mongodb || true
+            echo ">>> Starting services..."
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" up -d --remove-orphans || {
+              echo "ERROR: docker compose up failed. Dumping logs..."
+              docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" logs --tail=50 backend || true
+              docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" logs --tail=20 mongodb || true
               exit 1
             }
 
-            echo "Removing dangling images..."
+            echo ">>> Cleaning up old images..."
             docker image prune -f
 
-            echo "Deployment complete!"
-            docker-compose -f docker-compose.prod.yml ps
+            echo ">>> Deployment complete!"
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" ps
