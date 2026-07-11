@@ -89,6 +89,31 @@ jobs:
       BRANCH_NAME: ${{ github.ref_name }}
 
     steps:
+      - name: Write .env.production to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          command_timeout: 2m
+          script: |
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ShubhApp' }}"
+            mkdir -p "$APP_DIR"
+            ENV_FILE="$APP_DIR/.env.production"
+
+            # Write env file from GitHub Secret (overwrites every deploy so secrets stay in sync)
+            cat > "$ENV_FILE" << 'EBILL_ENV_EOF'
+            ${{ secrets.DOTENV_PRODUCTION }}
+            EBILL_ENV_EOF
+
+            # Strip leading whitespace that heredoc indentation adds
+            sed -i 's/^[[:space:]]*//' "$ENV_FILE"
+            # Remove blank lines that may appear at top
+            sed -i '/^$/d' "$ENV_FILE"
+            chmod 600 "$ENV_FILE"
+            echo ">>> .env.production written ($(wc -l < $ENV_FILE) lines)"
+
       - name: Deploy to production
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -116,22 +141,16 @@ jobs:
             # Ensure dbbackups dir exists (persists across deployments)
             mkdir -p "$APP_DIR/dbbackups"
 
-            # ── Resolve .env file ──────────────────────────────────────────
-            resolve_env_file() {
-              if [ -s "$APP_DIR/.env.production" ]; then
-                echo "$APP_DIR/.env.production"; return 0
-              fi
-              if [ -s "$APP_DIR/.env" ]; then
-                echo "$APP_DIR/.env"; return 0
-              fi
-              return 1
-            }
+            # ── Resolve .env file (.env.production > .env) ────────────────
+            ENV_FILE_ABS=""
+            [ -s "$APP_DIR/.env.production" ] && ENV_FILE_ABS="$APP_DIR/.env.production"
+            [ -z "$ENV_FILE_ABS" ] && [ -s "$APP_DIR/.env" ] && ENV_FILE_ABS="$APP_DIR/.env"
 
-            ENV_FILE_ABS=$(resolve_env_file) || {
-              echo "ERROR: No .env or .env.production found in $APP_DIR!"
-              echo "Run the VPS bootstrap script first: bash vps-bootstrap-optionb.sh"
+            if [ -z "$ENV_FILE_ABS" ]; then
+              echo "ERROR: No .env.production or .env found in $APP_DIR!"
+              echo "Add DOTENV_PRODUCTION secret to GitHub and re-run."
               exit 1
-            }
+            fi
             echo ">>> Using env file: $ENV_FILE_ABS"
 
             # Validate required vars
