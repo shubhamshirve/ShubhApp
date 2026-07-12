@@ -23,6 +23,18 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "../../components/ui/command";
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,9 +49,10 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban, History, Clock, FileText } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Users, Phone, MessageCircle, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Ban, History, Clock, FileText, ChevronsUpDown, Check } from "lucide-react";
 import { sanitize } from "../../utils/sanitize";
-import SubscriberLedger from "../../components/SubscriberLedger"; // kept for backwards compat
+import SubscriberLedger from "../../components/SubscriberLedger";
 
 const OperatorSubscribers = () => {
   const { authAxios, user } = useAuth();
@@ -60,6 +73,9 @@ const OperatorSubscribers = () => {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const [limitError, setLimitError] = useState(null); // for plan limit exceeded errors
+
+  // Track which plan-row combobox is open (by row index, null = none)
+  const [openPlanCombo, setOpenPlanCombo] = useState(null);
   const [subFieldErrors, setSubFieldErrors] = useState({});
   const fileInputRef = useRef(null);
   // Always keep a fresh copy of plans accessible inside async state updaters
@@ -129,8 +145,7 @@ const OperatorSubscribers = () => {
     fetchSubscribers();
     fetchPlans();
     fetchDashboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate plan_expiry_date after plan selection or start-date change
   // Runs after state commits so `plans` is always fresh
@@ -178,7 +193,10 @@ const OperatorSubscribers = () => {
   const fetchPlans = async () => {
     try {
       const response = await authAxios.get("/operator/plans");
-      setPlans(response.data);
+      const sorted = [...response.data].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      );
+      setPlans(sorted);
     } catch (error) {
       console.error("Failed to load plans");
     }
@@ -350,6 +368,7 @@ const OperatorSubscribers = () => {
   };
 
   const resetForm = () => {
+    setOpenPlanCombo(null);
     setEditingSubscriber(null);
     setSubFieldErrors({});
     setFormData({
@@ -916,24 +935,70 @@ const OperatorSubscribers = () => {
                         )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Plan selector */}
+                          {/* Plan selector — searchable combobox */}
                           <div className="space-y-2">
                             <Label>Plan *</Label>
-                            <Select
-                              value={plan.plan_id}
-                              onValueChange={(v) => updatePlanRow(index, "plan_id", v)}
+                            <Popover
+                              open={openPlanCombo === index}
+                              onOpenChange={(isOpen) =>
+                                setOpenPlanCombo(isOpen ? index : null)
+                              }
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select plan" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {plans.map((p) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    {p.name} — ₹{p.price} / {p.validity}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  role="combobox"
+                                  aria-expanded={openPlanCombo === index}
+                                  className="w-full justify-between font-normal text-left h-10 px-3"
+                                >
+                                  <span className="truncate">
+                                    {plan.plan_id
+                                      ? (() => {
+                                          const d = plans.find(p => p.id === plan.plan_id);
+                                          return d ? `${d.name} — ₹${d.price}/${d.validity}` : "Select plan";
+                                        })()
+                                      : <span className="text-muted-foreground">Select plan</span>
+                                    }
+                                  </span>
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="p-0 w-[var(--radix-popover-trigger-width)]"
+                                align="start"
+                              >
+                                <Command>
+                                  <CommandInput placeholder="Search plan name…" />
+                                  <CommandEmpty>No plans found.</CommandEmpty>
+                                  <CommandGroup className="max-h-60 overflow-y-auto">
+                                    {plans.map((p) => (
+                                      <CommandItem
+                                        key={p.id}
+                                        value={p.name}
+                                        onSelect={() => {
+                                          updatePlanRow(index, "plan_id", p.id);
+                                          setOpenPlanCombo(null);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4 shrink-0",
+                                            plan.plan_id === p.id ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        <span className="flex-1 truncate">
+                                          {p.name}
+                                        </span>
+                                        <span className="ml-2 text-xs text-muted-foreground whitespace-nowrap">
+                                          ₹{p.price}/{p.validity}
+                                        </span>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                           </div>
 
                           {/* Tenure selector */}
