@@ -89,18 +89,8 @@ const AdminDashboard = () => {
   const [sysLoading, setSysLoading] = useState(false);
   const [sysLastUpdated, setSysLastUpdated] = useState(null);
 
-  useEffect(() => {
-    fetchDashboard();
-    fetchSysHealth();
-  }, [fetchSysHealth]);
-
-  // Auto-refresh system health every 30 seconds
-  useEffect(() => {
-    const id = setInterval(fetchSysHealth, 30_000);
-    return () => clearInterval(id);
-  }, [fetchSysHealth]);
-
-  const fetchDashboard = async () => {
+  // Define fetch functions BEFORE useEffect hooks
+  const fetchDashboard = useCallback(async () => {
     try {
       const response = await authAxios.get("/admin/dashboard");
       setStats(response.data);
@@ -109,7 +99,7 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authAxios]);
 
   const fetchSysHealth = useCallback(async () => {
     setSysLoading(true);
@@ -123,6 +113,17 @@ const AdminDashboard = () => {
       setSysLoading(false);
     }
   }, [authAxios]);
+
+  useEffect(() => {
+    fetchDashboard();
+    fetchSysHealth();
+  }, [fetchDashboard, fetchSysHealth]);
+
+  // Auto-refresh system health every 30 seconds
+  useEffect(() => {
+    const id = setInterval(fetchSysHealth, 30_000);
+    return () => clearInterval(id);
+  }, [fetchSysHealth]);
 
   if (loading) {
     return (
