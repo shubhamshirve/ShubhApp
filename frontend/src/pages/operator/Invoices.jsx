@@ -48,6 +48,7 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { toast } from "sonner";
+import { PlanCombobox } from "../../components/PlanCombobox";
 import { format } from "date-fns";
 import { 
   Plus, 
@@ -309,7 +310,10 @@ const OperatorInvoices = () => {
   const fetchPlans = async () => {
     try {
       const response = await authAxios.get("/operator/plans");
-      setPlans(response.data);
+      const sorted = [...response.data].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      );
+      setPlans(sorted);
     } catch (error) {
       console.error("Failed to load plans");
     }
@@ -1349,21 +1353,13 @@ const OperatorInvoices = () => {
                           ) : (
                             <>
                               <Label>Plan *</Label>
-                              <Select
-                                value={item.plan_id || undefined}
-                                onValueChange={(val) => updateLineItem(index, "plan_id", val)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select plan" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {plans.map((plan) => (
-                                    <SelectItem key={plan.id} value={plan.id}>
-                                      {plan.name} - ₹{plan.price} / {plan.validity}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <PlanCombobox
+                                plans={plans}
+                                value={item.plan_id || ""}
+                                onSelect={(id) => updateLineItem(index, "plan_id", id)}
+                                displayFn={(p) => `${p.name} — ₹${p.price}/${p.validity}`}
+                                placeholder="Select plan"
+                              />
                             </>
                           )}
                         </div>

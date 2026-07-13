@@ -2607,3 +2607,107 @@ async def update_env_settings(
     
     return {"message": "Environment settings updated successfully"}
 
+
+
+
+# ── System Health ────────────────────────────────────────────────────────────
+
+@router.get("/system/health")
+async def get_system_health(current_user: dict = Depends(require_admin)):
+    """
+    Return real-time server resource metrics: CPU, RAM, Disk, Network, Disk I/O.
+    Uses psutil for all measurements. Safe to call frequently (auto-refresh).
+    """
+    import psutil
+    import time
+
+    # ── CPU ───────────────────────────────────────────────────────────────────
+    cpu_percent = psutil.cpu_percent(interval=0.5)   # 0.5s sample
+    cpu_count_logical = psutil.cpu_count(logical=True)
+    cpu_count_physical = psutil.cpu_count(logical=False)
+    cpu_freq = psutil.cpu_freq()
+
+    # ── Memory ────────────────────────────────────────────────────────────────
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+
+    # ── Disk ──────────────────────────────────────────────────────────────────
+    disk = psutil.disk_usage("/")
+    try:
+        disk_io = psutil.disk_io_counters()
+    except Exception:
+        disk_io = None
+
+    # ── Network ───────────────────────────────────────────────────────────────
+    try:
+        net_io = psutil.net_io_counters()
+    except Exception:
+        net_io = None
+
+    # ── Process / uptime ──────────────────────────────────────────────────────
+    boot_time = psutil.boot_time()
+    uptime_seconds = int(time.time() - boot_time)
+    uptime_days = uptime_seconds // 86400
+    uptime_hours = (uptime_seconds % 86400) // 3600
+    uptime_minutes = (uptime_seconds % 3600) // 60
+
+    def fmt_bytes(b):
+        """Human-readable byte size."""
+        if b is None:
+            return "N/A"
+        for unit in ("B", "KB", "MB", "GB", "TB"):
+            if b < 1024:
+                return f"{b:.1f} {unit}"
+            b /= 1024
+        return f"{b:.1f} PB"
+
+    return {
+        "cpu": {
+            "percent": round(cpu_percent, 1),
+            "cores_logical": cpu_count_logical,
+            "cores_physical": cpu_count_physical,
+            "frequency_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+        },
+        "memory": {
+            "percent": round(mem.percent, 1),
+            "total_bytes": mem.total,
+            "used_bytes": mem.used,
+            "available_bytes": mem.available,
+            "total_human": fmt_bytes(mem.total),
+            "used_human": fmt_bytes(mem.used),
+            "available_human": fmt_bytes(mem.available),
+        },
+        "swap": {
+            "percent": round(swap.percent, 1),
+            "total_bytes": swap.total,
+            "used_bytes": swap.used,
+            "total_human": fmt_bytes(swap.total),
+            "used_human": fmt_bytes(swap.used),
+        },
+        "disk": {
+            "percent": round(disk.percent, 1),
+            "total_bytes": disk.total,
+            "used_bytes": disk.used,
+            "free_bytes": disk.free,
+            "total_human": fmt_bytes(disk.total),
+            "used_human": fmt_bytes(disk.used),
+            "free_human": fmt_bytes(disk.free),
+            "read_bytes": disk_io.read_bytes if disk_io else None,
+            "write_bytes": disk_io.write_bytes if disk_io else None,
+            "read_human": fmt_bytes(disk_io.read_bytes) if disk_io else "N/A",
+            "write_human": fmt_bytes(disk_io.write_bytes) if disk_io else "N/A",
+        },
+        "network": {
+            "bytes_sent": net_io.bytes_sent if net_io else None,
+            "bytes_recv": net_io.bytes_recv if net_io else None,
+            "packets_sent": net_io.packets_sent if net_io else None,
+            "packets_recv": net_io.packets_recv if net_io else None,
+            "sent_human": fmt_bytes(net_io.bytes_sent) if net_io else "N/A",
+            "recv_human": fmt_bytes(net_io.bytes_recv) if net_io else "N/A",
+        },
+        "uptime": {
+            "seconds": uptime_seconds,
+            "human": f"{uptime_days}d {uptime_hours}h {uptime_minutes}m",
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

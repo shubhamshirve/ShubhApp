@@ -21,6 +21,7 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import { toast } from "sonner";
+import { PlanCombobox } from "../../components/PlanCombobox";
 import { loadRazorpayScript } from "../../lib/razorpay";
 import {
   CreditCard,
@@ -935,18 +936,13 @@ const OperatorSubscription = () => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Select Plan</Label>
-              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                <SelectTrigger data-testid="renew-plan-select">
-                  <SelectValue placeholder="Choose a plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(subscription?.available_plans || []).map((plan) => (
-                    <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} — ₹{plan.monthly_price?.toLocaleString("en-IN")}/mo
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PlanCombobox
+                plans={subscription?.available_plans || []}
+                value={selectedPlan}
+                onSelect={setSelectedPlan}
+                displayFn={(p) => `${p.name} — ₹${p.monthly_price?.toLocaleString("en-IN")}/mo`}
+                placeholder="Choose a plan"
+              />
             </div>
 
             {/* Owned addons that will auto-renew */}

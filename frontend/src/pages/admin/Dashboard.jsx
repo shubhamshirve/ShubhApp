@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
 import WelcomeModal from "../../components/WelcomeModal";
 import {
@@ -17,17 +18,87 @@ import {
   Receipt,
   UserCheck,
   UserX,
-  Wallet
+  Wallet,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Network,
+  RefreshCw,
+  Server,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
+
+// ── System Health sub-components (defined outside to avoid nested component warning) ─
+
+const gaugeColor = (pct) => {
+  if (pct == null) return "bg-slate-200";
+  if (pct >= 85) return "bg-red-500";
+  if (pct >= 65) return "bg-amber-400";
+  return "bg-emerald-500";
+};
+const gaugeText = (pct) => {
+  if (pct == null) return "text-slate-400";
+  if (pct >= 85) return "text-red-600";
+  if (pct >= 65) return "text-amber-600";
+  return "text-emerald-600";
+};
+
+const GaugeBar = ({ label, icon: Icon, percent, sub, iconColor }) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className={`w-7 h-7 rounded-md flex items-center justify-center ${iconColor}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <span className="text-sm font-medium text-slate-700">{label}</span>
+      </div>
+      <span className={`text-sm font-bold tabular-nums ${gaugeText(percent)}`}>
+        {percent != null ? `${percent}%` : "—"}
+      </span>
+    </div>
+    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-700 ${gaugeColor(percent)}`}
+        style={{ width: `${Math.min(percent ?? 0, 100)}%` }}
+      />
+    </div>
+    {sub && <p className="text-xs text-slate-500">{sub}</p>}
+  </div>
+);
+
+const StatPill = ({ icon: Icon, label, value, iconBg }) => (
+  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${iconBg}`}>
+      <Icon className="w-4 h-4" />
+    </div>
+    <div className="min-w-0">
+      <p className="text-xs text-slate-500 truncate">{label}</p>
+      <p className="text-sm font-semibold text-slate-800 truncate">{value}</p>
+    </div>
+  </div>
+);
+
+// ────────────────────────────────────────────────────────────────────────────
 
 const AdminDashboard = () => {
   const { authAxios } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sysHealth, setSysHealth] = useState(null);
+  const [sysLoading, setSysLoading] = useState(false);
+  const [sysLastUpdated, setSysLastUpdated] = useState(null);
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+    fetchSysHealth();
+  }, [fetchSysHealth]);
+
+  // Auto-refresh system health every 30 seconds
+  useEffect(() => {
+    const id = setInterval(fetchSysHealth, 30_000);
+    return () => clearInterval(id);
+  }, [fetchSysHealth]);
 
   const fetchDashboard = async () => {
     try {
@@ -39,6 +110,19 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   };
+
+  const fetchSysHealth = useCallback(async () => {
+    setSysLoading(true);
+    try {
+      const res = await authAxios.get("/admin/system/health");
+      setSysHealth(res.data);
+      setSysLastUpdated(new Date());
+    } catch {
+      // silent — non-critical
+    } finally {
+      setSysLoading(false);
+    }
+  }, [authAxios]);
 
   if (loading) {
     return (
@@ -226,6 +310,164 @@ const AdminDashboard = () => {
             </Card>
           </section>
         )}
+
+        {/* System Health */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-heading font-semibold text-slate-900">System Health</h2>
+            <div className="flex items-center gap-2">
+              {sysLastUpdated && (
+                <span className="text-xs text-slate-400">
+                  Updated {sysLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchSysHealth}
+                disabled={sysLoading}
+                className="h-7 px-2 text-xs"
+              >
+                <RefreshCw className={`w-3 h-3 mr-1 ${sysLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          {!sysHealth ? (
+            <Card className="p-6 flex items-center justify-center text-slate-400 text-sm">
+              {sysLoading ? "Loading system metrics…" : "System metrics unavailable"}
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Gauges: CPU, RAM, Disk */}
+              <Card>
+                <CardHeader className="pb-3 pt-4 px-5">
+                  <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <Server className="w-4 h-4 text-slate-500" /> Resource Usage
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-5 pb-5 space-y-4">
+                  <GaugeBar
+                    label="CPU"
+                    icon={Cpu}
+                    percent={sysHealth.cpu?.percent}
+                    sub={`${sysHealth.cpu?.cores_physical ?? "?"} cores${sysHealth.cpu?.frequency_mhz ? ` · ${(sysHealth.cpu.frequency_mhz / 1000).toFixed(1)} GHz` : ""}`}
+                    iconColor="bg-blue-100 text-blue-600"
+                  />
+                  <GaugeBar
+                    label="RAM"
+                    icon={MemoryStick}
+                    percent={sysHealth.memory?.percent}
+                    sub={`${sysHealth.memory?.used_human} used of ${sysHealth.memory?.total_human}`}
+                    iconColor="bg-violet-100 text-violet-600"
+                  />
+                  <GaugeBar
+                    label="Disk"
+                    icon={HardDrive}
+                    percent={sysHealth.disk?.percent}
+                    sub={`${sysHealth.disk?.used_human} used · ${sysHealth.disk?.free_human} free of ${sysHealth.disk?.total_human}`}
+                    iconColor="bg-amber-100 text-amber-600"
+                  />
+                  {sysHealth.swap?.total_bytes > 0 && (
+                    <GaugeBar
+                      label="Swap"
+                      icon={MemoryStick}
+                      percent={sysHealth.swap?.percent}
+                      sub={`${sysHealth.swap?.used_human} of ${sysHealth.swap?.total_human}`}
+                      iconColor="bg-slate-100 text-slate-500"
+                    />
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Network + Disk I/O + Uptime */}
+              <div className="space-y-4">
+                {/* Network traffic */}
+                <Card>
+                  <CardHeader className="pb-2 pt-4 px-5">
+                    <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Network className="w-4 h-4 text-slate-500" /> Network (cumulative since boot)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-5 pb-4 grid grid-cols-2 gap-3">
+                    <StatPill
+                      icon={ArrowDown}
+                      label="Data Received"
+                      value={sysHealth.network?.recv_human ?? "—"}
+                      iconBg="bg-emerald-100 text-emerald-600"
+                    />
+                    <StatPill
+                      icon={ArrowUp}
+                      label="Data Sent"
+                      value={sysHealth.network?.sent_human ?? "—"}
+                      iconBg="bg-blue-100 text-blue-600"
+                    />
+                    <StatPill
+                      icon={ArrowDown}
+                      label="Packets In"
+                      value={(sysHealth.network?.packets_recv ?? 0).toLocaleString()}
+                      iconBg="bg-teal-100 text-teal-600"
+                    />
+                    <StatPill
+                      icon={ArrowUp}
+                      label="Packets Out"
+                      value={(sysHealth.network?.packets_sent ?? 0).toLocaleString()}
+                      iconBg="bg-indigo-100 text-indigo-600"
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Disk I/O + Uptime */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2 pt-4 px-5">
+                      <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <HardDrive className="w-4 h-4 text-slate-500" /> Disk I/O
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-4 space-y-2">
+                      <StatPill
+                        icon={ArrowDown}
+                        label="Total Read"
+                        value={sysHealth.disk?.read_human ?? "—"}
+                        iconBg="bg-orange-100 text-orange-600"
+                      />
+                      <StatPill
+                        icon={ArrowUp}
+                        label="Total Write"
+                        value={sysHealth.disk?.write_human ?? "—"}
+                        iconBg="bg-rose-100 text-rose-600"
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2 pt-4 px-5">
+                      <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <Server className="w-4 h-4 text-slate-500" /> Server Info
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-4 space-y-2">
+                      <StatPill
+                        icon={Clock}
+                        label="Uptime"
+                        value={sysHealth.uptime?.human ?? "—"}
+                        iconBg="bg-sky-100 text-sky-600"
+                      />
+                      <StatPill
+                        icon={Cpu}
+                        label="CPU Cores"
+                        value={`${sysHealth.cpu?.cores_physical ?? "?"} physical`}
+                        iconBg="bg-blue-100 text-blue-600"
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Quick Actions */}
         <section>

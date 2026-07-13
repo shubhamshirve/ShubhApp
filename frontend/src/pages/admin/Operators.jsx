@@ -47,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { PlanCombobox } from "../../components/PlanCombobox";
 import { 
   Building2, 
   MoreVertical, 
@@ -166,7 +167,10 @@ const AdminOperators = () => {
   const fetchPlans = async () => {
     try {
       const response = await authAxios.get("/admin/saas-plans");
-      setPlans(response.data);
+      const sorted = [...response.data].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      );
+      setPlans(sorted);
     } catch (error) {
       console.error("Failed to load plans");
     }
@@ -761,18 +765,13 @@ const AdminOperators = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>SaaS Plan *</Label>
-                    <Select value={createForm.saas_plan_id} onValueChange={(value) => setCreateForm({...createForm, saas_plan_id: value})}>
-                      <SelectTrigger data-testid="create-op-plan">
-                        <SelectValue placeholder="Choose a plan" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {plans.map((plan) => (
-                          <SelectItem key={plan.id} value={plan.id}>
-                            {plan.name} - ₹{plan.monthly_price}/mo
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PlanCombobox
+                      plans={plans}
+                      value={createForm.saas_plan_id}
+                      onSelect={(id) => setCreateForm({ ...createForm, saas_plan_id: id })}
+                      displayFn={(p) => `${p.name} — ₹${p.monthly_price}/mo`}
+                      placeholder="Choose a plan"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Subscription Months *</Label>
@@ -877,18 +876,13 @@ const AdminOperators = () => {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Select Plan</Label>
-                <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                  <SelectTrigger data-testid="select-plan">
-                    <SelectValue placeholder="Choose a plan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {plans.filter(p => !p.trial_enabled).map((plan) => (
-                      <SelectItem key={plan.id} value={plan.id}>
-                        {plan.name} - ₹{plan.monthly_price}/mo
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PlanCombobox
+                  plans={plans.filter((p) => !p.trial_enabled)}
+                  value={selectedPlan}
+                  onSelect={setSelectedPlan}
+                  displayFn={(p) => `${p.name} — ₹${p.monthly_price}/mo`}
+                  placeholder="Choose a plan"
+                />
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setShowAssignPlan(false)}>
@@ -913,7 +907,7 @@ const AdminOperators = () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="py-4">
-              <Label>Type "{selectedOperator?.company_name}" to confirm</Label>
+              <Label>Type &quot;{selectedOperator?.company_name}&quot; to confirm</Label>
               <Input
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}

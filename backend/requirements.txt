@@ -77,3 +77,4 @@ pycparser==3.0
 # - Dev versions: google-auth==2.49.0.dev0
 # - Unused tools: grpcio-tools, s5cmd, boto3, botocore, s3transfer
 # - Unstable versions: google-ai-generativelanguage, regex==2026.2.19, etc.
+psutil
