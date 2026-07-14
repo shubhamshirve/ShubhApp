@@ -478,14 +478,18 @@ export default function PublicInvoice() {
                   invoice.line_items.map((item, idx) => {
                     const isPreviousPending = item.plan_name === "Previous Pending";
                     const isCustomItem = item.is_custom === true;
+                    // Only hide dates/links for truly custom items (e.g. setup fees, equipment).
+                    // Previous Pending items are also flagged is_custom but must still show
+                    // their "Till <date>" and invoice links.
+                    const hideCustomDetails = isCustomItem && !isPreviousPending;
                     return (
                       <tr key={idx} className="border-b border-slate-100 last:border-0">
                         <td className="py-4">
                           <p className={`font-medium ${isPreviousPending ? "text-amber-700" : "text-slate-800"}`}>
                             {item.plan_name}
                           </p>
-                          {/* Hide service dates for custom items */}
-                          {!isCustomItem && (
+                          {/* Hide service dates only for non-Previous-Pending custom items */}
+                          {!hideCustomDetails && (
                             <p className="text-sm text-slate-500 mt-0.5">
                               {isPreviousPending
                                 ? `Till ${formatDate(item.service_start_date)}`
@@ -493,8 +497,8 @@ export default function PublicInvoice() {
                               }
                             </p>
                           )}
-                          {/* Hide invoice URL links for Previous Pending (is_custom) items */}
-                          {isPreviousPending && !isCustomItem && item.description && (
+                          {/* Previous Pending: always show invoice links */}
+                          {isPreviousPending && item.description && (
                             <p className="text-xs text-slate-400 mt-1 italic">
                               {item.description.split(",").map((num, i, arr) => {
                                 const trimmed = num.trim();
