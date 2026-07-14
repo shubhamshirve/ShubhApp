@@ -166,7 +166,7 @@ services:
       DOMAIN: ${DOMAIN}
       SERVER_IP: ${SERVER_IP}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: ["CMD", "curl", "-sf", "http://localhost:2019/"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -1,4 +1,34 @@
 # E-Bill Platform — CHANGELOG
+# Current Version: V9.13
+
+## 2026-07-11
+
+### V9.13 — Fix: Caddy Health Check (unhealthy container after deploy)
+
+**Problem:** After every deployment, `docker ps` showed Caddy container as `(unhealthy)`.
+
+**Root Cause:** The Caddy health check in `docker-compose.prod.yml` and `docker-compose.ghcr.yml` used `curl -f http://localhost/`. The Caddyfile only has a site block for the operator's domain (e.g., `app.e-bill.in`), **not** for `localhost`. So Caddy returns a 404/error for `http://localhost/` → Docker marks it unhealthy.
+
+**Fix:** Changed the Caddy health check to use Caddy's built-in admin API at port `2019`:
+```
+test: ["CMD", "curl", "-sf", "http://localhost:2019/"]
+```
+The admin API is always available inside the Caddy container when Caddy is running, regardless of domain/site configuration. This is the correct way to health-check Caddy from within the container.
+
+**Files changed:**
+- `docker-compose.prod.yml` — Caddy `healthcheck.test`
+- `docker-compose.ghcr.yml` — Caddy `healthcheck.test`
+
+**Immediate fix for running VPS (without redeploying):**
+```bash
+# SSH into VPS, then:
+docker inspect --format='{{.State.Health.Status}}' shubhapp-caddy-1
+# Edit docker-compose.prod.yml health check, then:
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d caddy
+```
+
+---
+
 # Current Version: V9.12
 
 ## 2026-05-11
@@ -57,7 +87,7 @@ Surfaces real WhatsApp delivery state in the Admin → WhatsApp Stats → Messag
 
 #### Meta dashboard configuration (manual, one-time)
 1. Meta App Dashboard → WhatsApp → Configuration → Webhooks.
-2. Set Callback URL: `<REACT_APP_BACKEND_URL>/api/webhooks/whatsapp` (e.g. `https://vps-launcher-6.preview.emergentagent.com/api/webhooks/whatsapp`).
+2. Set Callback URL: `<REACT_APP_BACKEND_URL>/api/webhooks/whatsapp` (e.g. `https://ebill-staging-fix.preview.emergentagent.com/api/webhooks/whatsapp`).
 3. Set Verify Token: arbitrary string — paste the same value in Admin → Settings → Platform WhatsApp Config → Webhook Verify Token, save.
 4. Subscribe to the **messages** field on the WhatsApp Business Account.
 
