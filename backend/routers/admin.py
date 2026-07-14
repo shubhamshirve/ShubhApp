@@ -19,7 +19,7 @@ from models import (
     SecuritySettingsUpdate, SecuritySettingsResponse,
     EnvSettingsUpdate, AdminEnvSettingsResponse,
 )
-from utils import generate_id, hash_password, create_token, generate_unique_referral_code
+from utils import generate_id, generate_subscriber_id, hash_password, create_token, generate_unique_referral_code
 from dependencies import require_admin, get_current_user
 from audit import log_audit
 from sanitization import SanitizedModel, sanitize_filename
@@ -2710,4 +2710,113 @@ async def get_system_health(current_user: dict = Depends(require_admin)):
             "human": f"{uptime_days}d {uptime_hours}h {uptime_minutes}m",
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Subscriber ID Migration  (UUID → EB-format)
+# ─────────────────────────────────────────────────────────────────────────────
+import re as _re
+
+_UUID_PATTERN = _re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    _re.IGNORECASE,
+)
+
+
+@router.get("/migrate-subscriber-ids/preview")
+async def preview_subscriber_id_migration(
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Dry-run: list all subscribers whose IDs are still in UUID format.
+    Shows what the new EB-format IDs would look like — no data is changed.
+    """
+    import secrets, string
+    all_subs = await db.subscribers.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "operator_id": 1}
+    ).to_list(None)
+
+    uuid_subs = [s for s in all_subs if _UUID_PATTERN.match(s.get("id", ""))]
+
+    preview = []
+    for sub in uuid_subs:
+        # Generate a sample new ID for preview (not stored)
+        suffix = "".join(
+            secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8)
+        )
+        preview.append({
+            "name":       sub.get("name", ""),
+            "old_id":     sub["id"],
+            "new_id":     f"EB{suffix}",
+            "operator_id": sub.get("operator_id", ""),
+        })
+
+    return {
+        "total_subscribers":  len(all_subs),
+        "need_migration":     len(uuid_subs),
+        "already_eb_format":  len(all_subs) - len(uuid_subs),
+        "preview":            preview,
+    }
+
+
+@router.post("/migrate-subscriber-ids")
+async def run_subscriber_id_migration(
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Live migration: rename all UUID-format subscriber IDs to short EB-format IDs.
+    Updates:
+      - subscribers.id
+      - invoices.subscriber_id
+
+    Safe to run multiple times — only processes subscribers with UUID-format IDs.
+    """
+    all_subs  = await db.subscribers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(None)
+    uuid_subs = [s for s in all_subs if _UUID_PATTERN.match(s.get("id", ""))]
+
+    if not uuid_subs:
+        return {
+            "status":   "no_op",
+            "message":  "All subscriber IDs are already in EB-format. Nothing to migrate.",
+            "migrated": 0,
+            "errors":   [],
+        }
+
+    migrated = 0
+    errors   = []
+    mapping  = []
+
+    for sub in uuid_subs:
+        old_id = sub["id"]
+        name   = sub.get("name", "unknown")
+        try:
+            new_id = await generate_subscriber_id(db)
+
+            # 1 — Update subscriber record
+            await db.subscribers.update_one(
+                {"id": old_id}, {"$set": {"id": new_id}}
+            )
+
+            # 2 — Update all invoices referencing this subscriber
+            inv_res = await db.invoices.update_many(
+                {"subscriber_id": old_id}, {"$set": {"subscriber_id": new_id}}
+            )
+
+            mapping.append({
+                "name":             name,
+                "old_id":           old_id,
+                "new_id":           new_id,
+                "invoices_updated": inv_res.modified_count,
+            })
+            migrated += 1
+
+        except Exception as exc:
+            errors.append({"subscriber_id": old_id, "name": name, "error": str(exc)})
+
+    return {
+        "status":   "done",
+        "migrated": migrated,
+        "errors":   errors,
+        "mapping":  mapping,
     }
