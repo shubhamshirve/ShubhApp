@@ -1,5 +1,44 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.46
+# Current Version: V9.47
+
+## 2026-07-14
+
+### V9.47 — Migrate existing subscriber UUIDs → EB-format IDs
+
+Added safe, idempotent migration that converts old UUID-format subscriber IDs to the new short EB-format (e.g. `EB4K7X2M9Q`).
+
+**Collections updated:**
+- `subscribers.id`
+- `invoices.subscriber_id`
+
+**Two ways to run the migration:**
+
+#### Option A — Admin API (easiest, works on running production)
+```bash
+# 1. Preview first (no changes made)
+curl -H "Authorization: Bearer <admin_token>" \
+  https://app.e-bill.in/api/admin/migrate-subscriber-ids/preview
+
+# 2. Run live migration
+curl -X POST -H "Authorization: Bearer <admin_token>" \
+  https://app.e-bill.in/api/admin/migrate-subscriber-ids
+```
+
+#### Option B — Docker exec (after deploy)
+```bash
+docker exec -it ebill-backend-1 python scripts/migrate_subscriber_ids.py --dry-run
+docker exec -it ebill-backend-1 python scripts/migrate_subscriber_ids.py
+```
+
+**Files added/changed:**
+- `backend/routers/admin.py` — `GET /admin/migrate-subscriber-ids/preview` + `POST /admin/migrate-subscriber-ids`
+- `backend/scripts/migrate_subscriber_ids.py` — standalone script
+
+**Safety:** Idempotent — re-running only touches subscribers still in UUID format. Existing EB-format IDs are never modified.
+
+---
+
+
 
 ## 2026-07-14
 
