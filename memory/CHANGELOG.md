@@ -1,5 +1,30 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.18
+# Current Version: V9.19
+
+## 2026-07-14
+
+### V9.19 — Uppercase Customer IDs + Previous Pending display bug fix
+
+#### 1. Subscriber IDs now uppercase
+- `generate_subscriber_id` updated: `EB` prefix + 8 `[A-Z0-9]` characters → e.g. `EB4K7X2M9Q`
+- File: `backend/utils.py`
+
+#### 2. Public Invoice — Previous Pending items restored (bug fix)
+**Bug:** Previous Pending consolidated items also have `is_custom: true` in the backend. The earlier fix incorrectly used `isCustomItem` to suppress dates and links, which also hid Previous Pending dates and invoice links.
+
+**Fix:** Introduced `hideCustomDetails = isCustomItem && !isPreviousPending`. Only truly custom line items (setup fees, equipment, etc.) have dates hidden. Previous Pending items always show "Till <date>" and their invoice number links.
+
+| Item type | Date shown | Invoice links shown |
+|-----------|-----------|---------------------|
+| Regular plan | ✅ `start → end` | — |
+| Previous Pending | ✅ `Till <date>` | ✅ Invoice numbers |
+| Custom (is_custom + NOT PP) | ❌ hidden | ❌ hidden |
+
+File: `frontend/src/pages/PublicInvoice.jsx`
+
+---
+
+
 
 ## 2026-07-14
 
