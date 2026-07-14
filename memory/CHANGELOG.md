@@ -1,5 +1,27 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.17
+# Current Version: V9.18
+
+## 2026-07-14
+
+### V9.18 — Short Subscriber IDs (`eb` + 8 alphanumeric)
+
+**New subscriber ID format:** `eb` + 8 lowercase alphanumeric chars → e.g. `eb4k7x2m9q` (10 chars total)
+- Pattern: `^eb[a-z0-9]{8}$`, 36^8 ≈ 2.8 trillion combinations
+- Collision-safe: DB uniqueness check with 20 retry attempts
+- URL example: `/operator/subscribers/eb4k7x2m9q/ledger`
+
+**Files changed:**
+- `backend/utils.py` — new `generate_subscriber_id(db)` async function
+- `backend/routers/operator.py` — `create_subscriber` uses `await generate_subscriber_id(db)`
+- `backend/services/job_queue_service.py` — bulk upload uses `await generate_subscriber_id(db)`
+- `frontend/src/pages/operator/Subscribers.jsx` — Customer ID shown below subscriber name in list
+- `frontend/src/pages/PublicInvoice.jsx` — "Customer ID" field added to invoice details grid
+
+**Backward compatible:** Existing subscribers keep their old UUIDs and remain accessible via old URLs. Only new subscribers get short IDs.
+
+---
+
+
 
 ## 2026-07-14
 
