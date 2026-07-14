@@ -185,7 +185,7 @@ services:
       DOMAIN: ${DOMAIN}
       SERVER_IP: ${SERVER_IP}
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:2019/"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -209,10 +209,13 @@ services:
 volumes:
   mongo_data:
     driver: local
+    name: ebill_mongo_data   # fixed name — survives compose project renames
   caddy_data:
     driver: local
+    name: ebill_caddy_data   # fixed name — preserves SSL certificates
   caddy_config:
     driver: local
+    name: ebill_caddy_config
 
 networks:
   ebill:
