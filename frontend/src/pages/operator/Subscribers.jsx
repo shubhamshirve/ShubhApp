@@ -64,7 +64,7 @@ const OperatorSubscribers = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 10;
   const [showDialog, setShowDialog] = useState(false);
   const [editingSubscriber, setEditingSubscriber] = useState(null);
   const [dashboardStats, setDashboardStats] = useState(null);

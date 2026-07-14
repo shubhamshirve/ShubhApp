@@ -473,19 +473,24 @@ export default function PublicInvoice() {
                 {invoice.line_items && invoice.line_items.length > 0 ? (
                   invoice.line_items.map((item, idx) => {
                     const isPreviousPending = item.plan_name === "Previous Pending";
+                    const isCustomItem = item.is_custom === true;
                     return (
                       <tr key={idx} className="border-b border-slate-100 last:border-0">
                         <td className="py-4">
                           <p className={`font-medium ${isPreviousPending ? "text-amber-700" : "text-slate-800"}`}>
                             {item.plan_name}
                           </p>
-                          <p className="text-sm text-slate-500 mt-0.5">
-                            {isPreviousPending
-                              ? `Till ${formatDate(item.service_start_date)}`
-                              : `${formatDate(item.service_start_date)} to ${formatDate(item.service_end_date)}`
-                            }
-                          </p>
-                          {isPreviousPending && item.description && (
+                          {/* Hide service dates for custom items */}
+                          {!isCustomItem && (
+                            <p className="text-sm text-slate-500 mt-0.5">
+                              {isPreviousPending
+                                ? `Till ${formatDate(item.service_start_date)}`
+                                : `${formatDate(item.service_start_date)} to ${formatDate(item.service_end_date)}`
+                              }
+                            </p>
+                          )}
+                          {/* Hide invoice URL links for Previous Pending (is_custom) items */}
+                          {isPreviousPending && !isCustomItem && item.description && (
                             <p className="text-xs text-slate-400 mt-1 italic">
                               {item.description.split(",").map((num, i, arr) => {
                                 const trimmed = num.trim();

@@ -1462,7 +1462,7 @@ async def get_subscribers(
         query["status"] = status
     if plan_id:
         query["plans.plan_id"] = plan_id
-    subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
+    subscribers = await db.subscribers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return [SubscriberResponse(**{**s, "created_at": datetime.fromisoformat(s["created_at"])}) for s in subscribers]
 
 
