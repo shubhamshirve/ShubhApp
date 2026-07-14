@@ -1,5 +1,32 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.15
+# Current Version: V9.16
+
+## 2026-07-14
+
+### V9.16 — Fix: VPS Deploy Port 27017 Conflict
+
+**Error:** `Bind for 127.0.0.1:27017 failed: port is already allocated`
+
+**Root cause:** After renaming the deploy folder from `/root/ShubhApp` → `/root/ebill`, the old `shubhapp-mongodb-1` container was still running and bound to host port `127.0.0.1:27017`. The new `ebill-mongodb-1` tried to bind the same port → conflict.
+
+**Fix 1 — Remove MongoDB host port binding (permanent):**
+- `docker-compose.prod.yml` — Changed `ports: "127.0.0.1:27017:27017"` → `expose: ["27017"]`
+- `docker-compose.ghcr.yml` — Same change
+- Backend connects to MongoDB via internal Docker network (`mongodb:27017`) — no host binding needed. DB still accessible via `docker exec ebill-mongodb-1 mongosh`.
+
+**Fix 2 — Deploy script cleans up old-path containers before starting new ones:**
+- `.github/workflows/docker-build-push.yml` — Added loop to stop containers from `/root/ShubhApp`, `/root/ShubhApp ` (with space), `/opt/ebill` before starting new ones.
+
+**Immediate manual fix for current VPS (before next deploy):**
+```bash
+cd /root/ShubhApp
+docker compose -f docker-compose.prod.yml --env-file .env.production down
+# Then push to live to trigger a fresh deploy to /root/ebill
+```
+
+---
+
+
 
 ## 2026-07-11
 
