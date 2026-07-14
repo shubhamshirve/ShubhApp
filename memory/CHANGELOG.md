@@ -1,5 +1,50 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.13
+# Current Version: V9.14
+
+## 2026-07-11
+
+### V9.14 — Centralize DB Name: `saas_db` → `ebill_db` everywhere
+
+All hardcoded `saas_db` strings removed. Database name is now driven exclusively by the `DB_NAME` environment variable, with `ebill_db` as the default fallback everywhere.
+
+**Files changed (16 total):**
+
+| File | Change |
+|------|--------|
+| `backend/database.py` | Default fallback `"saas_db"` → `"ebill_db"` (2 places) |
+| `backend/config.py` | Default fallback `'saas_db'` → `'ebill_db'` |
+| `docker-compose.prod.yml` | `${DB_NAME:-saas_db}` → `${DB_NAME:-ebill_db}` (2 places) |
+| `docker-compose.ghcr.yml` | `${DB_NAME:-saas_db}` → `${DB_NAME:-ebill_db}` (2 places) |
+| `docker-compose.yml` | `${DB_NAME:-saas_db}` → `${DB_NAME:-ebill_db}` (2 places) |
+| `docker/init-env.sh` | Default `saas_db` → `ebill_db` (2 places) |
+| `vps-setup.sh` | Prompt default `saas_db` → `ebill_db` |
+| `vps-bootstrap-optionb.sh` | Prompt default `saas_db` → `ebill_db` |
+| `backend/tests/test_whatsapp_webhook_status.py` | Hardcoded → `os.environ.get("DB_NAME", "ebill_db")` |
+| `backend/tests/test_first_invoice_validity.py` | Hardcoded `"saas_db"` → env var |
+| `backend/tests/test_invoice_plan_sync_e2e.py` | `os.environ["DB_NAME"] = "saas_db"` → `os.environ.setdefault("DB_NAME", "ebill_db")` |
+| `backend/tests/test_announcement_template.py` | Fallback `'saas_db'` → `'ebill_db'` |
+| `backend/tests/test_plan_revamp.py` | Fallback `"saas_db"` → `"ebill_db"` (5 places) |
+| `backend/tests/test_wallet_deduction.py` | Fallback `'saas_db'` → `'ebill_db'` |
+| `DEPLOYMENT.md` | Example `DB_NAME=saas_db` → `DB_NAME=ebill_db` |
+| `memory/agent-handoff.md` | Updated note |
+
+**How to change DB name in future:** Only update `DB_NAME=<new_name>` in your `.env.production` / GitHub `DOTENV_PRODUCTION` secret. No code changes needed.
+
+**⚠️ Data Migration Required** (one-time, for existing VPS with data in `saas_db`):
+```bash
+docker exec shubhapp-mongodb-1 mongodump \
+  --username $MONGO_ROOT_USERNAME --password $MONGO_ROOT_PASSWORD \
+  --authenticationDatabase admin --db saas_db --out /tmp/db_migrate
+
+docker exec shubhapp-mongodb-1 mongorestore \
+  --username $MONGO_ROOT_USERNAME --password $MONGO_ROOT_PASSWORD \
+  --authenticationDatabase admin \
+  --nsFrom 'saas_db.*' --nsTo 'ebill_db.*' /tmp/db_migrate
+```
+
+---
+
+
 
 ## 2026-07-11
 

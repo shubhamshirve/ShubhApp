@@ -10,7 +10,7 @@ async def test_wallet_deduction_flow():
     """Test wallet check and deduction for WhatsApp sends."""
     mongo_url = os.getenv('MONGO_URL', 'mongodb://localhost:27017')
     client = AsyncIOMotorClient(mongo_url)
-    db_name = os.getenv('DB_NAME', 'saas_db')
+    db_name = os.getenv('DB_NAME', 'ebill_db')
     db = client[db_name]
     
     # Get operator

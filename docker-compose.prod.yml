@@ -86,9 +86,9 @@ services:
       mongodb:
         condition: service_healthy
     environment:
-      DB_NAME: ${DB_NAME:-saas_db}
+      DB_NAME: ${DB_NAME:-ebill_db}
       # Authenticated MongoDB URI for production
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${DB_NAME:-saas_db}?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${DB_NAME:-ebill_db}?authSource=admin
       MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS}

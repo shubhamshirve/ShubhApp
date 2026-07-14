@@ -134,9 +134,8 @@ def _cleanup_subscriber(client, subscriber_id):
     try:
         from pymongo import MongoClient
         mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        # The live data lives in 'saas_db' (per previous iteration findings); fall
-        # back to DB_NAME if that's empty.
-        db_name = "saas_db"
+        # Use DB_NAME env var (defaults to ebill_db)
+        db_name = os.environ.get("DB_NAME", "ebill_db")
         mc = MongoClient(mongo_url, serverSelectionTimeoutMS=2000)
         mc[db_name].invoices.delete_many({"subscriber_id": subscriber_id})
         mc[db_name].subscribers.delete_one({"id": subscriber_id})

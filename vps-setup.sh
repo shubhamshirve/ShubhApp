@@ -167,9 +167,9 @@ if [[ -z "$MONGO_ROOT_PASSWORD" ]]; then
 fi
 
 # ── DB_NAME ───────────────────────────────────────────────────────────────────
-prompt "Database name ? [saas_db]"
+prompt "Database name ? [ebill_db]"
 read -r DB_NAME
-DB_NAME="${DB_NAME:-saas_db}"
+DB_NAME="${DB_NAME:-ebill_db}"
 
 # ── JWT_SECRET ────────────────────────────────────────────────────────────────
 prompt "JWT secret (leave blank to auto-generate 64-char secret):"

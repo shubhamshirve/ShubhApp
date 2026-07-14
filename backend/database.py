@@ -40,13 +40,13 @@ def _build_mongo_url(db_name: str) -> str:
     return f"mongodb://{host}:{port}/{db_name}"
 
 
-db_name = os.environ.get("DB_NAME", "saas_db")
+db_name = os.environ.get("DB_NAME", "ebill_db")
 mongo_url = _build_mongo_url(db_name)
 
 # Extract database name from URL if not set in env
 if not os.environ.get("DB_NAME"):
     parsed = urlparse(mongo_url)
-    db_name = parsed.path.lstrip("/") or "saas_db"
+    db_name = parsed.path.lstrip("/") or "ebill_db"
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]

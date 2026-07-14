@@ -101,7 +101,7 @@
 - **Dev vs Prod:** Backend uses `requirements_local.txt` (dev) vs `requirements.txt` (prod) via `BUILD_ENV` Dockerfile arg
 - **API docs:** Disabled in production
 - **OperatorResponse:** `owner_name` and `status` are Optional with defaults — older operator documents may not have these fields; do NOT make them required again
-- **DB name:** Config defaults to `saas_db` (loaded from `DB_NAME` env var, defaults if absent)
+- **DB name:** Config defaults to `ebill_db` (loaded from `DB_NAME` env var, defaults if absent)
 
 ---
 

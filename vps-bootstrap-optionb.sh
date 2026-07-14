@@ -145,9 +145,9 @@ if [[ -z "$MONGO_ROOT_PASSWORD" ]]; then
   info "MongoDB password auto-generated"
 fi
 
-ask "Database name? [saas_db]"
+ask "Database name? [ebill_db]"
 read -r DB_NAME
-DB_NAME="${DB_NAME:-saas_db}"
+DB_NAME="${DB_NAME:-ebill_db}"
 
 ask "JWT secret (blank = auto-generate 64-char):"
 read -rs JWT_SECRET; echo ""

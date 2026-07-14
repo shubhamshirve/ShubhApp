@@ -35,7 +35,7 @@ if not BACKUP_PASSWORD:
 # ============================================================================
 # Database Configuration
 # ============================================================================
-DB_NAME = os.environ.get('DB_NAME', 'saas_db')
+DB_NAME = os.environ.get('DB_NAME', 'ebill_db')
 MONGO_URI = os.environ.get('MONGO_URI')
 
 # Fallback: build from components if MONGO_URI not set
