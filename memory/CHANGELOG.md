@@ -1,5 +1,40 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.16
+# Current Version: V9.17
+
+## 2026-07-14
+
+### V9.17 — Fix: Caddy stays (unhealthy) + Invalid credentials after rename
+
+#### Issue 1: Caddy (unhealthy) — `curl` not in `caddy:2.8-alpine`
+`caddy:2.8-alpine` is a minimal Alpine image with no `curl`. All our previous health checks using `["CMD", "curl", ...]` silently failed → container always unhealthy.
+
+**Fix:** Changed Caddy health check to use `wget` (provided by Alpine busybox):
+```yaml
+test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+```
+This hits Caddy's built-in admin API (always returns HTTP 200 when Caddy is running).
+
+**Files:** `docker-compose.prod.yml`, `docker-compose.ghcr.yml`
+
+#### Issue 2: Invalid credentials — MongoDB volume renamed with project
+When compose project name changed from `shubhapp` → `ebill`, Docker auto-created new EMPTY volume `ebill_mongo_data`. Existing data stayed in `shubhapp_mongo_data` → zero users → login fails.
+
+**Fix (permanent):** Pinned explicit `name:` to all volumes so they never change with project rename:
+```yaml
+volumes:
+  mongo_data:
+    name: ebill_mongo_data   # fixed — won't change if project is renamed
+  caddy_data:
+    name: ebill_caddy_data
+  caddy_config:
+    name: ebill_caddy_config
+```
+
+**One-time VPS data migration required** — see instructions below.
+
+---
+
+
 
 ## 2026-07-14
 
