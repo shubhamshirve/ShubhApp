@@ -660,8 +660,9 @@ const OperatorSubscribers = () => {
                           </div>
                           <div>
                             <span className="font-medium block">{subscriber.name}</span>
+                            <span className="text-xs text-slate-400 font-mono">{subscriber.id}</span>
                             {subscriber.email && (
-                              <span className="text-xs text-slate-500">{subscriber.email}</span>
+                              <span className="text-xs text-slate-500 block">{subscriber.email}</span>
                             )}
                           </div>
                         </div>

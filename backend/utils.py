@@ -14,6 +14,27 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 
+async def generate_subscriber_id(db) -> str:
+    """
+    Generate a short, memorable subscriber ID for customer-facing use.
+    Format: eb + 8 lowercase alphanumeric characters  (e.g. eb4k7x2m9q)
+    Total  : 10 characters from [a-z0-9] → 36^8 ≈ 2.8 trillion combinations.
+    Checks the subscribers collection on every attempt to guarantee uniqueness.
+    """
+    import secrets
+    import string
+    alphabet = string.ascii_lowercase + string.digits  # a-z + 0-9
+    for _ in range(20):
+        suffix = "".join(secrets.choice(alphabet) for _ in range(8))
+        sub_id = f"eb{suffix}"
+        existing = await db.subscribers.find_one({"id": sub_id}, {"_id": 1})
+        if not existing:
+            return sub_id
+    # Extremely unlikely fallback: hex timestamp
+    ts = datetime.now(timezone.utc).strftime("%y%m%d%H%M%S%f")
+    return f"eb{ts[:8]}"
+
+
 async def generate_unique_referral_code(db_ref, prefix: str = "REF") -> str:
     """Generate a unique referral code like REF-ABC123."""
     import secrets

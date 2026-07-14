@@ -436,7 +436,7 @@ export default function PublicInvoice() {
 
           {/* Invoice Details Row */}
           <div className="px-6 sm:px-8 py-4 bg-slate-50/50 border-b border-slate-100">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Invoice Date</p>
                 <p className="text-sm font-medium text-slate-700 mt-0.5">{formatDate(invoice.invoice_date || invoice.created_at)}</p>
@@ -446,6 +446,10 @@ export default function PublicInvoice() {
                 <p className={`text-sm font-medium mt-0.5 ${isOverdue ? "text-red-600" : "text-slate-700"}`}>
                   {formatDate(invoice.due_date)}
                 </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Customer ID</p>
+                <p className="text-sm font-medium text-slate-700 mt-0.5 font-mono">{invoice.subscriber_id}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</p>

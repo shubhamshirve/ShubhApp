@@ -19,7 +19,7 @@ from models import (
     StaffCreate, StaffUpdate, StaffResponse, AuditLogResponse,
     PaymentGatewayConfig, SendNotificationRequest, BulkNotificationRequest,
 )
-from utils import generate_id, hash_password, generate_invoice_number_atomic
+from utils import generate_id, generate_subscriber_id, hash_password, generate_invoice_number_atomic
 from dependencies import (
     require_operator,
     require_operator_no_staff,
@@ -1423,7 +1423,7 @@ async def create_subscriber(data: SubscriberCreate, current_user: dict = Depends
         enriched_plans.append(plan_dict)
 
     subscriber = {
-        "id": generate_id(), "name": data.name, "whatsapp_number": data.whatsapp_number,
+        "id": await generate_subscriber_id(db), "name": data.name, "whatsapp_number": data.whatsapp_number,
         "email": data.email, "address": data.address,
         "plans": enriched_plans,
         "status": "active", "operator_id": current_user["operator_id"],

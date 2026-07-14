@@ -12,7 +12,7 @@ import csv
 from dateutil.relativedelta import relativedelta
 
 from database import db
-from utils import generate_id, generate_invoice_number_atomic
+from utils import generate_id, generate_subscriber_id, generate_invoice_number_atomic
 from audit import log_audit
 
 logger = logging.getLogger(__name__)
@@ -401,7 +401,7 @@ class JobQueueService:
                 continue
 
             subscriber = {
-                "id": generate_id(),
+                "id": await generate_subscriber_id(db),
                 "name": name,
                 "whatsapp_number": whatsapp,
                 "email": row.get("email", "") or None,
