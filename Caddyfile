@@ -19,3 +19,33 @@ app.e-bill.in {
 
     reverse_proxy frontend:3000
 }
+
+# ── e-bill.in marketing/landing site ──────────────────────────────────────────
+# Static files served from ./www/e-bill.in/ on the host
+# (mounted as /www/e-bill.in inside the Caddy container)
+# Steps to enable:
+#   1. Place your website files in <APP_DIR>/www/e-bill.in/ on the VPS
+#   2. On GoDaddy DNS: add A record  e-bill.in  →  <VPS_IP>
+#   3. On GoDaddy DNS: add A record  www.e-bill.in  →  <VPS_IP>
+#   4. Caddy will auto-provision SSL once DNS propagates (~minutes to 48h)
+e-bill.in, www.e-bill.in {
+    encode gzip zstd
+
+    # Redirect www → apex (canonical URL)
+    @www host www.e-bill.in
+    redir @www https://e-bill.in{uri} permanent
+
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    @static path *.css *.js *.jpg *.jpeg *.png *.gif *.woff *.woff2 *.ttf *.svg *.ico *.webp
+    header @static Cache-Control "public, max-age=604800, immutable"
+
+    root * /www/e-bill.in
+    file_server
+    try_files {path} {path}/ /index.html
+}

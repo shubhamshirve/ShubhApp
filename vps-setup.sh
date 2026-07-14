@@ -88,7 +88,7 @@ fi
 # ── Step 2: Get repo ───────────────────────────────────────────────────────────
 banner "Step 2 — Repository Setup"
 
-DEFAULT_DEPLOY_PATH="/opt/ebill"
+DEFAULT_DEPLOY_PATH="/root/ebill"
 prompt "Where should eBill be installed? [${DEFAULT_DEPLOY_PATH}]"
 read -r DEPLOY_PATH
 DEPLOY_PATH="${DEPLOY_PATH:-$DEFAULT_DEPLOY_PATH}"
@@ -167,9 +167,9 @@ if [[ -z "$MONGO_ROOT_PASSWORD" ]]; then
 fi
 
 # ── DB_NAME ───────────────────────────────────────────────────────────────────
-prompt "Database name ? [ebill_db]"
+prompt "Database name ? [saas_db]"
 read -r DB_NAME
-DB_NAME="${DB_NAME:-ebill_db}"
+DB_NAME="${DB_NAME:-saas_db}"
 
 # ── JWT_SECRET ────────────────────────────────────────────────────────────────
 prompt "JWT secret (leave blank to auto-generate 64-char secret):"
@@ -242,6 +242,9 @@ banner "Step 6 — Preparing Directories"
 
 mkdir -p "$DEPLOY_PATH/dbbackups"
 info "Created dbbackups/ directory"
+
+mkdir -p "$DEPLOY_PATH/www/e-bill.in"
+info "Created www/e-bill.in/ directory (place your marketing site files here)"
 
 # ── Step 7: Build and start ───────────────────────────────────────────────────
 banner "Step 7 — Building & Starting Services"

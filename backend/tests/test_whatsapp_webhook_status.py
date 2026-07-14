@@ -31,7 +31,7 @@ def _load_base_url() -> str:
 
 BASE_URL = _load_base_url()
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+DB_NAME = os.environ.get("DB_NAME", "saas_db")
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
 

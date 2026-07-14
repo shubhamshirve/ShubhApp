@@ -135,5 +135,5 @@ JWT_SECRET=your-64-char-secret
 BACKUP_PASSWORD=your-backup-password
 CORS_ORIGINS=https://yourdomain.com
 REACT_APP_BACKEND_URL=https://yourdomain.com
-DB_NAME=ebill_db
+DB_NAME=saas_db
 ```

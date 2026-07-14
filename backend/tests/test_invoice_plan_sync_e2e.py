@@ -2,7 +2,7 @@
 E2E HTTP-level tests for invoice -> subscriber.plans sync (Bug #1) and
 bulk-notification WhatsApp logging (Bug #2).
 
-Backend under test: REACT_APP_BACKEND_URL (runtime DB = ebill_db via DB_NAME env var).
+Backend under test: REACT_APP_BACKEND_URL (runtime DB = saas_db via DB_NAME env var).
 Seeds a TEST_ operator + user + wallet + subscriber + plans directly in mongo,
 executes HTTP calls as the TEST operator, and verifies DB state.
 
@@ -32,9 +32,9 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
-# Runtime DB is set via DB_NAME env var (defaults to ebill_db).  Override before importing
+# Runtime DB is set via DB_NAME env var (defaults to saas_db).  Override before importing
 # backend modules so direct DB access (via motor) targets the same DB.
-os.environ.setdefault("DB_NAME", "ebill_db")
+os.environ.setdefault("DB_NAME", "saas_db")
 
 # Make /app/backend importable so we can reuse password hashing + the helper.
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -42,7 +42,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 load_dotenv(BACKEND_DIR / ".env")  # MONGO_URL
 # Reassert default after dotenv loaded (env var takes priority if already set)
-os.environ.setdefault("DB_NAME", "ebill_db")
+os.environ.setdefault("DB_NAME", "saas_db")
 
 from utils import hash_password  # noqa: E402
 from database import db  # noqa: E402

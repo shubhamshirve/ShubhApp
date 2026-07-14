@@ -355,7 +355,7 @@ class TestCheckoutOrderWalletCredit:
 
         load_dotenv(Path("/app/.env"))
         MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+        DB_NAME = os.environ.get("DB_NAME", "saas_db")
 
         async def check():
             client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
@@ -378,7 +378,7 @@ class TestCheckoutOrderWalletCredit:
 
         load_dotenv(Path("/app/.env"))
         MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+        DB_NAME = os.environ.get("DB_NAME", "saas_db")
 
         async def check():
             client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
@@ -405,7 +405,7 @@ class TestCheckoutOrderWalletCredit:
 
         load_dotenv(Path("/app/.env"))
         MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+        DB_NAME = os.environ.get("DB_NAME", "saas_db")
 
         async def check():
             client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
@@ -433,7 +433,7 @@ class TestCheckoutOrderWalletCredit:
 
         load_dotenv(Path("/app/.env"))
         MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+        DB_NAME = os.environ.get("DB_NAME", "saas_db")
 
         async def check():
             client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
@@ -460,7 +460,7 @@ class TestCheckoutOrderWalletCredit:
 
         load_dotenv(Path("/app/.env"))
         MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-        DB_NAME = os.environ.get("DB_NAME", "ebill_db")
+        DB_NAME = os.environ.get("DB_NAME", "saas_db")
 
         async def check():
             client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)

@@ -1,9 +1,34 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.14
+# Current Version: V9.15
 
 ## 2026-07-11
 
-### V9.14 — Centralize DB Name: `saas_db` → `ebill_db` everywhere
+### V9.15 — Revert DB default to `saas_db` + Deploy folder renamed to `ebill` + e-bill.in Caddyfile ready
+
+#### 1. DB name reverted to `saas_db`
+V9.14 (ebill_db rename) was fully reverted. All files use `saas_db` as default fallback.
+To change DB name in future: set `DB_NAME=<name>` in `DOTENV_PRODUCTION` secret — no code changes needed.
+Also fixed stray hardcode in `backend/tests/test_whatsapp_headers.py` (`client.ebill_db` → env var).
+
+#### 2. Deploy folder default changed: `ShubhApp` → `ebill`
+**Root cause of duplicate folders** (`ShubhApp` + `ShubhApp  ` with trailing space): `DEPLOY_PATH` GitHub secret had trailing whitespace. Default hardcoded path also said `/root/ShubhApp`.
+
+**Files changed:**
+- `.github/workflows/docker-build-push.yml` — default `'/root/ShubhApp'` → `'/root/ebill'` (2 lines)
+- `.github/workflows/deploy.yml` — default `'/opt/ebill'` → `'/root/ebill'`
+- `vps-bootstrap-optionb.sh` — default `'/root/ShubhApp'` → `'/root/ebill'`
+
+**User must also:**
+1. Update GitHub Secret `DEPLOY_PATH` to `/root/ebill` (trim any trailing spaces)
+2. On VPS: `mv /root/ShubhApp /root/ebill && rm -rf "/root/ShubhApp  "` (adjust for actual folder names)
+3. Then trigger a new deploy
+
+#### 3. Caddyfile + docker-compose updated for `e-bill.in` static site hosting
+See details below.
+
+---
+
+### V9.14 — ~~Centralize DB Name: `saas_db` → `ebill_db` everywhere~~ (REVERTED in V9.15)
 
 All hardcoded `saas_db` strings removed. Database name is now driven exclusively by the `DB_NAME` environment variable, with `ebill_db` as the default fallback everywhere.
 

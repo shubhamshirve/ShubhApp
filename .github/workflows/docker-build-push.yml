@@ -98,7 +98,7 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           command_timeout: 2m
           script: |
-            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ShubhApp' }}"
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ebill' }}"
             mkdir -p "$APP_DIR"
             ENV_FILE="$APP_DIR/.env.production"
 
@@ -139,7 +139,7 @@ jobs:
               echo ">>> Docker daemon started"
             fi
 
-            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ShubhApp' }}"
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/root/ebill' }}"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
@@ -154,6 +154,8 @@ jobs:
 
             # Ensure dbbackups dir exists (persists across deployments)
             mkdir -p "$APP_DIR/dbbackups"
+            # Ensure e-bill.in website dir exists (static files placed here manually)
+            mkdir -p "$APP_DIR/www/e-bill.in"
 
             # ── Resolve .env file (.env.production > .env) ────────────────
             ENV_FILE_ABS=""

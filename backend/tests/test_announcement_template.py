@@ -17,7 +17,7 @@ async def test_announcement_variables():
     """Test that announcement variables resolve correctly."""
     mongo_url = os.getenv('MONGO_URL', 'mongodb://localhost:27017')
     client = AsyncIOMotorClient(mongo_url)
-    db_name = os.getenv('DB_NAME', 'ebill_db')
+    db_name = os.getenv('DB_NAME', 'saas_db')
     db = client[db_name]
     
     print("\n=== Testing Announcement WhatsApp Template Variables ===\n")
@@ -117,7 +117,7 @@ async def test_template_configuration():
     """Check if announcement template is configured."""
     mongo_url = os.getenv('MONGO_URL', 'mongodb://localhost:27017')
     client = AsyncIOMotorClient(mongo_url)
-    db_name = os.getenv('DB_NAME', 'ebill_db')
+    db_name = os.getenv('DB_NAME', 'saas_db')
     db = client[db_name]
     
     print("\n=== Checking Template Configuration ===\n")

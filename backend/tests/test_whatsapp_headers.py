@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 async def test_header_resolution():
     client = AsyncIOMotorClient("mongodb://localhost:27017")
-    db = client.ebill_db
+    db = client[os.environ.get("DB_NAME", "saas_db")]
     
     # Mock data
     invoice = {

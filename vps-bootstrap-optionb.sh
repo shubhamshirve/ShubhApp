@@ -67,7 +67,7 @@ info "Docker Compose: $(docker compose version --short)"
 # =============================================================================
 banner "Step 2 — Repository"
 
-DEFAULT_PATH="/root/ShubhApp"
+DEFAULT_PATH="/root/ebill"
 ask "Deploy path on this VPS? [${DEFAULT_PATH}]"
 read -r DEPLOY_PATH
 DEPLOY_PATH="${DEPLOY_PATH:-$DEFAULT_PATH}"
@@ -88,8 +88,11 @@ else
 fi
 
 cd "$DEPLOY_PATH"
-mkdir -p dbbackups
+mkdir -p "$APP_DIR/dbbackups"
 info "dbbackups/ directory ready"
+
+mkdir -p "$APP_DIR/www/e-bill.in"
+info "www/e-bill.in/ directory ready (place marketing site files here)"
 
 # =============================================================================
 # STEP 3 — Collect environment values
@@ -145,9 +148,9 @@ if [[ -z "$MONGO_ROOT_PASSWORD" ]]; then
   info "MongoDB password auto-generated"
 fi
 
-ask "Database name? [ebill_db]"
+ask "Database name? [saas_db]"
 read -r DB_NAME
-DB_NAME="${DB_NAME:-ebill_db}"
+DB_NAME="${DB_NAME:-saas_db}"
 
 ask "JWT secret (blank = auto-generate 64-char):"
 read -rs JWT_SECRET; echo ""
