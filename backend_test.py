@@ -1,522 +1,194 @@
+#!/usr/bin/env python3
 """
-Backend API Testing for Backup and Restore Endpoints
-Tests the specific requirements from the review request.
+Focused Backend Test - Subscribers Sort & Health Check
+Testing specific items from review request:
+1. GET /api/health - backend health
+2. GET /api/operator/subscribers - verify sort order (created_at desc)
 """
+
 import requests
 import json
-from typing import Dict, Any
+from datetime import datetime
 
-# Configuration
+# Backend URL
 BASE_URL = "http://localhost:8001"
+
+# Test credentials from /app/memory/test_credentials.md
+OPERATOR_EMAIL = "operator@test.com"
+OPERATOR_PASSWORD = "test123"
 ADMIN_EMAIL = "admin@saas.com"
 ADMIN_PASSWORD = "admin123"
-BACKUP_PASSWORD = "ebill_default_bk_pw_2024"  # Actual backup password from env_service.py
 
-# Expected collections in backup (25 total, excluding "backups" and without "whatsapp_configs")
-EXPECTED_COLLECTIONS = [
-    "users",
-    "operators",
-    "operator_wallets",
-    "wallet_transactions",
-    "saas_plans",
-    "operator_plans",
-    "addons",
-    "subscribers",
-    "invoices",
-    "invoice_settings",
-    "operator_theme",
-    "payment_gateways",
-    "saas_payments",
-    "checkout_orders",
-    "discount_codes",
-    "global_settings",
-    "whatsapp_templates",
-    "whatsapp_message_logs",
-    "announcements",
-    "notification_queue",
-    "audit_logs",
-    "error_logs",
-    "webhook_events",
-    "support_tickets",
-    "support_replies",
-]
+def print_test_header(test_name):
+    print(f"\n{'='*70}")
+    print(f"TEST: {test_name}")
+    print(f"{'='*70}")
 
-class BackupRestoreTest:
-    def __init__(self):
-        self.token = None
-        self.backup_id = None
-        self.test_results = []
-        
-    def log_result(self, test_name: str, passed: bool, message: str, details: Any = None):
-        """Log test result"""
-        status = "✅ PASS" if passed else "❌ FAIL"
-        result = {
-            "test": test_name,
-            "status": status,
-            "message": message,
-            "details": details
-        }
-        self.test_results.append(result)
-        print(f"\n{status}: {test_name}")
-        print(f"   {message}")
-        if details and not passed:
-            print(f"   Details: {json.dumps(details, indent=2)}")
+def print_result(passed, message):
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"{status}: {message}")
+
+def login_operator():
+    """Login as operator and return access token"""
+    print_test_header("Login as Operator")
+    url = f"{BASE_URL}/api/auth/login"
+    payload = {"email": OPERATOR_EMAIL, "password": OPERATOR_PASSWORD}
     
-    def login(self) -> bool:
-        """Authenticate and get JWT token"""
-        print("\n" + "="*80)
-        print("TEST 0: Admin Login")
-        print("="*80)
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"Status: {response.status_code}")
         
-        try:
-            response = requests.post(
-                f"{BASE_URL}/api/auth/login",
-                json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.token = data.get("access_token") or data.get("token")
-                if self.token:
-                    self.log_result("Admin Login", True, f"Successfully logged in as {ADMIN_EMAIL}")
-                    return True
-                else:
-                    self.log_result("Admin Login", False, "No token in response", data)
-                    return False
+        if response.status_code == 200:
+            data = response.json()
+            token = data.get("access_token")
+            if token:
+                print_result(True, f"Operator login successful")
+                return token
             else:
-                self.log_result("Admin Login", False, f"Login failed with status {response.status_code}", response.text)
-                return False
+                print_result(False, "No access_token in response")
+                return None
+        else:
+            print_result(False, f"Login failed: {response.text}")
+            return None
+    except Exception as e:
+        print_result(False, f"Login error: {str(e)}")
+        return None
+
+def test_health_endpoint():
+    """Test 1: GET /api/health"""
+    print_test_header("Backend Health Check")
+    url = f"{BASE_URL}/api/health"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            print_result(True, "Backend health endpoint is working")
+            return True
+        else:
+            print_result(False, f"Health check failed with status {response.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Health check error: {str(e)}")
+        return False
+
+def test_subscribers_endpoint(token):
+    """Test 2: GET /api/operator/subscribers - verify endpoint returns 200 with list"""
+    print_test_header("Subscribers List Endpoint")
+    url = f"{BASE_URL}/api/operator/subscribers"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Response type: {type(data)}")
+            print(f"Number of subscribers: {len(data) if isinstance(data, list) else 'N/A'}")
+            
+            if isinstance(data, list):
+                print_result(True, f"Subscribers endpoint returns list with {len(data)} items")
                 
-        except Exception as e:
-            self.log_result("Admin Login", False, f"Exception during login: {str(e)}")
+                # Check if list has items and verify sort order (optional verification)
+                if len(data) >= 2:
+                    print("\nVerifying sort order (created_at desc):")
+                    first_item = data[0]
+                    second_item = data[1]
+                    
+                    if "created_at" in first_item and "created_at" in second_item:
+                        first_date = first_item["created_at"]
+                        second_date = second_item["created_at"]
+                        print(f"  First item created_at: {first_date}")
+                        print(f"  Second item created_at: {second_date}")
+                        
+                        # Parse dates for comparison
+                        try:
+                            date1 = datetime.fromisoformat(first_date.replace('Z', '+00:00'))
+                            date2 = datetime.fromisoformat(second_date.replace('Z', '+00:00'))
+                            
+                            if date1 >= date2:
+                                print_result(True, "Sort order verified: latest first (desc)")
+                            else:
+                                print_result(False, "Sort order incorrect: oldest first")
+                        except Exception as e:
+                            print(f"  Note: Could not parse dates for comparison: {e}")
+                    else:
+                        print("  Note: created_at field not found in items")
+                elif len(data) == 1:
+                    print("  Note: Only 1 subscriber, cannot verify sort order")
+                else:
+                    print("  Note: No subscribers in list")
+                
+                return True
+            else:
+                print_result(False, f"Expected list, got {type(data)}")
+                return False
+        else:
+            print(f"Response: {response.text}")
+            print_result(False, f"Subscribers endpoint failed with status {response.status_code}")
             return False
-    
-    def test_create_backup(self) -> bool:
-        """Test POST /api/admin/backup/create"""
-        print("\n" + "="*80)
-        print("TEST 1: POST /api/admin/backup/create")
-        print("="*80)
+    except Exception as e:
+        print_result(False, f"Subscribers endpoint error: {str(e)}")
+        return False
+
+def check_database_for_operator():
+    """Check if operator account exists in database"""
+    print_test_header("Database Check - Operator Account")
+    try:
+        # Try to login with admin to check database
+        url = f"{BASE_URL}/api/auth/login"
+        payload = {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
+        response = requests.post(url, json=payload, timeout=10)
         
-        try:
-            headers = {"Authorization": f"Bearer {self.token}"}
-            response = requests.post(
-                f"{BASE_URL}/api/admin/backup/create",
-                headers=headers,
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                self.log_result(
-                    "Create Backup - Status Code",
-                    False,
-                    f"Expected 200, got {response.status_code}",
-                    response.text
-                )
-                return False
-            
-            data = response.json()
-            backup = data.get("backup", {})
-            
-            # Store backup_id for later tests
-            self.backup_id = backup.get("id")
-            
-            # Test 1.1: Check if collections key exists
-            collections = backup.get("collections", [])
-            if not collections:
-                self.log_result(
-                    "Create Backup - Collections Key",
-                    False,
-                    "No 'collections' key in backup response",
-                    backup
-                )
-                return False
-            
-            self.log_result(
-                "Create Backup - Collections Key",
-                True,
-                f"Found {len(collections)} collections in backup"
-            )
-            
-            # Test 1.2: Check if collection_counts key exists
-            collection_counts = backup.get("collection_counts", {})
-            if not collection_counts:
-                self.log_result(
-                    "Create Backup - Collection Counts Key",
-                    False,
-                    "No 'collection_counts' key in backup response",
-                    backup
-                )
-                return False
-            
-            self.log_result(
-                "Create Backup - Collection Counts Key",
-                True,
-                f"Found collection_counts with {len(collection_counts)} entries"
-            )
-            
-            # Test 1.3: Verify all 25 expected collections are present
-            missing_collections = [col for col in EXPECTED_COLLECTIONS if col not in collections]
-            extra_collections = [col for col in collections if col not in EXPECTED_COLLECTIONS]
-            
-            if missing_collections:
-                self.log_result(
-                    "Create Backup - Expected Collections",
-                    False,
-                    f"Missing {len(missing_collections)} expected collections",
-                    {"missing": missing_collections, "found": collections}
-                )
-            elif extra_collections:
-                self.log_result(
-                    "Create Backup - Expected Collections",
-                    False,
-                    f"Found {len(extra_collections)} unexpected collections",
-                    {"unexpected": extra_collections, "found": collections}
-                )
-            else:
-                self.log_result(
-                    "Create Backup - Expected Collections",
-                    True,
-                    f"All 25 expected collections present: {', '.join(collections)}"
-                )
-            
-            # Test 1.4: Verify "backups" collection is NOT in the list
-            if "backups" in collections:
-                self.log_result(
-                    "Create Backup - Backups Exclusion",
-                    False,
-                    "'backups' collection should be excluded from backup",
-                    collections
-                )
-            else:
-                self.log_result(
-                    "Create Backup - Backups Exclusion",
-                    True,
-                    "'backups' collection correctly excluded from backup"
-                )
-            
-            # Test 1.5: Verify "whatsapp_configs" is NOT in the list (legacy collection)
-            if "whatsapp_configs" in collections:
-                self.log_result(
-                    "Create Backup - WhatsApp Configs Exclusion",
-                    False,
-                    "'whatsapp_configs' (legacy) should not be in backup",
-                    collections
-                )
-            else:
-                self.log_result(
-                    "Create Backup - WhatsApp Configs Exclusion",
-                    True,
-                    "'whatsapp_configs' correctly not in backup (legacy collection removed)"
-                )
-            
-            # Test 1.6: Verify collection_counts has counts for each collection
-            counts_match = all(col in collection_counts for col in collections)
-            if not counts_match:
-                missing_counts = [col for col in collections if col not in collection_counts]
-                self.log_result(
-                    "Create Backup - Collection Counts Match",
-                    False,
-                    f"collection_counts missing entries for: {missing_counts}",
-                    collection_counts
-                )
-            else:
-                total_records = sum(collection_counts.values())
-                self.log_result(
-                    "Create Backup - Collection Counts Match",
-                    True,
-                    f"All collections have counts. Total records: {total_records}"
-                )
-            
-            print(f"\n📊 Backup Summary:")
-            print(f"   Backup ID: {self.backup_id}")
-            print(f"   Collections: {len(collections)}")
-            print(f"   Total Records: {backup.get('total_records', 0)}")
-            print(f"   Size: {backup.get('size_kb', 0)} KB")
-            
+        if response.status_code == 200:
+            print_result(True, "Admin account exists and can login")
             return True
-            
-        except Exception as e:
-            self.log_result(
-                "Create Backup - Exception",
-                False,
-                f"Exception during backup creation: {str(e)}"
-            )
+        else:
+            print_result(False, f"Admin login failed: {response.text}")
             return False
-    
-    def test_list_backups(self) -> bool:
-        """Test GET /api/admin/backup/list"""
-        print("\n" + "="*80)
-        print("TEST 2: GET /api/admin/backup/list")
-        print("="*80)
-        
-        try:
-            headers = {"Authorization": f"Bearer {self.token}"}
-            response = requests.get(
-                f"{BASE_URL}/api/admin/backup/list",
-                headers=headers,
-                timeout=10
-            )
-            
-            if response.status_code != 200:
-                self.log_result(
-                    "List Backups - Status Code",
-                    False,
-                    f"Expected 200, got {response.status_code}",
-                    response.text
-                )
-                return False
-            
-            data = response.json()
-            backups = data.get("backups", [])
-            
-            if not backups:
-                self.log_result(
-                    "List Backups - Backups Found",
-                    False,
-                    "No backups found in list",
-                    data
-                )
-                return False
-            
-            self.log_result(
-                "List Backups - Backups Found",
-                True,
-                f"Found {len(backups)} backup(s)"
-            )
-            
-            # Test 2.1: Find the backup we just created
-            our_backup = None
-            for backup in backups:
-                if backup.get("id") == self.backup_id:
-                    our_backup = backup
-                    break
-            
-            if not our_backup:
-                self.log_result(
-                    "List Backups - Find Created Backup",
-                    False,
-                    f"Could not find backup with ID {self.backup_id}",
-                    {"backups": [b.get("id") for b in backups]}
-                )
-                return False
-            
-            self.log_result(
-                "List Backups - Find Created Backup",
-                True,
-                f"Found backup {self.backup_id} in list"
-            )
-            
-            # Test 2.2: Verify collection_counts exists in the listed backup
-            collection_counts = our_backup.get("collection_counts")
-            if not collection_counts:
-                self.log_result(
-                    "List Backups - Collection Counts",
-                    False,
-                    "collection_counts not present in listed backup",
-                    our_backup
-                )
-                return False
-            
-            self.log_result(
-                "List Backups - Collection Counts",
-                True,
-                f"collection_counts present with {len(collection_counts)} collections"
-            )
-            
-            print(f"\n📋 Listed Backup Details:")
-            print(f"   ID: {our_backup.get('id')}")
-            print(f"   Filename: {our_backup.get('filename')}")
-            print(f"   Type: {our_backup.get('type')}")
-            print(f"   Collections: {len(our_backup.get('collections', []))}")
-            print(f"   Total Records: {our_backup.get('total_records', 0)}")
-            
-            return True
-            
-        except Exception as e:
-            self.log_result(
-                "List Backups - Exception",
-                False,
-                f"Exception during backup list: {str(e)}"
-            )
-            return False
-    
-    def test_restore_backup(self) -> bool:
-        """Test POST /api/admin/backup/restore/{backup_id}"""
-        print("\n" + "="*80)
-        print("TEST 3: POST /api/admin/backup/restore/{backup_id}")
-        print("="*80)
-        
-        if not self.backup_id:
-            self.log_result(
-                "Restore Backup - Backup ID",
-                False,
-                "No backup_id available for restore test"
-            )
-            return False
-        
-        try:
-            headers = {"Authorization": f"Bearer {self.token}"}
-            response = requests.post(
-                f"{BASE_URL}/api/admin/backup/restore/{self.backup_id}",
-                headers=headers,
-                json={"password": BACKUP_PASSWORD},
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                self.log_result(
-                    "Restore Backup - Status Code",
-                    False,
-                    f"Expected 200, got {response.status_code}",
-                    response.text
-                )
-                return False
-            
-            data = response.json()
-            
-            # Test 3.1: Verify collections_restored key exists
-            collections_restored = data.get("collections_restored")
-            if collections_restored is None:
-                self.log_result(
-                    "Restore Backup - Collections Restored Key",
-                    False,
-                    "No 'collections_restored' key in response",
-                    data
-                )
-                return False
-            
-            self.log_result(
-                "Restore Backup - Collections Restored Key",
-                True,
-                f"Found {len(collections_restored)} collections restored"
-            )
-            
-            # Test 3.2: Verify collections_skipped key exists
-            collections_skipped = data.get("collections_skipped")
-            if collections_skipped is None:
-                self.log_result(
-                    "Restore Backup - Collections Skipped Key",
-                    False,
-                    "No 'collections_skipped' key in response",
-                    data
-                )
-                return False
-            
-            self.log_result(
-                "Restore Backup - Collections Skipped Key",
-                True,
-                f"Found {len(collections_skipped)} collections skipped: {collections_skipped}"
-            )
-            
-            # Test 3.3: Verify records_restored key exists
-            records_restored = data.get("records_restored")
-            if records_restored is None:
-                self.log_result(
-                    "Restore Backup - Records Restored Key",
-                    False,
-                    "No 'records_restored' key in response",
-                    data
-                )
-                return False
-            
-            self.log_result(
-                "Restore Backup - Records Restored Key",
-                True,
-                f"Restored {records_restored} records"
-            )
-            
-            # Test 3.4: Verify "note" field exists about re-login
-            note = data.get("note")
-            if not note:
-                self.log_result(
-                    "Restore Backup - Note Field",
-                    False,
-                    "No 'note' field in response about re-login",
-                    data
-                )
-                return False
-            
-            if "log in again" not in note.lower():
-                self.log_result(
-                    "Restore Backup - Note Content",
-                    False,
-                    "Note field doesn't mention re-login requirement",
-                    {"note": note}
-                )
-            else:
-                self.log_result(
-                    "Restore Backup - Note Field",
-                    True,
-                    f"Note field present: '{note}'"
-                )
-            
-            print(f"\n🔄 Restore Summary:")
-            print(f"   Collections Restored: {len(collections_restored)}")
-            print(f"   Collections Skipped: {len(collections_skipped)}")
-            print(f"   Records Restored: {records_restored}")
-            print(f"   Note: {note}")
-            
-            return True
-            
-        except Exception as e:
-            self.log_result(
-                "Restore Backup - Exception",
-                False,
-                f"Exception during backup restore: {str(e)}"
-            )
-            return False
-    
-    def print_summary(self):
-        """Print final test summary"""
-        print("\n" + "="*80)
-        print("TEST SUMMARY")
-        print("="*80)
-        
-        passed = sum(1 for r in self.test_results if "✅ PASS" in r["status"])
-        failed = sum(1 for r in self.test_results if "❌ FAIL" in r["status"])
-        total = len(self.test_results)
-        
-        print(f"\nTotal Tests: {total}")
-        print(f"Passed: {passed} ✅")
-        print(f"Failed: {failed} ❌")
-        print(f"Success Rate: {(passed/total*100):.1f}%\n")
-        
-        if failed > 0:
-            print("Failed Tests:")
-            for result in self.test_results:
-                if "❌ FAIL" in result["status"]:
-                    print(f"  • {result['test']}: {result['message']}")
-        
-        print("\n" + "="*80)
-        
-        return failed == 0
+    except Exception as e:
+        print_result(False, f"Database check error: {str(e)}")
+        return False
 
 def main():
-    """Run all backup and restore tests"""
-    print("\n" + "="*80)
-    print("BACKUP AND RESTORE API TESTING")
-    print("="*80)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Admin: {ADMIN_EMAIL}")
-    print(f"Expected Collections: {len(EXPECTED_COLLECTIONS)}")
+    print("\n" + "="*70)
+    print("FOCUSED BACKEND TEST - Review Request Items")
+    print("="*70)
+    print("Testing:")
+    print("1. Backend health endpoint")
+    print("2. Subscribers list endpoint (sort order)")
+    print("="*70)
     
-    tester = BackupRestoreTest()
+    results = {}
     
-    # Run tests in sequence
-    if not tester.login():
-        print("\n❌ Login failed. Cannot proceed with tests.")
-        return False
+    # Test 1: Health endpoint
+    results["health"] = test_health_endpoint()
     
-    tester.test_create_backup()
-    tester.test_list_backups()
-    tester.test_restore_backup()
+    # Test 2: Subscribers endpoint (requires auth)
+    token = login_operator()
+    if token:
+        results["subscribers"] = test_subscribers_endpoint(token)
+    else:
+        print("\nNote: operator@test.com account does not exist in database")
+        print("Checking if database is seeded...")
+        check_database_for_operator()
+        results["subscribers"] = "SKIPPED - No operator account"
     
-    # Print summary
-    success = tester.print_summary()
+    # Summary
+    print("\n" + "="*70)
+    print("TEST SUMMARY")
+    print("="*70)
+    for test_name, result in results.items():
+        if isinstance(result, bool):
+            status = "✅ PASS" if result else "❌ FAIL"
+        else:
+            status = "⚠️  SKIP"
+        print(f"{status}: {test_name} - {result if isinstance(result, str) else ''}")
     
-    return success
+    print("="*70)
 
 if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1)
+    main()

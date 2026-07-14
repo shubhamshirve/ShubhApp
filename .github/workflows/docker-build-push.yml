@@ -180,6 +180,23 @@ jobs:
             echo ">>> Pulling latest Docker images from Docker Hub..."
             docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" pull
 
+            # ── Stop containers from old/known deploy paths to free up shared resources ──
+            # This handles the one-time migration from /root/ShubhApp → /root/ebill
+            # and prevents port conflicts if the deploy path ever changes again.
+            for OLD_PATH in "/root/ShubhApp" "/root/ShubhApp " "/opt/ebill"; do
+              if [ -d "$OLD_PATH" ] && [ "$OLD_PATH" != "$APP_DIR" ]; then
+                if [ -f "$OLD_PATH/docker-compose.prod.yml" ]; then
+                  echo ">>> Stopping old containers in $OLD_PATH..."
+                  cd "$OLD_PATH"
+                  OLD_ENV=""
+                  [ -s "$OLD_PATH/.env.production" ] && OLD_ENV="--env-file $OLD_PATH/.env.production"
+                  [ -z "$OLD_ENV" ] && [ -s "$OLD_PATH/.env" ] && OLD_ENV="--env-file $OLD_PATH/.env"
+                  docker compose -f docker-compose.prod.yml $OLD_ENV down --remove-orphans 2>/dev/null || true
+                  cd "$APP_DIR"
+                fi
+              fi
+            done
+
             echo ">>> Stopping old containers..."
             docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_ABS" down --remove-orphans
 
