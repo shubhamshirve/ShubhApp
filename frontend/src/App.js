@@ -226,6 +226,49 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
+// Public-only Route: redirect already-authenticated users to their home page
+// Prevents the back-button from returning to /login after login
+const PublicRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    // Already logged in — send straight to their home page (replace so login
+    // is removed from history entirely, back button won't return here)
+    if (user.role === "admin") return <Navigate to="/admin" replace />;
+    return <Navigate to="/operator" replace />;
+  }
+
+  return children;
+};
+
+// Root redirect: authenticated → dashboard, unauthenticated → login
+const RootRedirect = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    if (user.role === "admin") return <Navigate to="/admin" replace />;
+    return <Navigate to="/operator" replace />;
+  }
+
+  return <Navigate to="/login" replace />;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -233,10 +276,10 @@ function App() {
         <Toaster position="top-right" richColors closeButton />
         <Routes>
           {/* Public Routes */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
           <Route path="/invoice/:invoiceRef" element={<PublicInvoice />} />
 
           {/* Admin Routes */}

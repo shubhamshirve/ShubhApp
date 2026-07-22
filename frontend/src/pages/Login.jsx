@@ -42,9 +42,9 @@ const Login = () => {
       const user = await login(sanitize(email), password);
       toast.success("Login successful!");
       if (user.role === "admin") {
-        navigate("/admin");
+        navigate("/admin", { replace: true });
       } else {
-        navigate("/operator");
+        navigate("/operator", { replace: true });
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Invalid credentials");
