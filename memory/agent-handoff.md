@@ -1,8 +1,8 @@
 # Agent Handoff — E-Bill Platform
 
-**Last Updated:** 2026-04-17
+**Last Updated:** 2026-07-23
 **Active Branch:** `live` (auto-deploys to production)
-**Latest Version:** V8.19
+**Latest Version:** V9.48
 
 ---
 
@@ -102,6 +102,7 @@
 - **API docs:** Disabled in production
 - **OperatorResponse:** `owner_name` and `status` are Optional with defaults — older operator documents may not have these fields; do NOT make them required again
 - **DB name:** Config defaults to `saas_db` (loaded from `DB_NAME` env var, defaults if absent)
+- **Standalone Scripts**: Standard standalone Python scripts (like `backend/scripts/migrate_subscriber_ids.py`) import `db` and `client` from `database.py` directly rather than creating a separate `AsyncIOMotorClient` instance, which prevents connection failures inside Docker or different environments.
 
 ---
 

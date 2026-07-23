@@ -22,16 +22,7 @@ from pathlib import Path
 # ── Load env ────────────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env")
-except ImportError:
-    pass
-
-from motor.motor_asyncio import AsyncIOMotorClient
-
-MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME   = os.environ.get("DB_NAME",   "saas_db")
+from database import db, client, mongo_url as MONGO_URL, db_name as DB_NAME
 
 # UUID pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 UUID_PATTERN = re.compile(
@@ -53,9 +44,6 @@ async def _gen_unique_id(db) -> str:
 
 
 async def run_migration(dry_run: bool = False) -> dict:
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
-
     mode = "[DRY RUN]" if dry_run else "[LIVE]"
     print(f"\n{mode} Subscriber ID migration — DB: {DB_NAME}")
     print(f"  MongoDB : {MONGO_URL}\n")
@@ -68,7 +56,7 @@ async def run_migration(dry_run: bool = False) -> dict:
     print(f"  Already EB-format  : {len(all_subs) - len(uuid_subs)}\n")
 
     if not uuid_subs:
-        print("✅ Nothing to migrate.\n")
+        print("[OK] Nothing to migrate.\n")
         client.close()
         return {"migrated": 0, "errors": [], "mapping": {}}
 
@@ -82,7 +70,7 @@ async def run_migration(dry_run: bool = False) -> dict:
         new_id = await _gen_unique_id(db)
         mapping[old_id] = new_id
 
-        print(f"  {name:<35s}  {old_id}  →  {new_id}")
+        print(f"  {name:<35s}  {old_id}  ->  {new_id}")
 
         if dry_run:
             migrated += 1
@@ -95,11 +83,11 @@ async def run_migration(dry_run: bool = False) -> dict:
             i_res = await db.invoices.update_many(
                 {"subscriber_id": old_id}, {"$set": {"subscriber_id": new_id}}
             )
-            print(f"    ✅  subscriber updated | invoices updated: {i_res.modified_count}")
+            print(f"    [OK]  subscriber updated | invoices updated: {i_res.modified_count}")
             migrated += 1
         except Exception as exc:
             msg = f"{old_id}: {exc}"
-            print(f"    ❌  {msg}")
+            print(f"    [ERROR]  {msg}")
             errors.append(msg)
 
     # ── Write log ──────────────────────────────────────────────────────────

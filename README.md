@@ -1,6 +1,6 @@
 # E-Bill — Multi-Tenant ISP & Cable Billing Platform
 
-**Version:** V8.19 | **Branch:** `live` → auto-deploys to production
+**Version:** V9.48 | **Branch:** `live` → auto-deploys to production
 
 ## Stack
 

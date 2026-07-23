@@ -1,5 +1,16 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.47
+# Current Version: V9.48
+
+## 2026-07-23
+
+### V9.48 — Fix Subscriber ID Migration script database connection and console encoding
+
+Fixes database connection inside Docker containers and encoding errors in Windows shells for `backend/scripts/migrate_subscriber_ids.py`.
+
+* **DB Connection Fix**: Updated the script to import database configuration and initialization (`db`, `client`, etc.) directly from `database.py`. This ensures it automatically respects `MONGO_URI` and any Docker/production config.
+* **Console Encoding Fix**: Replaced Unicode symbols (`→`, `✅`, `❌`) with ASCII characters (`->`, `[OK]`, `[ERROR]`) to prevent `UnicodeEncodeError` when running on Windows CMD/PowerShell or other shells with limited encoding support.
+
+---
 
 ## 2026-07-14
 
