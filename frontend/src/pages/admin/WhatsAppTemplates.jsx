@@ -63,6 +63,21 @@ const TYPE_COLORS = {
 
 const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_due_reminder", "payment_confirmation"];
 const OPERATOR_TYPE_TEMPLATES = ["operator_low_balance", "operator_account_expiry", "operator_renewal", "operator_daily_report"];
+const ANNOUNCEMENT_TYPE_TEMPLATES = ["announcement"];
+
+const ANNOUNCEMENT_VARIABLE_OPTIONS = [
+  // ── Announcement fields ──
+  { value: "announcement_text",    label: "Announcement Message Body",  group: "Announcement" },
+  { value: "announcement_title",   label: "Announcement Title",         group: "Announcement" },
+  // ── Customer ──
+  { value: "customer_name",        label: "Customer Name",              group: "Customer" },
+  { value: "customer_phone",       label: "Customer Phone / WA Number", group: "Customer" },
+  { value: "customer_plan",        label: "Customer Active Plan(s)",    group: "Customer" },
+  // ── Operator / Business ──
+  { value: "operator_name",        label: "Business / Operator Name",   group: "Operator" },
+  { value: "operator_phone",       label: "Operator Phone",             group: "Operator" },
+  { value: "operator_email",       label: "Operator Email",             group: "Operator" },
+];
 
 const INVOICE_VARIABLE_OPTIONS = [
   // ── Invoice ──
@@ -836,13 +851,24 @@ export default function WhatsAppTemplates() {
                 <code className="bg-slate-100 px-1 rounded">{"{{1}}"}</code>,{" "}
                 <code className="bg-slate-100 px-1 rounded">{"{{2}}"}</code>, … in the message.
               </p>
-              {(INVOICE_TYPE_TEMPLATES.includes(form.template_type) || OPERATOR_TYPE_TEMPLATES.includes(form.template_type)) ? (
+              {(INVOICE_TYPE_TEMPLATES.includes(form.template_type) || OPERATOR_TYPE_TEMPLATES.includes(form.template_type) || ANNOUNCEMENT_TYPE_TEMPLATES.includes(form.template_type)) ? (
                 <div className="flex gap-2">
                   <Select value={selectedVariable} onValueChange={setSelectedVariable}>
                     <SelectTrigger><SelectValue placeholder="Select a variable to add..." /></SelectTrigger>
                     <SelectContent>
-                      {(OPERATOR_TYPE_TEMPLATES.includes(form.template_type) ? ["Operator", "Wallet", "Subscription", "Report"] : ["Invoice", "Customer", "Operator", "Other"]).map(group => {
-                        const opts = (OPERATOR_TYPE_TEMPLATES.includes(form.template_type) ? OPERATOR_VARIABLE_OPTIONS : INVOICE_VARIABLE_OPTIONS).filter(o => o.group === group);
+                      {(OPERATOR_TYPE_TEMPLATES.includes(form.template_type)
+                        ? ["Operator", "Wallet", "Subscription", "Report"]
+                        : ANNOUNCEMENT_TYPE_TEMPLATES.includes(form.template_type)
+                          ? ["Announcement", "Customer", "Operator"]
+                          : ["Invoice", "Customer", "Operator", "Other"]
+                      ).map(group => {
+                        const opts = (
+                          OPERATOR_TYPE_TEMPLATES.includes(form.template_type)
+                            ? OPERATOR_VARIABLE_OPTIONS
+                            : ANNOUNCEMENT_TYPE_TEMPLATES.includes(form.template_type)
+                              ? ANNOUNCEMENT_VARIABLE_OPTIONS
+                              : INVOICE_VARIABLE_OPTIONS
+                        ).filter(o => o.group === group);
                         return (
                           <div key={group}>
                             <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b">

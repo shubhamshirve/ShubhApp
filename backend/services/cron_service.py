@@ -206,11 +206,19 @@ class CronJobService:
         
         now = datetime.now(timezone.utc)
         cutoff_date = (now - timedelta(days=days_overdue)).isoformat()
-        
+
+        # Only process invoices for non-deleted operators
+        active_operator_ids = [
+            op["id"] for op in await self.db.operators.find(
+                {"deleted_at": None}, {"_id": 0, "id": 1}
+            ).to_list(5000)
+        ]
+
         overdue_invoices = await self.db.invoices.find({
             "status": "pending",
             "due_date": {"$lt": cutoff_date},
-            "deleted_at": None
+            "deleted_at": None,
+            "operator_id": {"$in": active_operator_ids}
         }, {"_id": 0}).to_list(1000)
         
         results["total_overdue"] = len(overdue_invoices)

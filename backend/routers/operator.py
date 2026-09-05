@@ -1,5 +1,5 @@
 """Operator router: profile, plans, subscribers, invoices, staff, reports, subscription, checkout, etc."""
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request, BackgroundTasks
 from fastapi.responses import Response
 from datetime import datetime, timezone, timedelta, date as date_type
 from typing import List, Optional
@@ -382,8 +382,160 @@ async def update_theme_settings(theme: str, current_user: dict = Depends(require
 
 # ─── Announcements ─────────────────────────────────────────────────────────
 
+async def _send_announcement_notifications(
+    announcement_id: str,
+    operator_id: str,
+    title: str,
+    message: str,
+    send_whatsapp: bool,
+    send_email: bool,
+    subscribers: list,
+):
+    """Background task: send WhatsApp and email notifications for an announcement."""
+    import asyncio
+    whatsapp_count = 0
+    email_count = 0
+
+    try:
+        # Get WhatsApp template settings for announcements
+        wa_config = await _get_platform_whatsapp_config()
+        template_settings = await _get_whatsapp_template_settings()
+        announcement_template = template_settings.get("announcement_template", "") if template_settings else ""
+        use_template = bool(wa_config and announcement_template)
+
+        # Send WhatsApp notifications if enabled
+        if send_whatsapp:
+            if use_template:
+                from services.whatsapp_service import WhatsAppService, resolve_template_variables
+
+                tmpl_doc = await db.whatsapp_templates.find_one(
+                    {"template_name": announcement_template, "deleted_at": None}, {"_id": 0}
+                )
+
+                if tmpl_doc:
+                    wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
+                    body_vars = tmpl_doc.get("body_variables", [])
+                    hdr_type = tmpl_doc.get("header_type", "none")
+                    hdr_params = None
+
+                    if hdr_type == "image":
+                        fixed_url = tmpl_doc.get("header_image_url", "")
+                        if fixed_url:
+                            hdr_params = [fixed_url]
+
+                    operator = await db.operators.find_one({"id": operator_id, "deleted_at": None}, {"_id": 0})
+
+                    for sub in subscribers:
+                        if sub.get("whatsapp_number"):
+                            try:
+                                announcement_data = {
+                                    "title": title,
+                                    "message": message,
+                                    "operator_id": operator_id,
+                                    "_operator": operator
+                                }
+                                res = await resolve_template_variables(db, body_vars, announcement_data, sub)
+                                variables = res["body"]
+
+                                result = await wa_service.send_template_message(
+                                    recipient_phone=sub["whatsapp_number"],
+                                    template_name=announcement_template,
+                                    language_code=tmpl_doc.get("language_code", "en"),
+                                    variables=variables,
+                                    header_params=hdr_params,
+                                    header_type=hdr_type,
+                                )
+
+                                if result:
+                                    whatsapp_count += 1
+                                    logger.info(f"Sent announcement via template to {sub['whatsapp_number']}")
+                                    try:
+                                        from services.whatsapp_service import log_whatsapp_message
+                                        _msg_id = (result.get("messages") or [{}])[0].get("id", "")
+                                        _wa_id = (result.get("contacts") or [{}])[0].get("wa_id", "")
+                                        await log_whatsapp_message(
+                                            db,
+                                            operator_id=operator_id,
+                                            template_name=announcement_template,
+                                            template_category="announcement",
+                                            recipient_phone=sub["whatsapp_number"],
+                                            status="sent",
+                                            message_id=_msg_id,
+                                            wa_id=_wa_id,
+                                            trigger="manual_announcement",
+                                        )
+                                    except Exception as _log_err:
+                                        logger.warning(f"Announcement WA log failed: {_log_err}")
+                            except Exception as e:
+                                logger.error(f"Failed to send announcement template to {sub['whatsapp_number']}: {e}")
+                else:
+                    logger.warning(f"Announcement template '{announcement_template}' not found, falling back to queue")
+                    use_template = False
+
+            # Fallback: Queue plain text messages
+            if not use_template:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                for sub in subscribers:
+                    if sub.get("whatsapp_number"):
+                        notification = {
+                            "id": generate_id(), "operator_id": operator_id,
+                            "subscriber_id": sub["id"], "notification_type": "announcement",
+                            "whatsapp_number": sub["whatsapp_number"],
+                            "message": f"*{title}*\n\n{message}",
+                            "status": "pending", "created_at": now_iso
+                        }
+                        await db.notification_queue.insert_one(notification)
+                        whatsapp_count += 1
+
+        # Send emails if enabled
+        if send_email:
+            try:
+                settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
+                resend_api_key = (settings or {}).get("resend_api_key", "")
+                resend_from_email = (settings or {}).get("resend_from_email", "")
+
+                if resend_api_key and resend_from_email:
+                    from services.email_service import ResendEmailService
+                    email_service = ResendEmailService(resend_api_key, resend_from_email)
+
+                    for sub in subscribers:
+                        if sub.get("email"):
+                            try:
+                                html_content = f"""
+                                <h2>{title}</h2>
+                                <p>{message}</p>
+                                <hr>
+                                <p style="font-size: 12px; color: #666;">
+                                    This is an announcement from your operator.
+                                    If you no longer wish to receive these emails, please contact your operator.
+                                </p>
+                                """
+                                await email_service.send_email(
+                                    to_email=sub["email"],
+                                    subject=f"Announcement: {title}",
+                                    html=html_content,
+                                    text=f"{title}\n\n{message}"
+                                )
+                                email_count += 1
+                            except Exception as e:
+                                logger.warning(f"Failed to send email to {sub['email']}: {e}")
+            except Exception as e:
+                logger.warning(f"Email service unavailable for announcements: {e}")
+
+        logger.info(
+            f"Announcement {announcement_id} notifications done: "
+            f"whatsapp={whatsapp_count}, email={email_count}"
+        )
+    except Exception as exc:
+        logger.error(f"Announcement background task failed for {announcement_id}: {exc}")
+
+
 @router.post("/announcements")
-async def create_announcement(data: AnnouncementCreate, current_user: dict = Depends(require_operator)):
+async def create_announcement(
+    data: AnnouncementCreate,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(require_operator),
+):
     if await check_operator_read_only(current_user["operator_id"]):
         raise HTTPException(status_code=403, detail="Account is in read-only mode")
 
@@ -421,147 +573,23 @@ async def create_announcement(data: AnnouncementCreate, current_user: dict = Dep
     await db.announcements.insert_one(announcement)
     announcement.pop("_id", None)
 
-    whatsapp_count = 0
-    email_count = 0
-    
-    # Get WhatsApp template settings for announcements
-    wa_config = await _get_platform_whatsapp_config()
-    template_settings = await _get_whatsapp_template_settings()
-    announcement_template = template_settings.get("announcement_template", "") if template_settings else ""
-    use_template = bool(wa_config and announcement_template)
-    
-    # Send WhatsApp notifications if enabled
-    if data.send_whatsapp:
-        if use_template:
-            # Use WhatsApp template for announcements
-            from services.whatsapp_service import WhatsAppService, resolve_template_variables
-            
-            # Get template details
-            tmpl_doc = await db.whatsapp_templates.find_one(
-                {"template_name": announcement_template, "deleted_at": None}, {"_id": 0}
-            )
-            
-            if tmpl_doc:
-                wa_service = WhatsAppService(wa_config["phone_number_id"], wa_config["access_token"])
-                body_vars = tmpl_doc.get("body_variables", [])
-                hdr_type = tmpl_doc.get("header_type", "none")
-                hdr_params = None
-                
-                # Handle image header
-                if hdr_type == "image":
-                    fixed_url = tmpl_doc.get("header_image_url", "")
-                    if fixed_url:
-                        hdr_params = [fixed_url]
-                
-                # Send to each subscriber using template
-                operator = await db.operators.find_one({"id": current_user["operator_id"], "deleted_at": None}, {"_id": 0})
-                
-                for sub in subscribers:
-                    if sub.get("whatsapp_number"):
-                        try:
-                            # Create announcement dict for variable resolution
-                            announcement_data = {
-                                "title": data.title,
-                                "message": data.message,
-                                "operator_id": current_user["operator_id"],
-                                "_operator": operator  # Inject operator for operator_* variables
-                            }
-                            
-                            # Resolve template variables
-                            res = await resolve_template_variables(db, body_vars, announcement_data, sub)
-                            variables = res["body"]
-                            
-                            # Send template message
-                            result = await wa_service.send_template_message(
-                                recipient_phone=sub["whatsapp_number"],
-                                template_name=announcement_template,
-                                language_code=tmpl_doc.get("language_code", "en"),
-                                variables=variables,
-                                header_params=hdr_params,
-                                header_type=hdr_type,
-                            )
-                            
-                            if result:
-                                whatsapp_count += 1
-                                logger.info(f"Sent announcement via template to {sub['whatsapp_number']}")
-                                # Log every sent announcement message
-                                try:
-                                    from services.whatsapp_service import log_whatsapp_message
-                                    _msg_id = (result.get("messages") or [{}])[0].get("id", "")
-                                    _wa_id = (result.get("contacts") or [{}])[0].get("wa_id", "")
-                                    await log_whatsapp_message(
-                                        db,
-                                        operator_id=current_user["operator_id"],
-                                        template_name=announcement_template,
-                                        template_category="announcement",
-                                        recipient_phone=sub["whatsapp_number"],
-                                        status="sent",
-                                        message_id=_msg_id,
-                                        wa_id=_wa_id,
-                                        trigger="manual_announcement",
-                                    )
-                                except Exception as _log_err:
-                                    logger.warning(f"Announcement WA log failed: {_log_err}")
-                        except Exception as e:
-                            logger.error(f"Failed to send announcement template to {sub['whatsapp_number']}: {e}")
-            else:
-                logger.warning(f"Announcement template '{announcement_template}' not found, falling back to queue")
-                use_template = False
-        
-        # Fallback: Queue plain text messages (original behavior)
-        if not use_template:
-            for sub in subscribers:
-                if sub.get("whatsapp_number"):
-                    notification = {
-                        "id": generate_id(), "operator_id": current_user["operator_id"],
-                        "subscriber_id": sub["id"], "notification_type": "announcement",
-                        "whatsapp_number": sub["whatsapp_number"],
-                        "message": f"*{data.title}*\n\n{data.message}",
-                        "status": "pending", "created_at": now.isoformat()
-                    }
-                    await db.notification_queue.insert_one(notification)
-                    whatsapp_count += 1
-    
-    # Send emails if enabled
-    if data.send_email:
-        try:
-            settings = await db.global_settings.find_one({"type": "platform"}, {"_id": 0})
-            resend_api_key = (settings or {}).get("resend_api_key", "")
-            resend_from_email = (settings or {}).get("resend_from_email", "")
-            
-            if resend_api_key and resend_from_email:
-                from services.email_service import ResendEmailService
-                email_service = ResendEmailService(resend_api_key, resend_from_email)
-                
-                for sub in subscribers:
-                    if sub.get("email"):
-                        try:
-                            html_content = f"""
-                            <h2>{data.title}</h2>
-                            <p>{data.message}</p>
-                            <hr>
-                            <p style="font-size: 12px; color: #666;">
-                                This is an announcement from your operator. 
-                                If you no longer wish to receive these emails, please contact your operator.
-                            </p>
-                            """
-                            await email_service.send_email(
-                                to_email=sub["email"],
-                                subject=f"Announcement: {data.title}",
-                                html=html_content,
-                                text=f"{data.title}\n\n{data.message}"
-                            )
-                            email_count += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to send email to {sub['email']}: {e}")
-        except Exception as e:
-            logger.warning(f"Email service unavailable for announcements: {e}")
+    # Schedule notifications as a background task so response is immediate
+    background_tasks.add_task(
+        _send_announcement_notifications,
+        announcement_id=announcement["id"],
+        operator_id=current_user["operator_id"],
+        title=data.title,
+        message=data.message,
+        send_whatsapp=data.send_whatsapp,
+        send_email=data.send_email,
+        subscribers=subscribers,
+    )
 
     return {
-        "message": "Announcement created", 
-        "recipients": len(subscribers), 
-        "whatsapp_sent": whatsapp_count,
-        "email_sent": email_count,
+        "message": "Announcement created and notifications are being sent in the background.",
+        "recipients": len(subscribers),
+        "whatsapp_queued": data.send_whatsapp,
+        "email_queued": data.send_email,
     }
 
 
@@ -1206,7 +1234,7 @@ async def get_operator_dashboard(current_user: dict = Depends(require_operator))
     total_value_received_this_month = round(sum(inv.get("final_amount", 0) for inv in month_received_docs), 2)
     total_pending_value = round(
         sum(inv.get("final_amount", 0) for inv in await db.invoices.find(
-            {"operator_id": operator_id, "deleted_at": None, "status": {"$in": ["pending", "overdue"]}},
+            {"operator_id": operator_id, "deleted_at": None, "status": "pending"},
             {"_id": 0, "final_amount": 1}
         ).to_list(5000)),
         2,
@@ -2838,7 +2866,7 @@ async def get_report_invoices(
 async def get_operator_audit_logs(
     skip: int = 0, limit: int = 50, current_user: dict = Depends(require_operator)
 ):
-    if current_user["role"] == "admin":
+    if current_user["role"] == "admin" and not current_user.get("impersonated_by"):
         raise HTTPException(status_code=400, detail="Use admin audit logs endpoint")
     if not await _has_addon(current_user["operator_id"], "audit_log"):
         raise HTTPException(status_code=403, detail="Audit Logs add-on is not enabled for your plan.")
