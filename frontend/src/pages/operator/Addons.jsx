@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDate } from "../../utils/dateFormat";
 import {
   Dialog,
   DialogContent,
@@ -267,9 +268,7 @@ const OperatorAddons = () => {
                         <span>
                           Expires:{" "}
                           <span className="font-medium text-slate-700">
-                            {new Date(addon.expires_at).toLocaleDateString("en-IN", {
-                              day: "numeric", month: "short", year: "numeric"
-                            })}
+                            {formatDate(addon.expires_at)}
                           </span>
                         </span>
                       </div>

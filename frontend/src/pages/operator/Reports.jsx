@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { formatDate } from "../../utils/dateFormat";
 import { 
   CalendarIcon, 
   IndianRupee, 
@@ -146,8 +147,8 @@ const OperatorReports = () => {
       inv.tax_amount || 0,
       inv.final_amount || 0,
       inv.status || "",
-      inv.due_date ? new Date(inv.due_date).toLocaleDateString("en-IN") : "",
-      inv.created_at ? new Date(inv.created_at).toLocaleDateString("en-IN") : ""
+      inv.due_date ? formatDate(inv.due_date) : "",
+      inv.created_at ? formatDate(inv.created_at) : ""
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -481,10 +482,10 @@ const OperatorReports = () => {
                               {statusBadge(inv.status)}
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
-                              {inv.due_date ? new Date(inv.due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                              {inv.due_date ? formatDate(inv.due_date) : "—"}
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-500">
-                              {inv.created_at ? new Date(inv.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                              {inv.created_at ? formatDate(inv.created_at) : "—"}
                             </td>
                           </tr>
                         ))

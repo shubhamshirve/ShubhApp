@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDateTime } from "../../utils/dateFormat";
 import { Input } from "../../components/ui/input";
 import {
   Select,
@@ -115,7 +116,7 @@ function DeliveryStatusBadge({ status }) {
 function DeliveryTimelineModal({ log, onClose }) {
   if (!log) return null;
   const ds = log.delivery_status || "sent";
-  const formatDate = (iso) => iso ? new Date(iso).toLocaleString() : null;
+  const formatDate = (iso) => iso ? formatDateTime(iso) : null;
 
   const steps = [
     { key: "sent",      label: "Sent",      at: log.created_at,     reached: true },
@@ -542,7 +543,7 @@ export default function OperatorWhatsAppStats() {
                     logs.map((log) => (
                       <TableRow key={log.id} className="hover:bg-slate-50">
                         <TableCell className="text-xs text-slate-500 whitespace-nowrap">
-                          {new Date(log.created_at).toLocaleString()}
+                          {formatDateTime(log.created_at)}
                         </TableCell>
                         <TableCell>
                           <div>

@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import {
@@ -541,13 +542,7 @@ const OperatorSubscription = () => {
                   {subscription?.status === "trial" ? "Trial Expires" : "Expires On"}
                 </p>
                 <p className="text-lg font-bold text-slate-900" data-testid="expiry-date">
-                  {getExpiryDate()
-                    ? getExpiryDate().toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "N/A"}
+                  {getExpiryDate() ? formatDate(getExpiryDate()) : "N/A"}
                 </p>
                 {days !== null && (
                   <p
@@ -791,9 +786,7 @@ const OperatorSubscription = () => {
                           <span>
                             Expires:{" "}
                             <span className="font-medium text-slate-700">
-                              {new Date(addon.expires_at).toLocaleDateString("en-IN", {
-                                day: "numeric", month: "short", year: "numeric"
-                              })}
+                              {formatDate(addon.expires_at)}
                             </span>
                           </span>
                         </div>
@@ -895,7 +888,7 @@ const OperatorSubscription = () => {
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total_amount?.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3 text-slate-500">
-                            {p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                            {p.created_at ? formatDate(p.created_at) : "—"}
                           </td>
                         </tr>
                       ))}

@@ -19,6 +19,7 @@ import {
 } from "../../components/ui/table";
 import { toast } from "sonner";
 import { ClipboardList, Eye, RefreshCw } from "lucide-react";
+import { formatDateTime } from "../../utils/dateFormat";
 
 const OperatorAuditLogs = () => {
   const { authAxios } = useAuth();
@@ -45,9 +46,6 @@ const OperatorAuditLogs = () => {
       setLoading(false);
     }
   };
-
-  const formatDate = (iso) => new Date(iso).toLocaleString("en-IN");
-
   const getActionBadge = (action) => {
     const colors = {
       create: "bg-emerald-100 text-emerald-700",
@@ -106,7 +104,7 @@ const OperatorAuditLogs = () => {
                 ) : (
                   logs.map((log) => (
                     <TableRow key={log.id} data-testid={`audit-row-${log.id}`}>
-                      <TableCell className="text-sm text-slate-500">{formatDate(log.created_at)}</TableCell>
+                      <TableCell className="text-sm text-slate-500">{formatDateTime(log.created_at)}</TableCell>
                       <TableCell>
                         <div>
                           <span className="font-medium text-sm">{log.user_name}</span>
@@ -150,7 +148,7 @@ const OperatorAuditLogs = () => {
                   <div><span className="text-slate-500">Action:</span> <span className="font-medium capitalize">{selectedLog.action}</span></div>
                   <div><span className="text-slate-500">Module:</span> <span className="font-medium capitalize">{selectedLog.module?.replace(/_/g, " ")}</span></div>
                   <div><span className="text-slate-500">User:</span> <span className="font-medium">{selectedLog.user_name}</span></div>
-                  <div><span className="text-slate-500">Time:</span> <span className="font-medium">{formatDate(selectedLog.created_at)}</span></div>
+                  <div><span className="text-slate-500">Time:</span> <span className="font-medium">{formatDateTime(selectedLog.created_at)}</span></div>
                 </div>
                 {selectedLog.old_value && (
                   <div>

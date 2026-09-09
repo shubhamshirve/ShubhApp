@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Label } from "../../components/ui/label";
@@ -188,9 +189,7 @@ const OperatorAnnouncements = () => {
                       <TableCell className="text-sm text-slate-500">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {new Date(item.created_at).toLocaleDateString("en-IN", {
-                            day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
-                          })}
+                          {formatDateTime(item.created_at)}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -304,9 +303,7 @@ const OperatorAnnouncements = () => {
                     <h4 className="text-sm font-medium text-slate-500">Sent on</h4>
                     <p className="mt-1 text-sm flex items-center gap-1">
                       <Clock className="w-3 h-3 text-slate-400" />
-                      {new Date(selectedAnnouncement.created_at).toLocaleDateString("en-IN", {
-                        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
-                      })}
+                      {formatDateTime(selectedAnnouncement.created_at)}
                     </p>
                   </div>
                   <div>

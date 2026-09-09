@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
+import { formatDate } from "../../utils/dateFormat";
 import {
   Dialog,
   DialogContent,
@@ -495,9 +496,9 @@ const AdminOperators = () => {
                       <TableCell>{operator.saas_plan_name || "-"}</TableCell>
                       <TableCell className="text-sm text-slate-500">
                         {operator.subscription_ends_at 
-                          ? new Date(operator.subscription_ends_at).toLocaleDateString()
+                          ? formatDate(operator.subscription_ends_at)
                           : operator.trial_ends_at 
-                            ? new Date(operator.trial_ends_at).toLocaleDateString()
+                            ? formatDate(operator.trial_ends_at)
                             : "-"}
                       </TableCell>
                       <TableCell>
@@ -1114,9 +1115,9 @@ const AdminOperators = () => {
                       <p className="text-xs text-slate-500">Expires On</p>
                       <p className="font-medium">
                         {selectedOperator.subscription_ends_at 
-                          ? new Date(selectedOperator.subscription_ends_at).toLocaleDateString()
+                          ? formatDate(selectedOperator.subscription_ends_at)
                           : selectedOperator.trial_ends_at 
-                            ? new Date(selectedOperator.trial_ends_at).toLocaleDateString()
+                            ? formatDate(selectedOperator.trial_ends_at)
                             : "-"}
                       </p>
                     </div>
@@ -1131,7 +1132,7 @@ const AdminOperators = () => {
                     <div>
                       <p className="text-xs text-slate-500">Created At</p>
                       <p className="font-medium">
-                        {new Date(selectedOperator.created_at).toLocaleDateString()}
+                        {formatDate(selectedOperator.created_at)}
                       </p>
                     </div>
                   </div>

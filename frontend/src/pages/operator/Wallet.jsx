@@ -3,6 +3,7 @@ import { OperatorLayout } from "../../components/Layout";
 import { useAuth } from "../../App";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { formatDateTime } from "../../utils/dateFormat";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
@@ -361,7 +362,7 @@ export default function WalletPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-slate-800 truncate">{tx.description}</p>
                           <p className="text-xs text-slate-400">
-                            {new Date(tx.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                            {formatDateTime(tx.created_at)}
                           </p>
                         </div>
                         <div className="text-right shrink-0">

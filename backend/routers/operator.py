@@ -2048,15 +2048,38 @@ async def bulk_upload_invoices(
 
 def _parse_invoice_document(inv: dict) -> InvoiceResponse:
     inv_data = {**inv}
-    inv_data["due_date"] = datetime.fromisoformat(inv["due_date"])
+    # ── Required numeric fields: default to 0 if missing (legacy data) ──────
+    for field in ("base_amount", "discount", "tax_amount", "final_amount", "amount_paid"):
+        if field not in inv_data or inv_data[field] is None:
+            inv_data[field] = 0.0
+    # Handle missing due_date field (legacy invoices)
+    if inv.get("due_date"):
+        inv_data["due_date"] = datetime.fromisoformat(inv["due_date"])
+    else:
+        # Default to 5 days after invoice creation
+        created_at = datetime.fromisoformat(inv.get("created_at", datetime.now(timezone.utc).isoformat()))
+        inv_data["due_date"] = created_at + timedelta(days=5)
     if inv.get("paid_at"):
         inv_data["paid_at"] = datetime.fromisoformat(inv["paid_at"])
     if inv.get("cancelled_at"):
         inv_data["cancelled_at"] = datetime.fromisoformat(inv["cancelled_at"])
+    # Handle line_items with missing service dates (legacy invoices)
     if "line_items" in inv_data:
         for item in inv_data["line_items"]:
-            item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
-            item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
+            if item.get("service_start_date"):
+                item["service_start_date"] = datetime.fromisoformat(item["service_start_date"])
+            else:
+                # Default to invoice creation date
+                item["service_start_date"] = datetime.fromisoformat(inv.get("created_at", datetime.now(timezone.utc).isoformat()))
+            if item.get("service_end_date"):
+                item["service_end_date"] = datetime.fromisoformat(item["service_end_date"])
+            else:
+                # Default to 30 days after start date
+                item["service_end_date"] = item["service_start_date"] + timedelta(days=30)
+            # Default missing numeric line-item fields
+            for f in ("base_amount", "discount", "tax_amount", "final_amount"):
+                if f not in item or item[f] is None:
+                    item[f] = 0.0
     return InvoiceResponse(**inv_data)
 
 
@@ -2229,6 +2252,96 @@ async def get_invoices(
         parsed_invoices.append(_parse_invoice_document(inv))
     
     return parsed_invoices
+
+
+@router.get("/payments")
+async def get_received_payments(
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 200,
+    current_user: dict = Depends(require_operator)
+):
+    """Return all paid/partial invoices as a payments list, with optional search."""
+    if current_user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot access operator payments")
+    operator_id = current_user["operator_id"]
+    query = {
+        "operator_id": operator_id,
+        "deleted_at": None,
+        "status": {"$in": ["paid", "partial"]},
+    }
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(5000)
+
+    # Build payment records
+    payments = []
+    for inv in invoices:
+        # For fully paid invoices
+        if inv.get("status") == "paid" and inv.get("paid_at"):
+            payments.append({
+                "id": inv["id"],
+                "invoice_number": inv.get("invoice_number", ""),
+                "subscriber_id": inv.get("subscriber_id", ""),
+                "subscriber_name": inv.get("subscriber_name", ""),
+                "amount": inv.get("final_amount", 0),
+                "amount_paid": inv.get("final_amount", 0),
+                "payment_mode": inv.get("payment_mode", ""),
+                "payment_id": inv.get("payment_id", ""),
+                "paid_at": inv.get("paid_at", ""),
+                "created_at": inv.get("created_at", ""),
+                "status": "paid",
+                "line_items": inv.get("line_items", []),
+            })
+        # For partial payments — include each partial payment entry
+        elif inv.get("status") == "partial":
+            for rec in (inv.get("payments_received") or []):
+                payments.append({
+                    "id": f"{inv['id']}_partial_{rec.get('date','')}",
+                    "invoice_number": inv.get("invoice_number", ""),
+                    "subscriber_id": inv.get("subscriber_id", ""),
+                    "subscriber_name": inv.get("subscriber_name", ""),
+                    "amount": inv.get("final_amount", 0),
+                    "amount_paid": rec.get("amount", 0),
+                    "payment_mode": rec.get("mode", ""),
+                    "payment_id": "",
+                    "paid_at": rec.get("date", ""),
+                    "created_at": inv.get("created_at", ""),
+                    "status": "partial",
+                    "line_items": inv.get("line_items", []),
+                })
+            # Also include the most recent paid_at if no individual records
+            if not inv.get("payments_received") and inv.get("paid_at"):
+                payments.append({
+                    "id": inv["id"],
+                    "invoice_number": inv.get("invoice_number", ""),
+                    "subscriber_id": inv.get("subscriber_id", ""),
+                    "subscriber_name": inv.get("subscriber_name", ""),
+                    "amount": inv.get("final_amount", 0),
+                    "amount_paid": inv.get("amount_paid", 0),
+                    "payment_mode": inv.get("payment_mode", ""),
+                    "payment_id": inv.get("payment_id", ""),
+                    "paid_at": inv.get("paid_at", ""),
+                    "created_at": inv.get("created_at", ""),
+                    "status": "partial",
+                    "line_items": inv.get("line_items", []),
+                })
+
+    # Sort by paid_at descending
+    payments.sort(key=lambda x: x.get("paid_at") or x.get("created_at") or "", reverse=True)
+
+    # Apply search filter
+    if search:
+        q = search.lower()
+        payments = [
+            p for p in payments
+            if q in (p.get("subscriber_name") or "").lower()
+            or q in (p.get("invoice_number") or "").lower()
+            or q in (p.get("payment_mode") or "").lower()
+            or q in (p.get("payment_id") or "").lower()
+        ]
+
+    total = len(payments)
+    payments = payments[skip: skip + limit]
+    return {"total": total, "payments": payments}
 
 
 @router.put("/invoices/{invoice_id}", response_model=InvoiceResponse)

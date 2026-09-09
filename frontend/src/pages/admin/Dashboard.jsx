@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
 import WelcomeModal from "../../components/WelcomeModal";
+import { formatDate } from "../../utils/dateFormat";
 import {
   Building2,
   Users,
@@ -300,7 +301,7 @@ const AdminDashboard = () => {
                           <td className="px-4 py-3 text-right text-slate-500">₹{p.gst_amount?.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total_amount?.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3 text-slate-500">
-                            {p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                            {p.created_at ? formatDate(p.created_at) : "—"}
                           </td>
                         </tr>
                       ))}

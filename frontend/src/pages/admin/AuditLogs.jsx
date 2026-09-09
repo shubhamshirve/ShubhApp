@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDateTime } from "../../utils/dateFormat";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import {
@@ -300,7 +301,7 @@ const AdminAuditLogs = () => {
                   ) : logs.map((log) => (
                     <TableRow key={log.id} className="hover:bg-slate-50">
                       <TableCell className="font-mono text-xs text-slate-500 whitespace-nowrap">
-                        {new Date(log.created_at).toLocaleString()}
+                        {formatDateTime(log.created_at)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -390,7 +391,7 @@ const AdminAuditLogs = () => {
             <DialogDescription>
               {selectedLog && (
                 <span>
-                  {new Date(selectedLog.created_at).toLocaleString()} · {selectedLog.user_name} · {selectedLog.module} · {selectedLog.action}
+                  {formatDateTime(selectedLog.created_at)} · {selectedLog.user_name} · {selectedLog.module} · {selectedLog.action}
                 </span>
               )}
             </DialogDescription>
@@ -405,7 +406,7 @@ const AdminAuditLogs = () => {
                   { label: "Action",     value: selectedLog.action },
                   { label: "Module",     value: selectedLog.module },
                   { label: "IP Address", value: selectedLog.ip_address || "—" },
-                  { label: "Timestamp",  value: new Date(selectedLog.created_at).toLocaleString() },
+                  { label: "Timestamp",  value: formatDateTime(selectedLog.created_at) },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-slate-50 rounded-lg p-3">
                     <p className="text-xs text-slate-500 mb-1">{label}</p>

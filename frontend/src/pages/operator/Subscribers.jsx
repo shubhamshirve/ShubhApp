@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -1317,7 +1318,7 @@ const OperatorSubscribers = () => {
 
                           <div className="mt-2 text-xs text-slate-400 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            Invoice created: {new Date(ev.invoice_created_at).toLocaleString()}
+                            Invoice created: {formatDateTime(ev.invoice_created_at)}
                           </div>
                         </div>
                       </div>

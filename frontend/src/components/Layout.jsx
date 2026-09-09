@@ -20,7 +20,8 @@ import {
   Tag,
   MessageSquare,
   Wallet,
-  Activity
+  Activity,
+  BadgeDollarSign
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -140,6 +141,7 @@ const OperatorSidebar = ({ isOpen, onClose, isReadOnly }) => {
     { href: "/operator/subscribers",  label: "Subscribers",  icon: Users,           always: true },
     { href: "/operator/plans",        label: "Plans",        icon: Package,         always: true },
     { href: "/operator/invoices",     label: "Invoices",     icon: FileText,        always: true },
+    { href: "/operator/payments",     label: "Payments",     icon: BadgeDollarSign, always: true },
     { href: "/operator/wallet",       label: "Wallet",       icon: Wallet,          always: true, operatorOnly: true },
     { href: "/operator/announcements",label: "Announcements",icon: Bell,            feature: "announcement" },
     { href: "/operator/audit-logs",   label: "Audit Logs",   icon: ClipboardList,   feature: "audit_log" },

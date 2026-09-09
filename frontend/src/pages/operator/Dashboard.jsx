@@ -4,6 +4,7 @@ import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { toast } from "sonner";
 import WelcomeModal from "../../components/WelcomeModal";
+import { formatDate } from "../../utils/dateFormat";
 import {
   Users,
   FileText,
@@ -137,7 +138,7 @@ const OperatorDashboard = () => {
                 <div>
                   <p className="font-medium text-blue-900">Trial Period Active</p>
                   <p className="text-sm text-blue-700">
-                    Your trial expires on {stats?.trial_ends_at ? new Date(stats.trial_ends_at).toLocaleDateString() : "N/A"}
+                    Your trial expires on {stats?.trial_ends_at ? formatDate(stats.trial_ends_at) : "N/A"}
                   </p>
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { formatDate } from "../../utils/dateFormat";
 import { Label } from "../../components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
@@ -157,7 +158,7 @@ export default function AdminDiscountCodes() {
                         </TableCell>
                         <TableCell className="text-sm text-slate-600">
                           {c.expiry_date
-                            ? new Date(c.expiry_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                            ? formatDate(c.expiry_date)
                             : <span className="text-slate-400">No expiry</span>}
                         </TableCell>
                         <TableCell className="text-sm">

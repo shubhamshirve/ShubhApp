@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../App";
 import { Button } from "../../components/ui/button";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 import {
   Table,
   TableBody,
@@ -47,9 +48,7 @@ const fmt = (val) =>
 const fmtDate = (iso) => {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleDateString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
+    return formatDate(iso);
   } catch { return iso; }
 };
 
@@ -588,7 +587,7 @@ export default function SubscriberLedgerPage() {
                         <div className="w-28 shrink-0">
                           <p className="text-sm font-medium text-slate-700">{fmtDate(p.date)}</p>
                           <p className="text-xs text-slate-400">
-                            {p.date ? new Date(p.date).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : ""}
+                            {p.date ? formatDateTime(p.date) : ""}
                           </p>
                         </div>
                         {/* Amount */}

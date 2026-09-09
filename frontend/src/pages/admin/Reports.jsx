@@ -3,6 +3,7 @@ import { useAuth } from "../../App";
 import { AdminLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { formatDate } from "../../utils/dateFormat";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
@@ -97,7 +98,7 @@ const AdminReports = () => {
     if (!subscriptions.length) { toast.error("No data to export"); return; }
     const headers = ["Date", "Company", "Owner", "Plan", "Months", "Base (₹)", "Discount (₹)", "Coupon", "GST (₹)", "Total (₹)", "Type"];
     const rows = subscriptions.map(s => [
-      s.created_at ? new Date(s.created_at).toLocaleDateString("en-IN") : "-",
+      s.created_at ? formatDate(s.created_at) : "-",
       s.company_name, s.owner_name, s.plan_name, s.months,
       s.base_amount, s.discount_amount || 0, s.coupon_code || "-",
       s.gst_amount, s.total_amount, s.item_type,
@@ -316,11 +317,7 @@ const AdminReports = () => {
                         {subscriptions.map((s) => (
                           <TableRow key={s.id} className="hover:bg-slate-50">
                             <TableCell className="text-sm text-slate-600 whitespace-nowrap">
-                              {s.created_at
-                                ? new Date(s.created_at).toLocaleDateString("en-IN", {
-                                    day: "2-digit", month: "short", year: "numeric",
-                                  })
-                                : "—"}
+                              {s.created_at ? formatDate(s.created_at) : "—"}
                             </TableCell>
                             <TableCell>
                               <div>

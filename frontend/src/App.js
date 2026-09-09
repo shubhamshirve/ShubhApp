@@ -17,6 +17,7 @@ import OperatorDashboard from "./pages/operator/Dashboard";
 import OperatorSubscribers from "./pages/operator/Subscribers";
 import OperatorPlans from "./pages/operator/Plans";
 import OperatorInvoices from "./pages/operator/Invoices";
+import OperatorPayments from "./pages/operator/Payments";
 import OperatorStaff from "./pages/operator/Staff";
 import OperatorReports from "./pages/operator/Reports";
 import OperatorSettings from "./pages/operator/Settings";
@@ -335,6 +336,11 @@ function App() {
           <Route path="/operator/invoices" element={
             <ProtectedRoute allowedRoles={["operator", "staff"]}>
               <OperatorInvoices />
+            </ProtectedRoute>
+          } />
+          <Route path="/operator/payments" element={
+            <ProtectedRoute allowedRoles={["operator", "staff"]}>
+              <OperatorPayments />
             </ProtectedRoute>
           } />
           <Route path="/operator/staff" element={

@@ -50,6 +50,7 @@ import {
 import { toast } from "sonner";
 import { PlanCombobox } from "../../components/PlanCombobox";
 import { format } from "date-fns";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 import { 
   Plus, 
   Search, 
@@ -104,14 +105,20 @@ const SearchableSubscriberSelect = ({ value, onSelect, authAxios }) => {
 
   // Load selected subscriber details when value changes
   useEffect(() => {
-    if (value && !selectedSubscriber) {
-      authAxios.get(`/operator/subscribers/search?q=&limit=100`)
-        .then(res => {
-          const found = res.data.find(s => s.id === value);
-          if (found) setSelectedSubscriber(found);
-        })
-        .catch(err => console.error("Failed to load subscriber", err));
+    if (!value) {
+      setSelectedSubscriber(null);
+      return;
     }
+    // If the currently displayed subscriber already matches, do nothing
+    if (selectedSubscriber && selectedSubscriber.id === value) return;
+    // Clear stale selection, then fetch the correct subscriber
+    setSelectedSubscriber(null);
+    authAxios.get(`/operator/subscribers/search?q=&limit=100`)
+      .then(res => {
+        const found = res.data.find(s => s.id === value);
+        if (found) setSelectedSubscriber(found);
+      })
+      .catch(err => console.error("Failed to load subscriber", err));
   }, [value]);
 
   const searchSubscribers = async (query) => {
@@ -662,7 +669,7 @@ const OperatorInvoices = () => {
     const companyName = invoiceSettings?.company_name || "Your Service Provider";
     const publicInvoiceUrl = `${window.location.origin}/invoice/${invoice.invoice_number}`;
     const dueDate = invoice.due_date
-      ? new Date(invoice.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      ? formatDate(invoice.due_date)
       : 'N/A';
     const amount = `₹${Number(invoice.final_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
     const statusLabel = invoice.status === 'paid' ? '✅ Paid' : invoice.status === 'overdue' ? '⚠️ Overdue' : '🕐 Pending';
@@ -840,7 +847,7 @@ const OperatorInvoices = () => {
                 const modeLabels = { cash: "Cash", own_upi: "UPI", bank_transfer: "Bank Transfer", cheque: "Cheque" };
                 return (
                   <span key={ri} className="text-xs text-slate-400 block">
-                    #{ri + 1} ₹{Number(rec.amount).toLocaleString("en-IN")} · {modeLabels[rec.mode] || rec.mode} · {rec.date ? new Date(rec.date).toLocaleDateString("en-GB") : "—"}
+                    #{ri + 1} ₹{Number(rec.amount).toLocaleString("en-IN")} · {modeLabels[rec.mode] || rec.mode} · {rec.date ? formatDate(rec.date) : "—"}
                   </span>
                 );
               })}
@@ -850,11 +857,11 @@ const OperatorInvoices = () => {
       </TableCell>
       <TableCell className="text-sm text-slate-500">
         {invoice.invoice_date
-          ? new Date(invoice.invoice_date).toLocaleDateString('en-GB')
-          : new Date(invoice.created_at).toLocaleDateString('en-GB')}
+          ? formatDate(invoice.invoice_date)
+          : formatDate(invoice.created_at)}
       </TableCell>
       <TableCell className="text-sm">
-        {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+        {formatDate(invoice.due_date)}
       </TableCell>
       <TableCell>{getStatusBadge(invoice.status)}</TableCell>
       <TableCell>

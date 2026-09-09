@@ -3,6 +3,7 @@ import { OperatorLayout } from "../../components/Layout";
 import { useAuth } from "../../App";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { formatDateTime } from "../../utils/dateFormat";
 import { Textarea } from "../../components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -251,7 +252,7 @@ export default function OperatorSupport() {
                         </div>
                         <p className="font-medium text-slate-900 truncate">{ticket.title}</p>
                         <p className="text-xs text-slate-400 mt-1">
-                          {new Date(ticket.created_at).toLocaleString("en-IN")}
+                          {formatDateTime(ticket.created_at)}
                           {ticket.reply_count > 0 && ` · ${ticket.reply_count} repl${ticket.reply_count === 1 ? "y" : "ies"}`}
                         </p>
                       </div>
@@ -275,7 +276,7 @@ export default function OperatorSupport() {
                     <div className="flex gap-2 mt-1 flex-wrap">
                       <StatusBadge status={selectedTicket.status} />
                       <PriorityBadge priority={selectedTicket.priority} />
-                      <span className="text-xs text-slate-400">{new Date(selectedTicket.created_at).toLocaleString("en-IN")}</span>
+                      <span className="text-xs text-slate-400">{formatDateTime(selectedTicket.created_at)}</span>
                     </div>
                   </div>
                 </div>
@@ -297,7 +298,7 @@ export default function OperatorSupport() {
                       </p>
                       <p className="whitespace-pre-wrap">{reply.message}</p>
                       <p className={`text-xs mt-1.5 ${isAdmin ? "text-slate-400" : "text-blue-200"}`}>
-                        {new Date(reply.created_at).toLocaleString("en-IN")}
+                        {formatDateTime(reply.created_at)}
                       </p>
                     </div>
                   </div>
