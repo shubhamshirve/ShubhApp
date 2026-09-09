@@ -73,6 +73,11 @@ KNOWN_INVOICE_VARIABLES = {
     # Injected by the calling endpoint before resolving variables
     "invoice_public_url": lambda inv, sub: inv.get("invoice_public_url", "") or inv.get("payment_link", "") or "",
     "invoice_status":     lambda inv, sub: (inv.get("status") or "").capitalize(),
+    # ── Partial-payment fields ───────────────────────────────────────────────
+    "amount_paid":        lambda inv, sub: f"₹{(inv.get('amount_paid') or 0):,.2f}",
+    "amount_paid_raw":    lambda inv, sub: f"{(inv.get('amount_paid') or 0):,.2f}",
+    "balance_due":        lambda inv, sub: f"₹{max(0, (inv.get('final_amount') or 0) - (inv.get('amount_paid') or 0)):,.2f}",
+    "balance_due_raw":    lambda inv, sub: f"{max(0, (inv.get('final_amount') or 0) - (inv.get('amount_paid') or 0)):,.2f}",
 
     # ── Customer / Subscriber fields ─────────────────────────────────────────
     "customer_name":      lambda inv, sub: sub.get("name", ""),

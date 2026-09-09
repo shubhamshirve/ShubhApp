@@ -40,6 +40,7 @@ const TEMPLATE_TYPES = [
   { value: "payment_reminder", label: "Payment Reminder" },
   { value: "payment_due_reminder", label: "Payment Due Reminders" },
   { value: "payment_confirmation", label: "Payment Confirmation" },
+  { value: "partial_payment", label: "Partial Payment" },
   { value: "announcement", label: "Announcement" },
   { value: "custom", label: "Custom" },
   { value: "operator_low_balance", label: "Operator Low Balance Alert" },
@@ -53,6 +54,7 @@ const TYPE_COLORS = {
   payment_reminder: "bg-amber-100 text-amber-800",
   payment_due_reminder: "bg-red-100 text-red-800",
   payment_confirmation: "bg-green-100 text-green-800",
+  partial_payment: "bg-teal-100 text-teal-800",
   announcement: "bg-purple-100 text-purple-800",
   custom: "bg-slate-100 text-slate-800",
   operator_low_balance: "bg-orange-100 text-orange-800",
@@ -61,7 +63,7 @@ const TYPE_COLORS = {
   operator_daily_report: "bg-indigo-100 text-indigo-800",
 };
 
-const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_due_reminder", "payment_confirmation"];
+const INVOICE_TYPE_TEMPLATES = ["invoice_notification", "payment_reminder", "payment_due_reminder", "payment_confirmation", "partial_payment"];
 const OPERATOR_TYPE_TEMPLATES = ["operator_low_balance", "operator_account_expiry", "operator_renewal", "operator_daily_report"];
 const ANNOUNCEMENT_TYPE_TEMPLATES = ["announcement"];
 
@@ -97,6 +99,11 @@ const INVOICE_VARIABLE_OPTIONS = [
   { value: "customer_phone",     label: "Customer Phone / WA Number",  group: "Customer" },
   { value: "customer_address",   label: "Customer Address",            group: "Customer" },
   { value: "customer_plan",      label: "Customer Active Plan(s)",     group: "Customer" },
+  // ── Partial payment ──
+  { value: "amount_paid",        label: "Amount Paid (₹)",             group: "Invoice" },
+  { value: "amount_paid_raw",    label: "Amount Paid (plain number)",  group: "Invoice" },
+  { value: "balance_due",        label: "Balance Due (₹)",             group: "Invoice" },
+  { value: "balance_due_raw",    label: "Balance Due (plain number)",  group: "Invoice" },
   // ── Operator / Business ──
   { value: "operator_name",          label: "Business / Operator Name",   group: "Operator" },
   { value: "operator_phone",         label: "Operator Phone",             group: "Operator" },
@@ -186,6 +193,22 @@ const QUICK_TEMPLATES = [
     language_code: "en",
     description: "Confirms successful payment to subscriber",
     body_variables: ["customer_name", "invoice_number", "amount", "due_date"],
+    header_type: "none",
+    header_image_url: "",
+    header_variable: "",
+    header_image_static: false,
+    has_payment_button: false,
+    button_url_variable: "invoice_public_url",
+    is_active: true,
+  },
+  {
+    label: "Partial Payment Received",
+    template_name: "partial_payment",
+    display_name: "Partial Payment Received",
+    template_type: "partial_payment",
+    language_code: "en",
+    description: "Notifies subscriber that a partial payment has been recorded",
+    body_variables: ["customer_name", "invoice_number", "amount_paid", "balance_due"],
     header_type: "none",
     header_image_url: "",
     header_variable: "",

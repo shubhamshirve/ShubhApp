@@ -2592,6 +2592,68 @@ async def update_invoice_status(
         except Exception as wa_err:
             logger.warning(f"WhatsApp payment confirmation failed for invoice {invoice_id}: {wa_err}")
 
+    # ── Partial payment WhatsApp notification ──────────────────────────────────
+    elif status == "partial":
+        try:
+            from services.whatsapp_service import get_whatsapp_service_async, build_wa_send_params, log_whatsapp_message
+            from services.invoice_view_service import build_public_invoice_url_from_env
+            wa_service = await get_whatsapp_service_async()
+            if wa_service:
+                subscriber = await db.subscribers.find_one(
+                    {"id": invoice["subscriber_id"], "deleted_at": None}, {"_id": 0}
+                )
+                if subscriber and subscriber.get("whatsapp_number"):
+                    template_settings = await db.global_settings.find_one(
+                        {"type": "whatsapp_template_settings"}, {"_id": 0}
+                    ) or {}
+                    partial_tpl = template_settings.get("partial_payment_template") or "partial_payment"
+                    tmpl_doc = await db.whatsapp_templates.find_one(
+                        {"template_name": partial_tpl, "deleted_at": None}, {"_id": 0}
+                    )
+                    if tmpl_doc:
+                        # Inject partial payment fields into the invoice dict for variable resolution
+                        invoice_with_payment = {
+                            **invoice,
+                            "amount_paid": updates.get("amount_paid", 0),
+                        }
+                        inv_public_url = await build_public_invoice_url_from_env(invoice)
+                        params = await build_wa_send_params(
+                            db, tmpl_doc, invoice_with_payment, subscriber, invoice_public_url=inv_public_url
+                        )
+
+                        wa_result = None
+                        if params["body_vars"]:
+                            wa_result = await wa_service.send_template_message(
+                                recipient_phone=subscriber["whatsapp_number"],
+                                template_name=partial_tpl,
+                                language_code=params["language_code"],
+                                variables=params["variables"],
+                                header_params=params["header_params"],
+                                header_type=params["header_type"],
+                                button_params=params["btn_params"],
+                            )
+
+                        if wa_result:
+                            wa_msg_id = (wa_result.get("messages") or [{}])[0].get("id", "")
+                            wa_wa_id = (wa_result.get("contacts") or [{}])[0].get("wa_id", "")
+                            await log_whatsapp_message(
+                                db,
+                                operator_id=operator_id,
+                                template_name=partial_tpl,
+                                template_category="partial_payment",
+                                recipient_phone=subscriber["whatsapp_number"],
+                                status="sent",
+                                message_id=wa_msg_id,
+                                wa_id=wa_wa_id,
+                                invoice_id=invoice["id"],
+                                invoice_number=invoice["invoice_number"],
+                                trigger="partial_payment",
+                                subscriber_id=subscriber["id"],
+                                subscriber_name=subscriber.get("name"),
+                            )
+        except Exception as wa_err:
+            logger.warning(f"WhatsApp partial payment notification failed for invoice {invoice_id}: {wa_err}")
+
     return {"message": f"Invoice marked as {status}"}
 
 

@@ -141,6 +141,7 @@ const AdminSettings = () => {
     invoice_template: "",
     reminder_template: "",
     payment_confirmation_template: "",
+    partial_payment_template: "",
     announcement_template: "",
     payment_due_reminder_template: "",
     operator_low_balance_template: "",
@@ -349,6 +350,7 @@ const AdminSettings = () => {
         invoice_template: res.data.invoice_template || "",
         reminder_template: res.data.reminder_template || "",
         payment_confirmation_template: res.data.payment_confirmation_template || "",
+        partial_payment_template: res.data.partial_payment_template || "",
         announcement_template: res.data.announcement_template || "",
         payment_due_reminder_template: res.data.payment_due_reminder_template || "",
         operator_low_balance_template: res.data.operator_low_balance_template || "",
@@ -1414,7 +1416,8 @@ const AdminSettings = () => {
                     { key: "invoice_template", label: "Invoice Sending", desc: "Template used when sending new invoices to subscribers" },
                     { key: "reminder_template", label: "Payment Reminders (Before / On Due Date)", desc: "Template used for reminders sent before or on the due date" },
                     { key: "payment_due_reminder_template", label: "Payment Due Reminders (Overdue)", desc: "Template for overdue invoice reminders — sent after the due date has passed" },
-                    { key: "payment_confirmation_template", label: "Payment Confirmation", desc: "Template used when a payment is confirmed" },
+                    { key: "payment_confirmation_template", label: "Payment Confirmation", desc: "Template used when a full payment is confirmed" },
+                    { key: "partial_payment_template", label: "Partial Payment", desc: "Template used when a partial payment is recorded on an invoice" },
                     { key: "announcement_template", label: "Announcements", desc: "Template used for sending announcements" },
                   ].map(({ key, label, desc }) => (
                     <div key={key} className="space-y-1.5">

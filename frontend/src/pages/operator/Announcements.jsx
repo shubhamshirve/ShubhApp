@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../App";
 import { OperatorLayout } from "../../components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -24,9 +24,183 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
-import { Bell, Send, Plus, Users, Clock, Eye } from "lucide-react";
+import {
+  Bell,
+  Send,
+  Plus,
+  Users,
+  Clock,
+  Eye,
+  Search,
+  CheckSquare,
+  Square,
+  X,
+  UserCheck,
+} from "lucide-react";
 
+// ─── Subscriber picker with search ─────────────────────────────────────────
+const SubscriberPicker = ({ selectedIds, onChange, authAxios }) => {
+  const [subscribers, setSubscribers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef(null);
+
+  // Debounce the search input
+  const handleSearchChange = (val) => {
+    setSearch(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(val), 350);
+  };
+
+  // Fetch subscribers whenever search changes
+  const fetchSubscribers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: 200, status: "active" });
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      const res = await authAxios.get(`/operator/subscribers/search?${params}`);
+      setSubscribers(res.data || []);
+    } catch {
+      setSubscribers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [authAxios, debouncedSearch]);
+
+  useEffect(() => {
+    fetchSubscribers();
+  }, [fetchSubscribers]);
+
+  const toggleOne = (id) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((s) => s !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const toggleAll = () => {
+    const visibleIds = subscribers.map((s) => s.id);
+    const allSelected = visibleIds.every((id) => selectedIds.includes(id));
+    if (allSelected) {
+      // Deselect all visible
+      onChange(selectedIds.filter((id) => !visibleIds.includes(id)));
+    } else {
+      // Select all visible (merge with existing)
+      const merged = Array.from(new Set([...selectedIds, ...visibleIds]));
+      onChange(merged);
+    }
+  };
+
+  const visibleIds = subscribers.map((s) => s.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      {/* Search bar + select-all */}
+      <div className="p-2 border-b bg-slate-50 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search subscribers..."
+            className="pl-8 h-8 text-sm"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 whitespace-nowrap px-2 py-1 rounded hover:bg-slate-200"
+        >
+          {allVisibleSelected ? (
+            <CheckSquare className="w-3.5 h-3.5 text-[#0066B2]" />
+          ) : (
+            <Square className="w-3.5 h-3.5" />
+          )}
+          {allVisibleSelected ? "Deselect All" : "Select All"}
+        </button>
+      </div>
+
+      {/* Subscriber list */}
+      <div className="max-h-56 overflow-y-auto divide-y">
+        {loading ? (
+          <div className="py-6 text-center text-sm text-slate-400">Loading...</div>
+        ) : subscribers.length === 0 ? (
+          <div className="py-6 text-center text-sm text-slate-400">
+            {search ? "No subscribers match your search" : "No active subscribers found"}
+          </div>
+        ) : (
+          subscribers.map((sub) => {
+            const isSelected = selectedIds.includes(sub.id);
+            return (
+              <button
+                key={sub.id}
+                type="button"
+                onClick={() => toggleOne(sub.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors ${
+                  isSelected ? "bg-blue-50" : ""
+                }`}
+              >
+                <div className={`flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
+                  isSelected
+                    ? "bg-[#0066B2] border-[#0066B2]"
+                    : "border-slate-300"
+                }`}>
+                  {isSelected && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+                      <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{sub.name}</p>
+                  <p className="text-xs text-slate-500 truncate">
+                    {sub.whatsapp_number || sub.email || sub.id}
+                  </p>
+                </div>
+                {isSelected && (
+                  <span className="flex-shrink-0 w-1.5 h-1.5 bg-[#0066B2] rounded-full" />
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Footer */}
+      {selectedIds.length > 0 && (
+        <div className="px-3 py-2 border-t bg-blue-50 flex items-center justify-between">
+          <span className="text-xs text-blue-700 font-medium flex items-center gap-1">
+            <UserCheck className="w-3.5 h-3.5" />
+            {selectedIds.length} subscriber{selectedIds.length !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
 const OperatorAnnouncements = () => {
   const { authAxios } = useAuth();
   const [announcements, setAnnouncements] = useState([]);
@@ -43,6 +217,7 @@ const OperatorAnnouncements = () => {
     send_whatsapp: false,
     send_email: false,
     send_to_all: true,
+    subscriber_ids: [],
   });
 
   useEffect(() => {
@@ -69,6 +244,15 @@ const OperatorAnnouncements = () => {
     } catch (err) { console.warn("Failed to load dashboard stats:", err); }
   };
 
+  const resetForm = () => setForm({
+    title: "",
+    message: "",
+    send_whatsapp: false,
+    send_email: false,
+    send_to_all: true,
+    subscriber_ids: [],
+  });
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || form.title.trim().length < 3) {
@@ -77,12 +261,23 @@ const OperatorAnnouncements = () => {
     if (!form.message.trim() || form.message.trim().length < 5) {
       toast.error("Message must be at least 5 characters"); return;
     }
+    if (!form.send_to_all && form.subscriber_ids.length === 0) {
+      toast.error("Please select at least one subscriber"); return;
+    }
     setSending(true);
     try {
-      const res = await authAxios.post("/operator/announcements", form);
+      const payload = {
+        title: form.title,
+        message: form.message,
+        send_whatsapp: form.send_whatsapp,
+        send_email: form.send_email,
+        send_to_all: form.send_to_all,
+        subscriber_ids: form.send_to_all ? [] : form.subscriber_ids,
+      };
+      const res = await authAxios.post("/operator/announcements", payload);
       toast.success(`Announcement sent to ${res.data.recipients} subscriber(s)`);
       setShowDialog(false);
-      setForm({ title: "", message: "", send_whatsapp: false, send_email: false, send_to_all: true });
+      resetForm();
       fetchAnnouncements();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send announcement");
@@ -94,6 +289,11 @@ const OperatorAnnouncements = () => {
   const handleView = (item) => {
     setSelectedAnnouncement(item);
     setShowViewDialog(true);
+  };
+
+  const handleOpenDialog = () => {
+    resetForm();
+    setShowDialog(true);
   };
 
   const isReadOnly = dashboardStats?.is_read_only;
@@ -115,7 +315,7 @@ const OperatorAnnouncements = () => {
         <div className="flex justify-between items-center">
           <p className="text-slate-500">Send bulk messages and announcements to your subscribers</p>
           <Button
-            onClick={() => setShowDialog(true)}
+            onClick={handleOpenDialog}
             disabled={isReadOnly}
             data-testid="new-announcement-btn"
           >
@@ -212,15 +412,16 @@ const OperatorAnnouncements = () => {
         </Card>
 
         {/* Create Announcement Dialog */}
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg">
+        <Dialog open={showDialog} onOpenChange={(open) => { setShowDialog(open); if (!open) resetForm(); }}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>New Announcement</DialogTitle>
               <DialogDescription>
-                Send a message to all your active subscribers
+                Send a message to your subscribers
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSend} className="space-y-4">
+              {/* Title */}
               <div className="space-y-2">
                 <Label>Title *</Label>
                 <Input
@@ -231,6 +432,8 @@ const OperatorAnnouncements = () => {
                   data-testid="announcement-title"
                 />
               </div>
+
+              {/* Message */}
               <div className="space-y-2">
                 <Label>Message *</Label>
                 <Textarea
@@ -242,10 +445,55 @@ const OperatorAnnouncements = () => {
                   data-testid="announcement-message"
                 />
               </div>
+
+              {/* Recipients section */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Recipients</Label>
+
+                {/* Send to all toggle */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Send to all active subscribers</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {form.send_to_all
+                        ? "All active subscribers will receive this announcement"
+                        : "Choose specific subscribers below"}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.send_to_all}
+                    onCheckedChange={(checked) =>
+                      setForm(f => ({ ...f, send_to_all: checked, subscriber_ids: [] }))
+                    }
+                    data-testid="send-to-all-toggle"
+                  />
+                </div>
+
+                {/* Subscriber picker — visible only when send_to_all is false */}
+                {!form.send_to_all && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-slate-600">Select subscribers</Label>
+                      {form.subscriber_ids.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {form.subscriber_ids.length} selected
+                        </Badge>
+                      )}
+                    </div>
+                    <SubscriberPicker
+                      selectedIds={form.subscriber_ids}
+                      onChange={(ids) => setForm(f => ({ ...f, subscriber_ids: ids }))}
+                      authAxios={authAxios}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* WhatsApp toggle */}
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div>
                   <Label className="font-normal">Send via WhatsApp</Label>
-                  <p className="text-xs text-slate-500">Also send this message via WhatsApp to all subscribers</p>
+                  <p className="text-xs text-slate-500">Also send via WhatsApp</p>
                 </div>
                 <Switch
                   checked={form.send_whatsapp}
@@ -253,10 +501,12 @@ const OperatorAnnouncements = () => {
                   data-testid="announcement-whatsapp-toggle"
                 />
               </div>
+
+              {/* Email toggle */}
               <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                 <div>
                   <Label className="font-normal">Send via Email</Label>
-                  <p className="text-xs text-slate-500">Also send this message via email to all subscribers</p>
+                  <p className="text-xs text-slate-500">Also send via email</p>
                 </div>
                 <Switch
                   checked={form.send_email}
@@ -264,13 +514,18 @@ const OperatorAnnouncements = () => {
                   data-testid="announcement-email-toggle"
                 />
               </div>
+
               <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setShowDialog(false)}>
+                <Button variant="outline" type="button" onClick={() => { setShowDialog(false); resetForm(); }}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={sending} data-testid="send-announcement-btn">
+                <Button
+                  type="submit"
+                  disabled={sending || (!form.send_to_all && form.subscriber_ids.length === 0)}
+                  data-testid="send-announcement-btn"
+                >
                   <Send className="w-4 h-4 mr-2" />
-                  {sending ? "Sending..." : "Send Announcement"}
+                  {sending ? "Sending..." : `Send${!form.send_to_all && form.subscriber_ids.length > 0 ? ` to ${form.subscriber_ids.length}` : ""}`}
                 </Button>
               </DialogFooter>
             </form>
