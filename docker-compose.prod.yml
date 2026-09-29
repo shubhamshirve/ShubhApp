@@ -45,8 +45,8 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-    expose:
-      - "27017"  # Internal Docker network only; access via: docker exec ebill-mongodb-1 mongosh
+    ports:
+      - "127.0.0.1:27017:27017"  # Loopback only — safe for SSH tunnel from laptop; NOT exposed to internet
     volumes:
       - mongo_data:/data/db
     networks:

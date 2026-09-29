@@ -1,5 +1,22 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.48
+# Current Version: V9.49
+
+## 2026-09-29
+
+### V9.49 — Expose MongoDB on VPS loopback for SSH tunnel access (Compass)
+
+Changed MongoDB service in `docker-compose.prod.yml` from `expose` (Docker-internal only) to `ports: 127.0.0.1:27017:27017` (VPS loopback only). This allows MongoDB Compass (or any Mongo client) on a developer laptop to connect securely via an SSH tunnel without exposing port 27017 to the open internet.
+
+**How to connect from laptop:**
+1. Open SSH tunnel: `ssh -L 27017:127.0.0.1:27017 root@45.196.196.21 -N`
+2. Open MongoDB Compass and use: `mongodb://admin:<password>@localhost:27017/saas_db?authSource=admin`
+
+**Files changed:**
+- `docker-compose.prod.yml` — MongoDB `expose` → `ports: 127.0.0.1:27017:27017`
+
+---
+
+
 
 ## 2026-07-23
 
