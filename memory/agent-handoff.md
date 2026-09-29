@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-09-29
 **Active Branch:** `live` (auto-deploys to production)
-**Latest Version:** V9.49
+**Latest Version:** V9.50
 
 ---
 
@@ -103,7 +103,7 @@
 - **OperatorResponse:** `owner_name` and `status` are Optional with defaults — older operator documents may not have these fields; do NOT make them required again
 - **DB name:** Config defaults to `saas_db` (loaded from `DB_NAME` env var, defaults if absent)
 - **Standalone Scripts**: Standard standalone Python scripts (like `backend/scripts/migrate_subscriber_ids.py`) import `db` and `client` from `database.py` directly rather than creating a separate `AsyncIOMotorClient` instance, which prevents connection failures inside Docker or different environments.
-- **MongoDB Compass Access**: MongoDB port 27017 is bound to `127.0.0.1` on the VPS (loopback only, not internet-facing). To connect from a laptop, open an SSH tunnel first: `ssh -L 27017:127.0.0.1:27017 root@45.196.196.21 -N`, then use Compass with `mongodb://admin:<password>@localhost:27017/saas_db?authSource=admin`.
+- **MongoDB Compass Access**: MongoDB is mapped to `127.0.0.1:27018` on the VPS host (port 27017 is taken by a native MongoDB install). To connect from a laptop, open an SSH tunnel: `ssh -L 27018:127.0.0.1:27018 root@45.196.196.21 -N`, then use Compass with `mongodb://admin:<password>@localhost:27018/saas_db?authSource=admin`.
 
 ---
 

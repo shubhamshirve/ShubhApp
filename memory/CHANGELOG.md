@@ -1,5 +1,29 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.49
+# Current Version: V9.50
+
+## 2026-09-29
+
+### V9.50 — Fix MongoDB port conflict on VPS (27017 already in use by native MongoDB)
+
+Port 27017 on the VPS host was already allocated by a native (non-Docker) MongoDB installation. Docker could not bind `127.0.0.1:27017:27017`.
+
+**Fix:** Changed host-side port to `27018`. Container still runs MongoDB internally on 27017; host exposes it on `127.0.0.1:27018`.
+
+**Updated SSH tunnel command:**
+```
+ssh -L 27018:127.0.0.1:27018 root@45.196.196.21 -N
+```
+**Updated Compass connection string:**
+```
+mongodb://admin:<password>@localhost:27018/saas_db?authSource=admin
+```
+
+**Files changed:**
+- `docker-compose.prod.yml` — MongoDB host port `27017` → `27018`
+
+---
+
+
 
 ## 2026-09-29
 
