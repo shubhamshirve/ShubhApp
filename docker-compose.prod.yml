@@ -46,7 +46,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     ports:
-      - "127.0.0.1:27018:27017"  # 27018 on host to avoid conflict with native MongoDB on 27017; SSH tunnel: -L 27018:127.0.0.1:27018
+      - "127.0.0.1:27017:27017"  # Loopback only — safe for SSH tunnel from laptop; NOT exposed to internet
     volumes:
       - mongo_data:/data/db
     networks:

@@ -1,5 +1,23 @@
 # E-Bill Platform — CHANGELOG
-# Current Version: V9.50
+# Current Version: V9.51
+
+## 2026-09-29
+
+### V9.51 — Revert MongoDB host port back to 27017
+
+Reverted MongoDB host port from `27018` back to `127.0.0.1:27017:27017`. Stop the native MongoDB service on the VPS before deploying to free up port 27017:
+```bash
+sudo systemctl stop mongod
+sudo systemctl disable mongod
+```
+Then re-deploy. SSH tunnel command: `ssh -L 27017:127.0.0.1:27017 root@45.196.196.21 -N`
+
+**Files changed:**
+- `docker-compose.prod.yml` — MongoDB port `27018` → `27017`
+
+---
+
+
 
 ## 2026-09-29
 
